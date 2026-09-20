@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 
 import {
   OverlayDepth,
@@ -20,16 +20,24 @@ type DialogProps = {
 
 export function Dialog({ open, title, description, children, onClose, size = "default" }: DialogProps) {
   const titleId = useId();
+  const [present, setPresent] = useState(open);
+  useEffect(() => {
+    if (open) { setPresent(true); return; }
+    const timer = window.setTimeout(() => setPresent(false), 200);
+    return () => window.clearTimeout(timer);
+  }, [open]);
   useOverlayRegistration(open, onClose);
   const backdropZ = useOverlayZIndex(50);
   const dialogZ = useOverlayZIndex(60);
 
-  if (!open) return null;
+  if (!open && !present) return null;
 
   return (
     <OverlayPortal>
-      <div className="sm-dialog-backdrop" style={backdropZ} onMouseDown={(event) => {
-        if (event.currentTarget === event.target) onClose();
+      <div className="sm-dialog-backdrop" data-state={open ? "open" : "closing"} aria-hidden={!open || undefined} inert={!open} style={backdropZ} onAnimationEnd={(event) => {
+        if (!open && event.target === event.currentTarget) setPresent(false);
+      }} onMouseDown={(event) => {
+        if (open && event.currentTarget === event.target) onClose();
       }}>
         <OverlayDepth>
           <section

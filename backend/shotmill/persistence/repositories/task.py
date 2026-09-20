@@ -44,6 +44,12 @@ class SqlAlchemyTaskRepository:
                 progress=task.progress,
                 primary_result_id=task.primary_result_id,
                 revision=task.revision,
+                approved_prompt_source=(
+                    task.approved_prompt_source.value if task.approved_prompt_source else None
+                ),
+                approved_prompt_hash=task.approved_prompt_hash,
+                approved_at=task.approved_at,
+                approved_revision_id=task.approved_revision_id,
                 user_view_mode=task.user_view_mode,
                 ai_view_mode=task.ai_view_mode,
                 created_at=task.created_at,
@@ -97,6 +103,12 @@ class SqlAlchemyTaskRepository:
         row.progress = task.progress
         row.primary_result_id = task.primary_result_id
         row.revision = task.revision
+        row.approved_prompt_source = (
+            task.approved_prompt_source.value if task.approved_prompt_source else None
+        )
+        row.approved_prompt_hash = task.approved_prompt_hash
+        row.approved_at = task.approved_at
+        row.approved_revision_id = task.approved_revision_id
         row.user_view_mode = task.user_view_mode
         row.ai_view_mode = task.ai_view_mode
         row.updated_at = task.updated_at

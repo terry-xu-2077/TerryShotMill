@@ -1,18 +1,3 @@
-.sm-dialog:has(.simple-task-editor) {
-  width: min(1180px, calc(100vw - 56px));
-  max-height: min(90vh, 840px);
-}
-
-.simple-task-editor {
-  grid-template-columns: 280px minmax(0, 1fr);
-  grid-template-rows: minmax(520px, 1fr) auto;
-}
-
-.simple-task-config section {
-  gap: 11px;
-  padding: 13px 14px;
-}
-
 .simple-segmented-control {
   display: grid;
   grid-auto-flow: column;
@@ -21,7 +6,7 @@
   padding: 3px;
   border: 1px solid var(--sm-border);
   border-radius: 8px;
-  background: #191d23;
+  background: var(--sm-surface-2);
 }
 
 .simple-segmented-control button {
@@ -45,10 +30,6 @@
   color: var(--sm-text);
   background: var(--sm-surface-3);
   box-shadow: inset 0 -2px var(--sm-accent);
-}
-
-.simple-slider-field {
-  gap: 7px !important;
 }
 
 .simple-slider-field > span {
@@ -89,7 +70,7 @@
   height: 36px;
   border: 1px solid var(--sm-border-strong);
   border-radius: 6px;
-  background: #111419;
+  background: var(--sm-surface-1);
 }
 
 .simple-context-range-track::before {
@@ -101,7 +82,7 @@
   height: 4px;
   transform: translateY(-50%);
   border-radius: 999px;
-  background: #343a43;
+  background: var(--sm-surface-2);
 }
 
 .simple-context-range-selection {
@@ -110,10 +91,10 @@
   bottom: 6px;
   z-index: 1;
   min-width: 8px;
-  border: 1px solid rgba(229,170,81,.92);
+  border: 1px solid color-mix(in srgb, var(--sm-accent) 92%, transparent);
   border-radius: 5px;
-  background: rgba(229,170,81,.19);
-  box-shadow: inset 0 0 0 1px rgba(229,170,81,.2);
+  background: color-mix(in srgb, var(--sm-accent) 19%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sm-accent) 20%, transparent);
 }
 
 .simple-context-range-track input[type="range"] {
@@ -141,7 +122,7 @@
   border: 1px solid #f0b64f;
   border-radius: 3px;
   background: #d59a35;
-  box-shadow: 0 0 0 2px rgba(229,170,81,.13);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sm-accent) 13%, transparent);
   cursor: ew-resize;
   pointer-events: auto;
   -webkit-appearance: none;
@@ -158,7 +139,7 @@
   border: 1px solid #f0b64f;
   border-radius: 3px;
   background: #d59a35;
-  box-shadow: 0 0 0 2px rgba(229,170,81,.13);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sm-accent) 13%, transparent);
   cursor: ew-resize;
   pointer-events: auto;
 }
@@ -192,97 +173,4 @@
   color: var(--sm-text-dim);
   font-size: 8.5px;
   text-align: center;
-}
-
-.project-asset-editable-meta {
-  display: grid;
-  gap: 11px;
-  margin-bottom: 14px;
-}
-
-.project-asset-category-field,
-.project-asset-tags-field {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 8px 10px;
-  align-items: center;
-}
-
-.project-asset-category-field > span,
-.project-asset-tags-field > span {
-  color: var(--sm-text-dim);
-  font-size: 9px;
-}
-
-.project-asset-category-options {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 3px;
-  padding: 3px;
-  border: 1px solid var(--sm-border);
-  border-radius: 7px;
-  background: #191d23;
-}
-
-.project-asset-category-options button {
-  min-width: 0;
-  padding: 6px 4px;
-  border: 0;
-  border-radius: 5px;
-  color: var(--sm-text-dim);
-  background: transparent;
-  cursor: pointer;
-  font-size: 8.5px;
-}
-
-.project-asset-category-options button.is-active {
-  color: var(--sm-text);
-  background: var(--sm-surface-3);
-  box-shadow: inset 0 -2px var(--sm-accent);
-}
-
-.project-asset-tags-field input {
-  min-width: 0;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 9px;
-  border: 1px solid var(--sm-border-strong);
-  border-radius: 7px;
-  outline: 0;
-  color: var(--sm-text);
-  background: #20252c;
-  font: inherit;
-  font-size: 10px;
-}
-
-.project-asset-tags-field input:focus {
-  border-color: rgba(229,170,81,.65);
-}
-
-.project-asset-readonly-title {
-  margin: 2px 0 9px;
-  padding-top: 11px;
-  border-top: 1px solid var(--sm-border);
-  color: var(--sm-text-muted);
-  font-size: 9px;
-  font-weight: 600;
-}
-
-.project-asset-readonly-meta {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-@media (max-width: 980px) {
-  .sm-dialog:has(.simple-task-editor) {
-    width: calc(100vw - 28px);
-  }
-  .simple-task-editor {
-    grid-template-columns: 250px minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 720px) {
-  .simple-task-editor {
-    grid-template-columns: 1fr;
-  }
 }

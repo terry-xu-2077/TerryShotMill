@@ -32,6 +32,35 @@ function ToastTrigger() {
 }
 
 describe("Overlay system", () => {
+  it("keeps closing content inert until the exit animation finishes", () => {
+    render(<Harness />);
+    const dialog = screen.getByRole("dialog", { name: "嵌套浮层" });
+    const backdrop = dialog.closest(".sm-dialog-backdrop")!;
+    fireEvent.click(screen.getByRole("button", { name: "关闭对话框" }));
+    expect(dialog).toBeInTheDocument();
+    expect(backdrop).toHaveAttribute("data-state", "closing");
+    expect(backdrop).toHaveAttribute("inert");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.animationEnd(backdrop);
+    expect(dialog).not.toBeInTheDocument();
+  });
+
+  it("cancels pending removal when a closing dialog is reopened", () => {
+    vi.useFakeTimers();
+    try {
+      const onClose = vi.fn();
+      const renderDialog = (open: boolean) => <OverlayProvider><Dialog open={open} title="重开" onClose={onClose}>内容</Dialog></OverlayProvider>;
+      const view = render(renderDialog(true));
+      view.rerender(renderDialog(false));
+      view.rerender(renderDialog(true));
+      vi.runOnlyPendingTimers();
+      expect(screen.getByRole("dialog", { name: "重开" })).toBeInTheDocument();
+      expect(screen.getByRole("dialog").closest(".sm-dialog-backdrop")).not.toHaveAttribute("inert");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("portals menus to the global overlay root", async () => {
     const user = userEvent.setup();
     render(<Harness />);

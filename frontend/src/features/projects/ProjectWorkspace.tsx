@@ -29,6 +29,7 @@ import {
 import type { DirectorProject } from "../../mock/projects";
 import type { ProjectSummary } from "../../gateways/projectGateway";
 import { ContextMenu, Dialog } from "../../ui/overlay";
+import { ThemeSwitch } from "../../ui/ThemeSwitch";
 import { TaskEditorDialog } from "../storyboard/TaskEditorDialog";
 import { insertTaskAfter, updateTaskComposerFields } from "../storyboard/storyboardMutations";
 
@@ -149,11 +150,12 @@ export function ProjectHome({
   return (
     <main className="project-home" aria-label="项目首页">
       <header className="project-home-title">
-        <span />
-        <h1>Terry导演工作台</h1>
-        <span />
+        <h1><Film size={26} />Terry导演工作台</h1>
+        <ThemeSwitch />
       </header>
 
+      <div className="project-home-collection">
+      <header className="project-collection-heading"><h2>项目</h2><span className="project-home-count">{projects.length} 个项目</span></header>
       <section className="project-folder-grid" aria-label="项目列表">
         {loading && projects.length === 0 && (
           <div className="project-folder-card project-create-card" role="status">正在加载项目…</div>
@@ -163,7 +165,7 @@ export function ProjectHome({
             <div><span>项目加载失败，点击重试</span></div>
           </button>
         )}
-        {projects.map((project, index) => {
+        {projects.map((project) => {
           const status = project.status;
           return (
             <button
@@ -173,18 +175,20 @@ export function ProjectHome({
               onClick={() => onOpenProject(project.id)}
               aria-label={`打开项目 ${project.title}`}
             >
-              <div className="project-folder-tab">
-                <strong>{String(index + 1).padStart(2, "0")}</strong>
-                <span><i />{projectStatusLabel(status)}</span>
-              </div>
               <div
                 className="project-folder-cover"
                 style={project.coverUrl ? { backgroundImage: `url("${project.coverUrl}")` } : undefined}
               >
-                {!project.coverUrl && <span>封面区域</span>}
+                {!project.coverUrl && <Folder size={36} strokeWidth={1.25} />}
               </div>
-              <h2>{project.title}</h2>
-              <footer>{project.taskCount}个任务 {project.assetCount}个资产</footer>
+              <div className="project-folder-front">
+                <div className="project-folder-tab">
+                  <Film size={18} strokeWidth={1.6} />
+                  <span><i />{projectStatusLabel(status)}</span>
+                </div>
+                <h2>{project.title}</h2>
+                <footer><span>{project.taskCount} 个任务</span><span>{project.assetCount} 个资产</span></footer>
+              </div>
             </button>
           );
         })}
@@ -193,8 +197,8 @@ export function ProjectHome({
           <div><Plus size={30} /><span>新建项目</span></div>
         </button>
       </section>
+      </div>
 
-      <div className="project-home-bottom-line" />
     </main>
   );
 }

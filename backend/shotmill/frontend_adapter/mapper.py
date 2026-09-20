@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from shotmill.application.prompt_review import prompt_review_status
 from shotmill.domain.entities import AiPromptRevision, Asset, Job, Project, Result, Task
 from shotmill.domain.enums import JobStatus, TaskState
 from shotmill.frontend_adapter.models import (
@@ -83,7 +84,14 @@ def map_asset_reference(asset: Asset, storage: MediaStorage) -> AssetReferenceIt
     )
 
 
-def map_task_summary(task: Task, results: list[Result]) -> TaskSummary:
+def map_task_summary(
+    task: Task,
+    results: list[Result],
+    *,
+    asset_previews: dict[str, str | None] | None = None,
+    has_active_prompt_job: bool = False,
+    has_active_video_job: bool = False,
+) -> TaskSummary:
     primary = next((result for result in results if result.id == task.primary_result_id), None)
     latest = results[0] if results else None
     preview_source = primary or latest
@@ -101,7 +109,8 @@ def map_task_summary(task: Task, results: list[Result]) -> TaskSummary:
         display_number=task.display_order,
         title=task.title,
         prompt_excerpt=prompt_excerpt,
-        preview_url=preview_source.preview_url if preview_source else None,
+        preview_url=(preview_source.preview_url if preview_source else None)
+        or task_reference_preview(task, asset_previews or {}),
         status=task_status(task),
         progress=task.progress if task.state == TaskState.RUNNING else None,
         asset_count=len(task.asset_bindings),
@@ -111,6 +120,17 @@ def map_task_summary(task: Task, results: list[Result]) -> TaskSummary:
             resolution=str(_param(params, "resolution", "resolution", "1080p")),
             quality=str(_param(params, "quality", "quality", "标准")),
         ),
+        prompt_review_status=prompt_review_status(task),
+        prompt_enhancement_status="running" if has_active_prompt_job else "idle",
+        video_generation_status=(
+            task.state.value
+            if task.state in {
+                TaskState.QUEUED, TaskState.RUNNING, TaskState.COMPLETED, TaskState.FAILED,
+            }
+            else "idle"
+        ),
+        has_active_prompt_job=has_active_prompt_job,
+        has_active_video_job=has_active_video_job,
         primary_result=primary_view,
     )
 
@@ -139,6 +159,8 @@ def map_task_editor(task: Task, previous_duration: float | None) -> TaskEditorVi
         duration_seconds=task.planned_duration_seconds,
         previous_task_duration_seconds=previous_duration,
         generation=GenerationSettings(
+            workflow_profile_id=_param(params, "workflowProfileId", "workflow_profile_id"),
+            workflow_inputs=_param(params, "workflowInputs", "workflow_inputs"),
             resolution=str(_param(params, "resolution", "resolution", "1080p")),
             quality=str(_param(params, "quality", "quality", "标准")),
             mode=str(_param(params, "mode", "mode", "全能参考")),
@@ -154,7 +176,15 @@ def map_task_editor(task: Task, previous_duration: float | None) -> TaskEditorVi
             for binding in task.asset_bindings
         ],
         revision=task.revision,
+        prompt_review_status=prompt_review_status(task),
     )
+
+
+def task_reference_preview(task: Task, asset_previews: dict[str, str | None]) -> str | None:
+    for binding in sorted(task.asset_bindings, key=lambda item: item.order_index):
+        if preview := asset_previews.get(binding.asset_id):
+            return preview
+    return None
 
 
 def map_project_summary(
@@ -162,6 +192,8 @@ def map_project_summary(
     tasks: list[Task],
     asset_count: int,
     results_by_task: dict[str, list[Result]],
+    *,
+    asset_previews: dict[str, str | None] | None = None,
 ) -> ProjectSummary:
     cover_url = None
     for task in tasks:
@@ -171,6 +203,13 @@ def map_project_summary(
         if candidate and candidate.preview_url:
             cover_url = candidate.preview_url
             break
+    asset_previews = asset_previews or {}
+    cover_url = asset_previews.get(project.cover_asset_id) or cover_url
+    if not cover_url:
+        cover_url = next((preview for task in tasks
+                          if (preview := task_reference_preview(task, asset_previews))), None)
+    if not cover_url:
+        cover_url = next((preview for preview in asset_previews.values() if preview), None)
     return ProjectSummary(
         id=project.id,
         title=project.title,

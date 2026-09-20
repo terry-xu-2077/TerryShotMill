@@ -107,14 +107,7 @@
 .batch-video-eligibility .is-ready { color: var(--sm-text); }
 .batch-video-eligibility .is-ready svg { color: var(--sm-effect); }
 .batch-video-eligibility .is-skipped svg { color: var(--sm-text-dim); }
-
-.project-task-area { position: relative; }
-.task-list-row.is-batch-selected,
-.task-card-item.is-batch-selected {
-  outline: 1px solid color-mix(in srgb, var(--sm-accent) 70%, transparent);
-  outline-offset: -1px;
-  background: color-mix(in srgb, var(--sm-surface-2) 86%, var(--sm-accent) 14%);
-}
+.batch-prompt-error, .batch-video-error { margin: 0; color: var(--sm-danger); font-size: 13px; line-height: 1.6; }
 
 .task-review-navigation {
   display: flex;
@@ -156,8 +149,10 @@
 }
 .task-review-state.is-approved,
 .task-review-inline.is-approved { color: var(--sm-effect); }
-.task-review-state.is-pending,
-.task-review-inline.is-pending { color: var(--sm-text-muted); }
+.task-review-state.is-pending_review,
+.task-review-inline.is-pending_review,
+.task-review-state.is-not_ready,
+.task-review-inline.is-not_ready { color: var(--sm-text-muted); }
 .simple-task-prompt-source { display: flex; align-items: center; gap: 10px; }
 
 @media (max-width: 900px) {

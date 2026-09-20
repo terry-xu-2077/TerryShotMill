@@ -44,6 +44,7 @@ export function BatchPromptDialog({
   taskCount,
   projectBackgroundAvailable,
   busy = false,
+  error = "",
   onClose,
   onConfirm,
 }: {
@@ -51,21 +52,23 @@ export function BatchPromptDialog({
   taskCount: number;
   projectBackgroundAvailable: boolean;
   busy?: boolean;
+  error?: string;
   onClose: () => void;
   onConfirm?: (options: PromptBatchOptions) => void;
 }) {
   const [includeProjectBackground, setIncludeProjectBackground] = useState(projectBackgroundAvailable);
-  const [includePreviousTaskSummary, setIncludePreviousTaskSummary] = useState(true);
+  const [includePreviousTaskSummary, setIncludePreviousTaskSummary] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setIncludeProjectBackground(projectBackgroundAvailable);
-    setIncludePreviousTaskSummary(true);
+    setIncludePreviousTaskSummary(false);
   }, [open, projectBackgroundAvailable]);
 
   return (
     <Dialog open={open} title="批量 AI 增强" onClose={onClose}>
       <div className="batch-prompt-dialog">
+        {error && <p className="batch-prompt-error" role="alert">{error}</p>}
         <div className="batch-prompt-summary">
           <strong>将处理 {taskCount} 个任务</strong>
           <span>AI：Qwen3.8</span>
@@ -104,7 +107,7 @@ export function BatchPromptDialog({
             disabled={!onConfirm || taskCount < 1 || busy}
             onClick={() => onConfirm?.({ includeProjectBackground, includePreviousTaskSummary })}
           >
-            {busy ? "增强中…" : "开始增强"}
+            {busy ? "提交中…" : "开始增强"}
           </Button>
         </footer>
       </div>
@@ -121,6 +124,8 @@ function reasonLabel(reason: string) {
 
 export function BatchVideoDialog({
   open,
+  title = "批量生成视频",
+  error = "",
   selectedCount,
   eligibility,
   loading = false,
@@ -130,6 +135,8 @@ export function BatchVideoDialog({
 }: {
   open: boolean;
   selectedCount: number;
+  title?: string;
+  error?: string;
   eligibility?: VideoBatchEligibility;
   loading?: boolean;
   submitting?: boolean;
@@ -143,8 +150,9 @@ export function BatchVideoDialog({
   const eligibleCount = eligibility?.eligibleTaskIds.length ?? 0;
 
   return (
-    <Dialog open={open} title="批量生成视频" onClose={onClose}>
+    <Dialog open={open} title={title} onClose={onClose}>
       <div className="batch-video-dialog">
+        {error && <p className="batch-video-error" role="alert">{error}</p>}
         <div className="batch-video-summary-grid">
           <div><span>已选择</span><strong>{selectedCount}</strong></div>
           <div className="is-ready"><span>可生成</span><strong>{loading ? "…" : eligibleCount}</strong></div>

@@ -3,12 +3,21 @@ from __future__ import annotations
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from shotmill.domain.entities import AiPromptRevision, ContextLink, Job, Result
+from shotmill.domain.entities import (
+    AiPromptRevision,
+    ContextLink,
+    Job,
+    PromptEnhancementBatch,
+    PromptEnhancementJob,
+    Result,
+)
 from shotmill.domain.enums import JobStatus
 from shotmill.persistence import models
 from shotmill.persistence.repositories.mappers import (
     context_from_model,
     job_from_model,
+    prompt_batch_from_model,
+    prompt_job_from_model,
     prompt_revision_from_model,
     result_from_model,
 )
@@ -83,6 +92,18 @@ class SqlAlchemyJobRepository:
             .limit(1)
         )
         return job_from_model(row) if row else None
+
+    def active_task_ids_by_project(self, project_id: str) -> set[str]:
+        rows = self.session.scalars(
+            select(models.JobModel.task_id).where(
+                models.JobModel.project_id == project_id,
+                models.JobModel.status.in_([
+                    JobStatus.QUEUED.value,
+                    JobStatus.RUNNING.value,
+                ]),
+            )
+        ).all()
+        return set(rows)
 
 
 class SqlAlchemyResultRepository:
@@ -164,6 +185,131 @@ class SqlAlchemyPromptRevisionRepository:
             .order_by(models.PromptRevisionModel.created_at.desc())
         ).all()
         return [prompt_revision_from_model(row) for row in rows]
+
+
+class SqlAlchemyPromptEnhancementBatchRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get(self, batch_id: str) -> PromptEnhancementBatch | None:
+        row = self.session.get(models.PromptEnhancementBatchModel, batch_id)
+        return prompt_batch_from_model(row) if row else None
+
+    def add(self, batch: PromptEnhancementBatch) -> PromptEnhancementBatch:
+        self.session.add(
+            models.PromptEnhancementBatchModel(
+                id=batch.id,
+                project_id=batch.project_id,
+                status=batch.status,
+                total_count=batch.total_count,
+                queued_count=batch.queued_count,
+                running_count=batch.running_count,
+                completed_count=batch.completed_count,
+                failed_count=batch.failed_count,
+                cancelled_count=batch.cancelled_count,
+                created_at=batch.created_at,
+                started_at=batch.started_at,
+                finished_at=batch.finished_at,
+            )
+        )
+        self.session.flush()
+        return batch
+
+    def update(self, batch: PromptEnhancementBatch) -> PromptEnhancementBatch:
+        row = self.session.get(models.PromptEnhancementBatchModel, batch.id)
+        if row is None:
+            raise KeyError(batch.id)
+        row.status = batch.status
+        row.total_count = batch.total_count
+        row.queued_count = batch.queued_count
+        row.running_count = batch.running_count
+        row.completed_count = batch.completed_count
+        row.failed_count = batch.failed_count
+        row.cancelled_count = batch.cancelled_count
+        row.started_at = batch.started_at
+        row.finished_at = batch.finished_at
+        self.session.flush()
+        return batch
+
+
+class SqlAlchemyPromptEnhancementJobRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get(self, job_id: str) -> PromptEnhancementJob | None:
+        row = self.session.get(models.PromptEnhancementJobModel, job_id)
+        return prompt_job_from_model(row) if row else None
+
+    def add(self, job: PromptEnhancementJob) -> PromptEnhancementJob:
+        self.session.add(
+            models.PromptEnhancementJobModel(
+                id=job.id,
+                batch_id=job.batch_id,
+                project_id=job.project_id,
+                task_id=job.task_id,
+                status=job.status.value,
+                source_snapshot=job.source_snapshot,
+                context_snapshot=job.context_snapshot,
+                provider_profile_snapshot=job.provider_profile_snapshot,
+                target_skill=job.target_skill,
+                created_at=job.created_at,
+                started_at=job.started_at,
+                finished_at=job.finished_at,
+                revision_id=job.revision_id,
+                error=job.error,
+            )
+        )
+        self.session.flush()
+        return job
+
+    def update(self, job: PromptEnhancementJob) -> PromptEnhancementJob:
+        row = self.session.get(models.PromptEnhancementJobModel, job.id)
+        if row is None:
+            raise KeyError(job.id)
+        row.status = job.status.value
+        row.source_snapshot = job.source_snapshot
+        row.context_snapshot = job.context_snapshot
+        row.provider_profile_snapshot = job.provider_profile_snapshot
+        row.target_skill = job.target_skill
+        row.started_at = job.started_at
+        row.finished_at = job.finished_at
+        row.revision_id = job.revision_id
+        row.error = job.error
+        self.session.flush()
+        return job
+
+    def list_by_batch(self, batch_id: str) -> list[PromptEnhancementJob]:
+        rows = self.session.scalars(
+            select(models.PromptEnhancementJobModel)
+            .where(models.PromptEnhancementJobModel.batch_id == batch_id)
+            .order_by(models.PromptEnhancementJobModel.created_at)
+        ).all()
+        return [prompt_job_from_model(row) for row in rows]
+
+    def list_active(self) -> list[PromptEnhancementJob]:
+        rows = self.session.scalars(
+            select(models.PromptEnhancementJobModel)
+            .where(
+                models.PromptEnhancementJobModel.status.in_([
+                    JobStatus.QUEUED.value,
+                    JobStatus.RUNNING.value,
+                ])
+            )
+            .order_by(models.PromptEnhancementJobModel.created_at)
+        ).all()
+        return [prompt_job_from_model(row) for row in rows]
+
+    def active_task_ids_by_project(self, project_id: str) -> set[str]:
+        rows = self.session.scalars(
+            select(models.PromptEnhancementJobModel.task_id).where(
+                models.PromptEnhancementJobModel.project_id == project_id,
+                models.PromptEnhancementJobModel.status.in_([
+                    JobStatus.QUEUED.value,
+                    JobStatus.RUNNING.value,
+                ]),
+            )
+        ).all()
+        return set(rows)
 
 
 class SqlAlchemyContextRepository:

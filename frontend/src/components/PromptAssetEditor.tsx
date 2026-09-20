@@ -263,7 +263,7 @@ export function PromptAssetEditor({ value, onChange, assets, ariaLabel, rows = 1
                 const Icon = meta.icon;
                 return (
                   <button
-                    key={asset.id}
+                  key={`${asset.id}:${asset.reference}`}
                     id={`${menuId}-${asset.id}`}
                     type="button"
                     role="option"

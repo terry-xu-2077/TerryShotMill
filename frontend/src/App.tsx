@@ -4,6 +4,7 @@ import type { GenerationTask, ProjectAsset } from "./domain/storyboard";
 import {
   httpProjectGateway,
   type ProjectGateway,
+  type ApplicationSettings,
   type ProjectSettings,
   type ProjectSummary,
 } from "./gateways/projectGateway";
@@ -34,6 +35,7 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [applicationSettings, setApplicationSettings] = useState<ApplicationSettings>();
 
   const refreshProjects = useCallback(async () => {
     setLoading(true);
@@ -75,6 +77,12 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
   useEffect(() => {
     void refreshProjects();
   }, [refreshProjects]);
+
+  useEffect(() => {
+    void gateway.getApplicationSettings().then(setApplicationSettings).catch(() => {
+      // Keep the workspace available; the settings dialog will show its loading state.
+    });
+  }, [gateway]);
 
   const currentProjectId = currentProject?.id;
   useEffect(() => {
@@ -161,15 +169,12 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
   return (
     <ProjectWorkspace
       project={currentProject}
+      applicationSettings={applicationSettings}
       promptReviewItems={promptReviewItems}
       onBack={() => {
         setCurrentProject(null);
         setPromptReviewItems([]);
         void refreshProjects();
-      }}
-      onRenameProject={async (title) => {
-        await gateway.updateProject(currentProject.id, { title });
-        await reloadCurrentProject();
       }}
       onLoadTaskEditor={async (taskId) => {
         const [editor, revisions] = await Promise.all([
@@ -210,6 +215,10 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
         await reloadCurrentProject();
         return result;
       }}
+      onSaveApplicationSettings={async (next) => {
+        setApplicationSettings(await gateway.updateApplicationSettings(next));
+      }}
+      onRefreshComfyUIWorkflows={() => gateway.listComfyUIWorkflows()}
     />
   );
 }

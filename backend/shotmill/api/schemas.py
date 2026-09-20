@@ -18,6 +18,52 @@ class ProjectCreateRequest(ApiModel):
     use_description_for_ai_prompt: bool = False
 
 
+class SystemPromptPresetPayload(ApiModel):
+    id: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=80)
+    prompt: str = Field(min_length=1)
+
+
+class ComfyUIWorkflowProfilePayload(ApiModel):
+    id: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=120)
+    resolution: str = ""
+    quality: str = ""
+    workflow_file: str = ""
+    enabled: bool = True
+
+
+class ComfyUISettingsPayload(ApiModel):
+    base_url: str = "http://127.0.0.1:8188"
+    root_path: str = ""
+    workflow_directory: str = "user/default/workflows"
+    default_profile_id: str = ""
+    workflow_profiles: list[ComfyUIWorkflowProfilePayload] = []
+
+
+class LocalInferenceSettingsPayload(ApiModel):
+    preset_prompt: str = "Empty - Nothing"
+    inference_mode: Literal["one by one", "images", "video"] = "images"
+    max_frames: int = Field(default=24, ge=2, le=1024)
+    max_size: int = Field(default=256, ge=128, le=16384)
+    seed_mode: Literal["randomize", "fixed"] = "randomize"
+    seed: int = Field(default=0, ge=0, le=0xFFFFFFFFFFFFFFFF)
+    force_offload: bool = False
+    save_states: bool = False
+
+
+class ApplicationSettingsPatch(ApiModel):
+    provider_mode: Literal["local", "api"] = "local"
+    system_prompt: str = Field(min_length=1)
+    system_prompt_presets: list[SystemPromptPresetPayload] = []
+    api_base_url: str = ""
+    api_model: str = ""
+    api_key: str = ""
+    api_supports_native_video: bool = False
+    local_inference: LocalInferenceSettingsPayload
+    comfyui: ComfyUISettingsPayload = ComfyUISettingsPayload()
+
+
 class ProjectPatchRequest(ApiModel):
     title: str | None = None
     description: str | None = None
@@ -84,3 +130,13 @@ class GenerationSubmitRequest(ApiModel):
 
 class PrimaryResultRequest(ApiModel):
     result_id: str
+
+
+class BatchPromptEnhancementRequest(ApiModel):
+    task_ids: list[str] = []
+    include_project_background: bool = False
+    include_previous_task_summary: bool = False
+
+
+class VideoBatchRequest(ApiModel):
+    task_ids: list[str] = []

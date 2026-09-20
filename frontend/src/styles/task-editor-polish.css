@@ -1,12 +1,4 @@
-.sm-dialog:has(.simple-task-editor) {
-  width: min(1480px, calc(100vw - 48px));
-  max-height: min(94vh, 940px);
-}
-
-.simple-task-editor {
-  grid-template-columns: minmax(260px, 315px) minmax(0, 1fr);
-  grid-template-rows: minmax(560px, 1fr) auto;
-}
+.task-dialog-title-shell { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 22px; }
 
 .task-dialog-title {
   min-width: 0;
@@ -64,10 +56,6 @@
   font-weight: 650;
 }
 
-.simple-context-section {
-  gap: 10px !important;
-}
-
 /* SegmentedControl owns the context-tab geometry and active styling. ShotMill only places the host. */
 .simple-context-tabs {
   width: 100%;
@@ -90,24 +78,20 @@
   line-height: 1.5;
 }
 
-.simple-prompt-editor {
-  grid-template-rows: auto minmax(0, 1fr) auto;
-}
-
 .simple-prompt-body .prompt-asset-hint {
   display: none;
 }
 
 .simple-prompt-footer {
-  min-height: 46px;
+  min-height: 32px;
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 8px 14px;
   border-top: 1px solid var(--sm-border);
   color: var(--sm-text-dim);
-  background: #111419;
-  font-size: 9px;
+  background: var(--sm-surface-1);
+  font-size: 12px;
 }
 
 .simple-prompt-footer strong {
@@ -121,11 +105,6 @@
 
 .simple-ai-prompt > textarea {
   height: 100%;
-}
-
-.simple-task-editor-actions {
-  justify-content: space-between;
-  align-items: center;
 }
 
 .simple-task-prompt-source {
@@ -172,18 +151,8 @@
   white-space: nowrap;
 }
 
-@media (max-width: 1100px) {
-  .simple-task-editor { grid-template-columns: 240px minmax(0, 1fr); }
-}
-
 @media (max-width: 720px) {
-  .sm-dialog:has(.simple-task-editor) { width: calc(100vw - 20px); }
-  .simple-task-editor {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(380px, 1fr) auto;
-  }
   .task-dialog-title input { width: min(300px, 54vw); }
   .simple-prompt-footer { align-items: flex-start; flex-direction: column; gap: 4px; }
-  .simple-task-editor-actions { align-items: stretch; flex-direction: column; }
   .simple-task-editor-action-buttons { justify-content: flex-end; }
 }

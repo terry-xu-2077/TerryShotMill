@@ -1,5 +1,7 @@
 import {
   FileImage,
+  Folder,
+  Info,
   Film,
   Maximize2,
   Music2,
@@ -7,7 +9,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "terry-react-ui-library";
+import { Button, Checkbox, SegmentedControl, SlidingTabs, TextField } from "terry-react-ui-library";
 
 import type { ProjectAsset } from "../../domain/storyboard";
 import type { DirectorProject } from "../../mock/projects";
@@ -120,41 +122,24 @@ function AssetPreview({
         <div className="project-asset-editable-meta">
           <label className="project-asset-name-field">
             <span>资产名</span>
-            <input
-              value={asset.name}
-              onChange={(event) => onRename(event.target.value)}
-              aria-label="资产名"
-              placeholder="输入资产名"
-            />
-            <small>任务提示词中的 @ 菜单显示此名称，不修改原始文件名。</small>
+            <TextField value={asset.name} onChange={onRename} placeholder="输入资产名" />
           </label>
 
           <div className="project-asset-category-field">
             <span>分类</span>
-            <div className="project-asset-category-options" role="group" aria-label="资产分类">
-              {categories.map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={asset.category === value ? "is-active" : ""}
-                  aria-pressed={asset.category === value}
-                  onClick={() => onCategoryChange(value)}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="project-asset-category-options">
+              <SlidingTabs fluid ariaLabel="资产分类" value={asset.category} onChange={onCategoryChange} options={categories.map(([value, label]) => ({ value, label }))} />
             </div>
           </div>
 
           <label className="project-asset-tags-field">
             <span>标签</span>
-            <input
+            <TextField
               value={tagText}
-              onChange={(event) => {
-                setTagText(event.target.value);
-                onTagsChange(parseTags(event.target.value));
+              onChange={(value) => {
+                setTagText(value);
+                onTagsChange(parseTags(value));
               }}
-              aria-label="资产标签"
               placeholder="例如：雨夜、主角、旧港口"
             />
           </label>
@@ -242,11 +227,15 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
   };
 
   return (
-    <Dialog open={open} size="wide" title="项目配置" description="管理项目级信息与资产。" onClose={onClose}>
+    <Dialog open={open} size="wide" title="项目配置" onClose={onClose}>
       <div className="project-config-dialog project-config-dialog-v2">
         <nav className="project-config-tabs" aria-label="项目配置分类">
-          <button type="button" className={tab === "info" ? "is-active" : ""} onClick={() => setTab("info")}>项目信息</button>
-          <button type="button" className={tab === "assets" ? "is-active" : ""} onClick={() => setTab("assets")}>资产管理 <span>{assets.length}</span></button>
+          <div className="project-config-tab-slot">
+          <SegmentedControl fluid value={tab} onChange={setTab} ariaLabel="项目配置栏目" options={[
+            { value: "info" as const, label: "项目信息", icon: <Info size={15} /> },
+            { value: "assets" as const, label: "资产管理", icon: <Folder size={15} /> },
+          ]} />
+          </div>
         </nav>
 
         <section className="project-config-content">
@@ -254,7 +243,7 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
             <div className="project-config-info">
               <label>
                 <span>项目标题</span>
-                <input value={title} onChange={(event) => setTitle(event.target.value)} />
+                <TextField value={title} onChange={setTitle} />
               </label>
               <label>
                 <span>项目简介</span>
@@ -265,17 +254,16 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
                   placeholder="用几句话说明项目的世界观、题材、角色关系或视觉基调。"
                 />
               </label>
-              <label className="project-context-checkbox">
-                <input
-                  type="checkbox"
+              <div className="project-context-checkbox">
+                <Checkbox
                   checked={useDescriptionForAiPrompt}
-                  onChange={(event) => setUseDescriptionForAiPrompt(event.target.checked)}
+                  onChange={setUseDescriptionForAiPrompt}
+                  ariaLabel="AI 增强时使用项目简介作为背景"
                 />
                 <span>
                   <strong>AI 增强时使用项目简介作为背景</strong>
-                  <small>启用后，项目简介会作为项目级背景信息提供给提示词增强服务，不直接写入用户提示词。</small>
                 </span>
-              </label>
+              </div>
             </div>
           ) : (
             <div className="project-asset-manager-v2">

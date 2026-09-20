@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from shotmill.domain.application_settings import DEFAULT_H3_SYSTEM_PROMPT
 from shotmill.prompt_skills.base import SkillInput, SkillMessage
 
 
@@ -8,14 +9,7 @@ class MiniMaxH3PromptSkill:
     version = "1.0"
 
     def build(self, data: SkillInput) -> SkillMessage:
-        system = (
-            "You are a prompt compiler for MiniMax H3 video generation. "
-            "Preserve the user's explicit subject, action, dialogue, visible text "
-            "and hard constraints. "
-            "Return only a clean H3-compatible prompt. Use the media reference labels "
-            "exactly as supplied. "
-            "Do not invent observations about media you were not given."
-        )
+        system = DEFAULT_H3_SYSTEM_PROMPT
         sections = [f"User intent:\n{data.user_prompt.strip()}"]
         sections.append(
             f"Generation constraints:\nduration={data.duration_seconds:g}s; mode={data.mode}; "

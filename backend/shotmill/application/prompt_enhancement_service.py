@@ -92,6 +92,73 @@ class PromptEnhancementService:
         mode: str,
         context_mode: str | None,
     ) -> AiPromptRevision:
+        return await self._enhance(
+            project_id,
+            task_id,
+            target=target,
+            user_prompt=user_prompt,
+            media=media,
+            context=context,
+            duration_seconds=duration_seconds,
+            mode=mode,
+            context_mode=context_mode,
+            force_ai_source=False,
+        )
+
+    async def enhance_from_snapshot(
+        self,
+        project_id: str,
+        task_id: str,
+        *,
+        target: str,
+        user_prompt: str,
+        media: tuple[EnhancementMedia, ...],
+        include_project_background: bool,
+        include_previous_task_summary: bool,
+        project_background_snapshot: str | None,
+        previous_task_summary_snapshot: str | None,
+        duration_seconds: float,
+        mode: str,
+        context_mode: str | None,
+        expected_task_revision: int | None = None,
+        force_ai_source: bool = True,
+    ) -> AiPromptRevision:
+        return await self._enhance(
+            project_id,
+            task_id,
+            target=target,
+            user_prompt=user_prompt,
+            media=media,
+            context=EnhancementContextOptions(
+                include_project_background=include_project_background,
+                include_previous_task_summary=include_previous_task_summary,
+            ),
+            duration_seconds=duration_seconds,
+            mode=mode,
+            context_mode=context_mode,
+            expected_task_revision=expected_task_revision,
+            project_background_override=project_background_snapshot,
+            previous_summary_override=previous_task_summary_snapshot,
+            force_ai_source=force_ai_source,
+        )
+
+    async def _enhance(
+        self,
+        project_id: str,
+        task_id: str,
+        *,
+        target: str,
+        user_prompt: str,
+        media: tuple[EnhancementMedia, ...],
+        context: EnhancementContextOptions,
+        duration_seconds: float,
+        mode: str,
+        context_mode: str | None,
+        expected_task_revision: int | None = None,
+        project_background_override: str | None = None,
+        previous_summary_override: str | None = None,
+        force_ai_source: bool = False,
+    ) -> AiPromptRevision:
         clean_prompt = user_prompt.strip()
         if not clean_prompt:
             raise ShotMillError(
@@ -117,16 +184,17 @@ class PromptEnhancementService:
                     self.media_resolver.resolve(asset, requested.reference, requested.role)
                 )
 
-            project_background = None
-            if (
-                context.include_project_background
-                and project.use_description_for_ai_prompt
-                and project.description.strip()
-            ):
-                project_background = project.description.strip()
+            project_background = project_background_override
+            if project_background is None:
+                if (
+                    context.include_project_background
+                    and project.use_description_for_ai_prompt
+                    and project.description.strip()
+                ):
+                    project_background = project.description.strip()
 
-            previous_summary = None
-            if context.include_previous_task_summary:
+            previous_summary = previous_summary_override
+            if context.include_previous_task_summary and previous_summary is None:
                 tasks = uow.tasks.list_by_project(project_id)
                 previous = next(
                     (item for item in reversed(tasks) if item.display_order < task.display_order),
@@ -180,10 +248,22 @@ class PromptEnhancementService:
             current = uow.tasks.get(task_id)
             if current is None or current.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            if expected_task_revision is not None and current.revision != expected_task_revision:
+                raise ShotMillError(
+                    "PROMPT_JOB_STALE",
+                    "Task changed after this prompt job was queued",
+                    409,
+                )
             old_final = current.final_prompt
             current.ai_prompt = response.text
+            if force_ai_source:
+                current.prompt_source = PromptSource.AI
             if current.prompt_source == PromptSource.AI:
                 current.final_prompt = response.text
+            current.approved_prompt_source = None
+            current.approved_prompt_hash = None
+            current.approved_at = None
+            current.approved_revision_id = None
             current.state = TaskState.PROMPT_READY if current.final_prompt else TaskState.DRAFT
             current.revision += 1
             current.updated_at = utcnow()
@@ -305,6 +385,10 @@ class PromptEnhancementService:
             task.ai_prompt = revision.output_prompt
             if task.prompt_source == PromptSource.AI:
                 task.final_prompt = revision.output_prompt
+            task.approved_prompt_source = None
+            task.approved_prompt_hash = None
+            task.approved_at = None
+            task.approved_revision_id = None
             task.revision += 1
             task.updated_at = utcnow()
             uow.tasks.update(task)

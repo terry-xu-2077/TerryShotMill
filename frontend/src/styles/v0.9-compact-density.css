@@ -30,102 +30,14 @@
 }
 
 /* Main project workspace */
-.project-workspace-page {
-  grid-template-rows: 48px minmax(0, 1fr) 36px;
-  padding: 12px 18px 10px;
-}
-
-.project-workspace-topbar { min-height: 0; }
-.workspace-project-title,
-.workspace-view-switch { padding-bottom: 6px; }
-.workspace-home-button { padding-bottom: 6px; }
-
-.project-task-area { padding: 14px 12px 18px 0; }
-.project-task-info { padding: 14px 0 16px 11px; }
-.project-task-info > h2 { margin: 9px 0 10px; }
-
-.project-info-block {
-  min-height: 0;
-  margin-bottom: 8px;
-  padding: 9px 10px;
-}
-.project-info-block h3 { margin-bottom: 6px; }
-.project-info-block dl { gap: 4px; }
 
 /* Task table/list */
-.task-list-toolbar {
-  min-height: 30px;
-  gap: 7px;
-  margin-bottom: 7px;
-}
-
-.task-list-row {
-  min-height: 56px;
-  grid-template-columns: 64px minmax(0, 1fr) 112px 80px;
-  gap: 10px;
-  margin-bottom: 6px;
-  padding: 5px 8px 5px 5px;
-  border-radius: 8px;
-}
-
-.task-preview.is-compact {
-  width: 64px;
-  min-height: 40px;
-  height: 40px;
-}
-
-.task-list-copy { gap: 2px; }
-.task-list-stats { gap: 1px; }
-.task-list-status,
-.task-card-status { gap: 5px; }
 
 /* Task cards */
-.task-card-view { gap: 11px 15px; }
-.task-create-card,
-.task-card-item {
-  min-height: 246px;
-  padding: 7px;
-  border-radius: 9px;
-}
-.task-create-card { gap: 12px; }
-.task-create-card > div { min-height: 120px; }
-.task-card-preview-wrap .task-preview { min-height: 120px; }
-.task-card-item > strong { margin: 8px 2px 4px; }
-.task-card-item > p { margin-bottom: 6px; }
 
 /* Project home */
-.project-home { padding: 22px 26px 40px; }
-.project-home-title { margin-bottom: 48px; }
-.project-folder-grid { gap: 38px 46px; }
-.project-folder-card { min-height: 158px; }
-.project-folder-cover { min-height: 78px; margin: 13px 10px 0; }
-.project-folder-card h2 { margin: 7px 10px 4px; }
-.project-folder-card > footer { padding: 5px 10px 7px; }
-.project-create-card { min-height: 130px; }
 
 /* Task editor: fixed desktop footprint. Mode switches replace content inside the frame; they never resize the dialog. */
-.sm-dialog:has(.simple-task-editor) {
-  width: min(980px, calc(100vw - 28px));
-  height: min(760px, calc(100vh - 28px));
-  min-height: min(660px, calc(100vh - 28px));
-  max-height: min(760px, calc(100vh - 28px));
-}
-
-.sm-dialog:has(.simple-task-editor) > .sm-dialog-content {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.simple-task-editor {
-  height: 100%;
-  min-height: 0;
-  grid-template-columns: clamp(205px, 23vw, 232px) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-}
-.simple-task-config > header { padding: 9px 11px; }
-.simple-task-config section { gap: 7px; padding: 9px 11px; }
-.simple-task-config h3 { font-size: 11.5px; }
 .simple-choice-field { min-width: 0; }
 
 /* Terry React UI Library owns SegmentedControl geometry/visuals. ShotMill only sizes and places hosts. */
@@ -134,18 +46,12 @@
   width: 100%;
 }
 
-.simple-context-detail-slot {
-  min-height: 96px;
-  display: grid;
-  align-content: start;
-}
-
 .simple-prompt-head {
-  height: 42px;
+  height: auto;
   min-height: 42px;
   align-items: center;
   gap: 8px;
-  padding-right: 8px;
+  padding: 8px 12px;
 }
 .simple-prompt-head h2 { padding-inline: 11px; }
 .simple-prompt-title-group {
@@ -167,80 +73,12 @@
 }
 
 .simple-prompt-body { min-height: 0; padding: 10px; overflow: hidden; }
-.simple-task-editor-actions { padding: 7px 10px; }
 .h3-visual-editor { padding: 10px; }
 .h3-visual-editor-hint { padding-top: 5px; }
 
 /* Project configuration: do not make a sparse window larger than its content needs. */
-.sm-dialog:has(.project-config-dialog-v2) {
-  width: min(900px, calc(100vw - 36px));
-  height: min(560px, calc(100vh - 58px));
-  max-height: min(560px, calc(100vh - 58px));
-}
-
-.project-config-dialog-v2 {
-  grid-template-columns: clamp(114px, 14vw, 142px) minmax(0, 1fr);
-}
-
-.project-config-dialog-v2 .project-config-tabs { padding: 8px 6px; }
-.project-config-dialog-v2 .project-config-tabs button {
-  min-height: 32px;
-  margin-bottom: 2px;
-  padding: 6px 8px;
-}
-
-.project-config-dialog-v2 .project-config-content { padding: 10px; }
-.project-config-dialog-v2 .project-config-info { gap: 10px; }
-.project-config-actions { padding: 7px 9px; }
 
 /* Asset manager: denser list and less empty chrome. */
-.project-asset-manager-v2 {
-  grid-template-columns: minmax(230px, 44%) minmax(0, 1fr);
-  gap: 8px;
-}
-
-.project-asset-browser,
-.project-asset-inspector { border-radius: 8px; }
-
-.project-asset-browser > header {
-  min-height: 40px;
-  gap: 6px;
-  padding: 5px 7px;
-}
-.project-asset-browser > header button { min-width: 74px; }
-
-.project-asset-list-v2 { padding: 4px; }
-.project-asset-row-v2 {
-  height: 45px;
-  grid-template-columns: 45px minmax(0, 1fr) 23px;
-  gap: 6px;
-  margin-bottom: 3px;
-  padding: 3px;
-  border-radius: 6px;
-}
-.project-asset-thumb-v2 {
-  width: 45px;
-  height: 36px;
-  border-radius: 5px;
-}
-.project-asset-copy-v2 { gap: 1px; }
-.project-asset-remove-v2 { width: 23px; height: 23px; }
-
-.project-asset-detail { grid-template-rows: minmax(126px, 1fr) auto; }
-.project-asset-meta { padding: 8px 10px; }
-.project-asset-editable-meta { gap: 7px; margin-bottom: 8px; }
-.project-asset-name-field { margin-bottom: 8px; }
-.project-asset-name-field,
-.project-asset-category-field,
-.project-asset-tags-field { gap: 4px 7px; }
-.project-asset-name-field > input,
-.project-asset-tags-field input { padding: 5px 7px; }
-.project-asset-category-options { gap: 0; padding: 0; }
-.project-asset-category-options button { padding: 4px 3px; }
-.project-asset-readonly-title { margin: 1px 0 5px; padding-top: 7px; }
-.project-asset-meta dl { gap: 4px 10px; }
-.project-asset-meta dl > div { gap: 5px; }
-.project-asset-fullscreen { right: 7px; top: 7px; width: 28px; height: 28px; }
 
 /* Generic composer / legacy dense panels still present in the app. */
 .composer-header { min-height: 62px; padding: 8px 12px; }
@@ -250,28 +88,3 @@
 .composer-field { gap: 4px; margin-bottom: 9px; }
 .prompt-block { margin-bottom: 8px; }
 .prompt-block-head { min-height: 36px; padding: 5px 7px; }
-
-@media (max-width: 900px) {
-  .sm-dialog:has(.project-config-dialog-v2) {
-    width: calc(100vw - 24px);
-    height: calc(100vh - 32px);
-    max-height: calc(100vh - 32px);
-  }
-
-  .project-config-dialog-v2 {
-    grid-template-columns: clamp(104px, 17vw, 128px) minmax(0, 1fr);
-  }
-
-  .project-asset-manager-v2 {
-    grid-template-columns: minmax(200px, 46%) minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 720px) {
-  .sm-dialog:has(.simple-task-editor) {
-    width: calc(100vw - 16px);
-    height: calc(100vh - 16px);
-    min-height: 0;
-    max-height: calc(100vh - 16px);
-  }
-}

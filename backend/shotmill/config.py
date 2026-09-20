@@ -20,6 +20,7 @@ class Settings:
     database_url: str
     auto_migrate: bool = True
     generation_workers: int = 1
+    prompt_enhancement_workers: int = 1
     provider_poll_interval_seconds: float = 1.0
     provider_timeout_seconds: float = 600.0
     prompt_ai_base_url: str | None = None
@@ -43,6 +44,8 @@ def load_settings() -> Settings:
 
     comfyui_root = getenv("SHOTMILL_COMFYUI_ROOT")
     workflow_template = getenv("SHOTMILL_COMFYUI_WORKFLOW_TEMPLATE")
+    comfyui_base_url = getenv("SHOTMILL_COMFYUI_BASE_URL") or getenv("SHOTMILL_COMFYUI_ENDPOINT")
+    prompt_ai_base_url = getenv("SHOTMILL_PROMPT_AI_BASE_URL") or comfyui_base_url
     return Settings(
         app_name="ShotMill",
         api_version="0.3",
@@ -50,15 +53,16 @@ def load_settings() -> Settings:
         database_url=database_url,
         auto_migrate=_env_bool("SHOTMILL_AUTO_MIGRATE", True),
         generation_workers=max(1, int(getenv("SHOTMILL_GENERATION_WORKERS", "1"))),
+        prompt_enhancement_workers=max(
+            1, int(getenv("SHOTMILL_PROMPT_ENHANCEMENT_WORKERS", "1"))
+        ),
         provider_poll_interval_seconds=float(getenv("SHOTMILL_PROVIDER_POLL_INTERVAL", "1.0")),
         provider_timeout_seconds=float(getenv("SHOTMILL_PROVIDER_TIMEOUT", "600")),
-        prompt_ai_base_url=getenv("SHOTMILL_PROMPT_AI_BASE_URL"),
+        prompt_ai_base_url=prompt_ai_base_url,
         prompt_ai_api_key=getenv("SHOTMILL_PROMPT_AI_API_KEY"),
         prompt_ai_model=getenv("SHOTMILL_PROMPT_AI_MODEL"),
         prompt_ai_supports_native_video=_env_bool("SHOTMILL_PROMPT_AI_SUPPORTS_VIDEO", False),
-        comfyui_base_url=(
-            getenv("SHOTMILL_COMFYUI_BASE_URL") or getenv("SHOTMILL_COMFYUI_ENDPOINT")
-        ),
+        comfyui_base_url=comfyui_base_url,
         comfyui_root=Path(comfyui_root).expanduser() if comfyui_root else None,
         comfyui_workflow_template=(
             Path(workflow_template).expanduser() if workflow_template else None

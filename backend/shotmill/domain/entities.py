@@ -73,6 +73,10 @@ class Task:
     progress: float | None = None
     primary_result_id: str | None = None
     revision: int = 1
+    approved_prompt_source: PromptSource | None = None
+    approved_prompt_hash: str | None = None
+    approved_at: datetime | None = None
+    approved_revision_id: str | None = None
     user_view_mode: str = "visual"
     ai_view_mode: str = "visual"
     asset_bindings: list[TaskAssetBinding] = field(default_factory=list)
@@ -148,3 +152,37 @@ class AiPromptRevision:
     model: str | None = None
     previous_task_summary_snapshot: str | None = None
     created_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
+class PromptEnhancementBatch:
+    id: str
+    project_id: str
+    status: str
+    total_count: int
+    queued_count: int = 0
+    running_count: int = 0
+    completed_count: int = 0
+    failed_count: int = 0
+    cancelled_count: int = 0
+    created_at: datetime = field(default_factory=utcnow)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+@dataclass(slots=True)
+class PromptEnhancementJob:
+    id: str
+    batch_id: str
+    project_id: str
+    task_id: str
+    status: JobStatus
+    source_snapshot: dict[str, Any]
+    context_snapshot: dict[str, Any]
+    provider_profile_snapshot: dict[str, Any]
+    target_skill: str
+    created_at: datetime = field(default_factory=utcnow)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    revision_id: str | None = None
+    error: str | None = None

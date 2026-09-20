@@ -9,6 +9,8 @@ from shotmill.domain.entities import (
     ContextLink,
     Job,
     Project,
+    PromptEnhancementBatch,
+    PromptEnhancementJob,
     Result,
     Task,
     TaskAssetBinding,
@@ -73,6 +75,12 @@ def task_from_model(session: Session, row: models.TaskModel) -> Task:
         progress=row.progress,
         primary_result_id=row.primary_result_id,
         revision=row.revision,
+        approved_prompt_source=(
+            PromptSource(row.approved_prompt_source) if row.approved_prompt_source else None
+        ),
+        approved_prompt_hash=row.approved_prompt_hash,
+        approved_at=row.approved_at,
+        approved_revision_id=row.approved_revision_id,
         user_view_mode=row.user_view_mode,
         ai_view_mode=row.ai_view_mode,
         asset_bindings=[
@@ -155,4 +163,40 @@ def context_from_model(row: models.ContextLinkModel) -> ContextLink:
         source_result_id=row.source_result_id,
         stale=row.stale,
         created_at=row.created_at,
+    )
+
+
+def prompt_batch_from_model(row: models.PromptEnhancementBatchModel) -> PromptEnhancementBatch:
+    return PromptEnhancementBatch(
+        id=row.id,
+        project_id=row.project_id,
+        status=row.status,
+        total_count=row.total_count,
+        queued_count=row.queued_count,
+        running_count=row.running_count,
+        completed_count=row.completed_count,
+        failed_count=row.failed_count,
+        cancelled_count=row.cancelled_count,
+        created_at=row.created_at,
+        started_at=row.started_at,
+        finished_at=row.finished_at,
+    )
+
+
+def prompt_job_from_model(row: models.PromptEnhancementJobModel) -> PromptEnhancementJob:
+    return PromptEnhancementJob(
+        id=row.id,
+        batch_id=row.batch_id,
+        project_id=row.project_id,
+        task_id=row.task_id,
+        status=JobStatus(row.status),
+        source_snapshot=dict(row.source_snapshot or {}),
+        context_snapshot=dict(row.context_snapshot or {}),
+        provider_profile_snapshot=dict(row.provider_profile_snapshot or {}),
+        target_skill=row.target_skill,
+        created_at=row.created_at,
+        started_at=row.started_at,
+        finished_at=row.finished_at,
+        revision_id=row.revision_id,
+        error=row.error,
     )

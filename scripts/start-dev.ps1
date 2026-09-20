@@ -278,7 +278,7 @@ function ConvertTo-PowerShellLiteral([string]$Value) {
 
 function Start-ShotMillBackend {
     New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
-    $PowerShellExe = (Get-Command powershell.exe -ErrorAction Stop).Source
+    $PowerShellExe = (Get-Command pwsh.exe -ErrorAction Stop).Source
     $RunnerLiteral = ConvertTo-PowerShellLiteral $BackendRunner
     $PythonLiteral = ConvertTo-PowerShellLiteral $Python
     $RootLiteral = ConvertTo-PowerShellLiteral $Root
@@ -334,6 +334,17 @@ if (-not $env:SHOTMILL_COMFYUI_ROOT -and (Test-Path -LiteralPath $SiblingComfyRo
 }
 if (-not $env:SHOTMILL_COMFYUI_BASE_URL -and (Test-Path -LiteralPath $SiblingComfyRoot)) {
     $env:SHOTMILL_COMFYUI_BASE_URL = 'http://127.0.0.1:8188'
+}
+if (-not $env:SHOTMILL_PROMPT_AI_BASE_URL -and $env:SHOTMILL_COMFYUI_BASE_URL) {
+    $env:SHOTMILL_PROMPT_AI_BASE_URL = $env:SHOTMILL_COMFYUI_BASE_URL
+}
+
+if ($env:SHOTMILL_COMFYUI_BASE_URL) {
+    Write-Host "ComfyUI: $($env:SHOTMILL_COMFYUI_BASE_URL)" -ForegroundColor DarkGray
+    Write-Host 'ComfyUI is reused as an existing process; ShotMill does not start or stop it.' -ForegroundColor Yellow
+}
+if ($env:SHOTMILL_PROMPT_AI_BASE_URL) {
+    Write-Host "Prompt AI endpoint: $($env:SHOTMILL_PROMPT_AI_BASE_URL)" -ForegroundColor DarkGray
 }
 
 Write-Host 'ShotMill - Development Launcher' -ForegroundColor Green

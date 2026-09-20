@@ -1,0 +1,107 @@
+diff --git a/index.html b/index.html
+index 1b0a5bb..b54df74 100644
+--- a/index.html
++++ b/index.html
+@@ -39,7 +39,24 @@
+ <section class="section"><div class="section-title">PropertyRow</div><div class="rows"><div class="tc-property-row"><div class="tc-property-label"><button class="tc-copy">↩</button><div><strong>Primary value</strong><span>普通说明文字</span></div></div><div class="tc-property-value"><div class="tc-control tc-text"><input value="彩色强调值"></div></div></div><div class="tc-property-row"><div class="tc-property-label"><div><strong>Enabled</strong><span>普通文本层级</span></div></div><div class="tc-property-value"><button class="tc-control tc-bool is-on toggle"><span class="tc-bool-knob">ON 开</span></button></div><span class="tc-changed">已修改</span></div></div></section>
+ <section class="section"><div class="section-title">Actions / Status / Dialog</div><div class="body actions"><button id="openDialog" class="tc-button">打开弹窗</button><button class="tc-button" disabled>Disabled</button><span class="tc-status-pill">Normal</span><span class="tc-status-pill tone-active">Active</span><span class="tc-status-pill tone-warning">Warning</span><span class="tc-status-pill tone-danger">Danger</span></div></section>
+ <section class="section"><div class="section-title">ActiveParticleField</div><div class="particle-box"><ul id="particles"></ul></div></section>
++<section class="section"><div class="section-title">Capsule Actions (React)</div><div id="capsule-actions" class="body actions" style="--tc-button-radius:999px"></div></section>
+ </main></div>
++<script type="module">
++import React from "react";
++import { createRoot } from "react-dom/client";
++import { Box } from "lucide-react";
++import { Button } from "./src/components/Button/Button.tsx";
++function CapsuleActions() {
++  const [active, setActive] = React.useState(false);
++  return React.createElement(React.Fragment, null,
++    React.createElement(Button, { onClick: () => setActive(!active) }, "Default"),
++    React.createElement(Button, { variant: "accent", "aria-pressed": active, onClick: () => setActive(!active) }, "Toggle"),
++    React.createElement(Button, { size: "icon", "aria-label": "Toggle icon", "aria-pressed": active, onClick: () => setActive(!active) }, React.createElement(Box, { size: 16 })),
++    React.createElement(Button, { disabled: true }, "Disabled")
++  );
++}
++createRoot(document.getElementById("capsule-actions")).render(React.createElement(CapsuleActions));
++</script>
+ <div id="dialog" class="tc-dialog-layer"><section class="tc-dialog tc-dialog-in"><header><strong>Base Style Dialog</strong><button id="closeDialog">×</button></header><div class="tc-dialog-body"><p>普通文本与彩色强调文本现在完全分离。</p></div></section></div>
+ <script>
+ const root=document.documentElement,shell=document.getElementById('shell');
+@@ -55,4 +72,4 @@ document.querySelectorAll('[data-segment]').forEach(button=>button.onclick=()=>{
+ document.querySelectorAll('[data-sliding-root]').forEach(group=>group.querySelectorAll('[data-sliding]').forEach(button=>button.onclick=()=>{group.querySelectorAll('[data-sliding]').forEach(item=>item.classList.remove('is-active'));button.classList.add('is-active');group.style.setProperty('--tc-sliding-index',button.dataset.sliding)}));
+ const text=document.getElementById('text'),reset=document.getElementById('textReset');text.oninput=()=>reset.classList.toggle('is-visible',text.value!=='示例文本');reset.onclick=()=>{text.value='示例文本';reset.classList.remove('is-visible')};const range=document.getElementById('range'),number=document.getElementById('number');range.oninput=()=>number.value=range.value;number.oninput=()=>range.value=number.value;document.querySelectorAll('.tc-pin').forEach(p=>p.onclick=()=>p.classList.toggle('is-pinned'));const dialog=document.getElementById('dialog');document.getElementById('openDialog').onclick=()=>dialog.classList.add('is-open');document.getElementById('closeDialog').onclick=()=>dialog.classList.remove('is-open');dialog.onclick=e=>{if(e.target===dialog)dialog.classList.remove('is-open')};const particles=document.getElementById('particles');for(let i=0;i<20;i++){const li=document.createElement('li');li.style.setProperty('--s',(8+(i*7)%24)+'px');li.style.setProperty('--d',(2.4+(i%7)*.35)+'s');li.style.setProperty('--delay',(-.2-(i%9)*.22)+'s');particles.appendChild(li)}renderAppearance();renderMulti();
+ </script>
+-</body></html>
+\ No newline at end of file
++</body></html>
+diff --git a/package.json b/package.json
+index 18cc654..11563ff 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "terry-react-ui-library",
+-  "version": "0.2.0",
++  "version": "0.2.1-shotmill.1",
+   "description": "Reusable React/TypeScript UI components and base theme.",
+   "type": "module",
+   "main": "./dist/index.js",
+diff --git a/src/components/Button/Button.tsx b/src/components/Button/Button.tsx
+index b1c9845..5d35731 100644
+--- a/src/components/Button/Button.tsx
++++ b/src/components/Button/Button.tsx
+@@ -1,14 +1,12 @@
+-import type { PropsWithChildren } from "react";
++import type { ButtonHTMLAttributes } from "react";
+ 
+ export type ButtonVariant = "default" | "accent";
+ 
+-export type ButtonProps = PropsWithChildren<{
+-  onClick?: () => void;
+-  disabled?: boolean;
+-  className?: string;
++export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+   variant?: ButtonVariant;
+-}>;
++  size?: "default" | "icon";
++};
+ 
+-export function Button({ children, onClick, disabled = false, className = "", variant = "default" }: ButtonProps) {
+-  return <button type="button" className={`tc-button variant-${variant} ${className}`.trim()} disabled={disabled} onClick={onClick}>{children}</button>;
++export function Button({ children, className = "", variant = "default", size = "default", type = "button", ...props }: ButtonProps) {
++  return <button {...props} type={type} className={`tc-button variant-${variant} size-${size} ${className}`.trim()}>{children}</button>;
+ }
+diff --git a/src/styles/base/button.css b/src/styles/base/button.css
+index 7e476b3..1a3e1e9 100644
+--- a/src/styles/base/button.css
++++ b/src/styles/base/button.css
+@@ -3,7 +3,7 @@
+   min-width:88px;
+   height:32px;
+   padding:0 12px;
+-  border-radius:7px;
++  border-radius:var(--tc-button-radius,7px);
+   display:inline-flex;
+   align-items:center;
+   justify-content:center;
+@@ -13,6 +13,8 @@
+   box-shadow:none;
+ }
+ .tc-button>svg{flex:none;transform:none}
++.tc-button.size-icon{width:32px;min-width:32px;padding:0;flex:none}
++.tc-button:focus-visible{outline:2px solid var(--tc-effect);outline-offset:3px}
+ .tc-button.variant-default{
+   background:color-mix(in srgb,var(--tc-panel) 88%,var(--tc-surface-2) 12%);
+ }
+diff --git a/src/styles/base/showcase.tsx b/src/styles/base/showcase.tsx
+index fe2621d..15f840e 100644
+--- a/src/styles/base/showcase.tsx
++++ b/src/styles/base/showcase.tsx
+@@ -26,6 +26,7 @@ export function BaseStyleShowcase() {
+       <MultiSelect values={multi} rawValues={["beta"]} options={options} onChange={setMulti}/>
+     </div></div>
+     <div className="demo-section"><h2>Actions & Status</h2><div className="demo-actions"><Button onClick={()=>setDialog(true)}>打开弹窗</Button><StatusPill tone="active">Active</StatusPill><StatusPill tone="warning">Warning</StatusPill><StatusPill tone="danger">Danger</StatusPill></div></div>
++    <div className="demo-section" style={{ "--tc-button-radius": "999px" } as React.CSSProperties}><h2>Capsule Actions</h2><div className="demo-actions"><Button onClick={()=>setDialog(true)}>Open</Button><Button variant="accent" onClick={()=>setPinned(v=>!v)} aria-pressed={pinned}>Toggle</Button><Button size="icon" aria-label="Toggle pin" onClick={()=>setPinned(v=>!v)} aria-pressed={pinned}><Box size={16}/></Button><Button disabled>Disabled</Button></div></div>
+     <Dialog open={dialog} title="Base Style Dialog" onClose={()=>setDialog(false)}><p>基础样式使用弹性进入动画、边框、渐变和阴影。</p></Dialog>
+   </div>;
+ }

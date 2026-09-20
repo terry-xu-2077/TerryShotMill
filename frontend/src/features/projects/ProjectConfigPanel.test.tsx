@@ -48,14 +48,14 @@ describe("ProjectConfigPanel", () => {
 
     await user.clear(nameInput);
     await user.type(nameInput, "林澜雨夜主视觉");
-    await user.click(within(dialog).getByRole("button", { name: "道具" }));
-    const tagsInput = within(dialog).getByRole("textbox", { name: "资产标签" });
+    await user.click(within(dialog).getByRole("tab", { name: "道具" }));
+    const tagsInput = within(dialog).getByRole("textbox", { name: "标签" });
     await user.clear(tagsInput);
     await user.type(tagsInput, "主视觉,雨夜");
 
     expect(within(dialog).getByText("林澜雨夜主视觉")).toBeInTheDocument();
     expect(within(dialog).getByText("linlan-rain.webp")).toBeInTheDocument();
-    expect(within(dialog).getByRole("group", { name: "资产分类" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("tablist", { name: "资产分类" })).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
     expect(onSave).toHaveBeenCalledTimes(1);

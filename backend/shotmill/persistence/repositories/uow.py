@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from shotmill.persistence.repositories.history import (
     SqlAlchemyContextRepository,
     SqlAlchemyJobRepository,
+    SqlAlchemyPromptEnhancementBatchRepository,
+    SqlAlchemyPromptEnhancementJobRepository,
     SqlAlchemyPromptRevisionRepository,
     SqlAlchemyResultRepository,
 )
@@ -30,6 +32,8 @@ class SqlAlchemyUnitOfWork:
         self.jobs = SqlAlchemyJobRepository(self.session)
         self.results = SqlAlchemyResultRepository(self.session)
         self.prompt_revisions = SqlAlchemyPromptRevisionRepository(self.session)
+        self.prompt_batches = SqlAlchemyPromptEnhancementBatchRepository(self.session)
+        self.prompt_jobs = SqlAlchemyPromptEnhancementJobRepository(self.session)
         self.contexts = SqlAlchemyContextRepository(self.session)
         return self
 

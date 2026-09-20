@@ -31,7 +31,9 @@ def test_prompt_skills_remain_target_specific() -> None:
     )
     h3 = MiniMaxH3PromptSkill().build(data)
     seedance = Seedance2PromptSkill().build(data)
-    assert "H3" in h3.system_prompt
+    assert "# Full-Reference Mode Rewrite Output Format Guide" in h3.system_prompt
+    assert "Write all six rewrite sections in English" in h3.system_prompt
+    assert "subject_definitions" in h3.system_prompt
     assert "Seedance" in seedance.system_prompt
     assert h3.system_prompt != seedance.system_prompt
 
@@ -288,36 +290,53 @@ def test_comfyui_provider_uploads_assets_submits_and_collects_video(
     submitted: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/upload/image":
+        if request.url.path == "/shotmill/v1/assets":
             assert b"image-bytes" in request.content
             return httpx.Response(
                 200,
-                json={"name": "asset-1.png", "subfolder": "shotmill", "type": "input"},
+                json={
+                    "ok": True,
+                    "asset": {
+                        "assetId": "asset-1",
+                        "relativePath": "shotmill/assets/asset-1/asset-1.png",
+                    },
+                },
             )
-        if request.url.path == "/prompt":
-            payload = json.loads(request.content)
-            submitted.update(payload["prompt"])
-            return httpx.Response(200, json={"prompt_id": "prompt-1"})
-        if request.url.path == "/history/prompt-1":
+        if request.url.path == "/shotmill/v1/workflows":
             return httpx.Response(
                 200,
                 json={
-                    "prompt-1": {
-                        "outputs": {
-                            "save": {
-                                "videos": [
-                                    {
-                                        "filename": "shotmill_job-1.mp4",
-                                        "subfolder": "video",
-                                        "type": "output",
-                                    }
-                                ]
-                            }
+                    "ok": True,
+                    "workflows": [
+                        {
+                            "id": "workflow.json",
+                            "relativePath": "workflow.json",
+                            "inputs": [{"name": "image", "direction": "input", "type": "IMAGE"}],
                         }
-                    }
+                    ],
                 },
             )
-        if request.url.path == "/view":
+        if request.url.path == "/shotmill/v1/jobs":
+            payload = json.loads(request.content)
+            submitted.update(payload)
+            return httpx.Response(200, json={"jobId": "job-1", "promptId": "prompt-1"})
+        if request.url.path == "/shotmill/v1/jobs/job-1":
+            return httpx.Response(
+                200,
+                json={
+                    "ok": True,
+                    "jobId": "job-1",
+                    "promptId": "prompt-1",
+                    "status": "completed",
+                    "results": [
+                        {
+                            "filename": "shotmill_job-1.mp4",
+                            "relativePath": "shotmill/results/job-1/shotmill_job-1.mp4",
+                        }
+                    ],
+                },
+            )
+        if request.url.path == "/shotmill/v1/results/job-1/files/0":
             return httpx.Response(
                 200,
                 content=b"video-bytes",
@@ -352,14 +371,11 @@ def test_comfyui_provider_uploads_assets_submits_and_collects_video(
 
     response = asyncio.run(provider.generate(request))
 
-    assert submitted["load"]["inputs"]["image"] == "shotmill/asset-1.png"
-    assert submitted["generate"]["inputs"] == {
-        "prompt": "cinematic prompt",
-        "seed": 123,
-        "duration": 6,
-        "image": ["load", 0],
-    }
-    assert submitted["save"]["inputs"]["filename_prefix"] == "video/shotmill_job-1"
+    assert submitted["workflowId"] == "workflow.json"
+    assert submitted["finalPrompt"] == "cinematic prompt"
+    assert submitted["seed"] == 123
+    assert submitted["params"] == {"durationSeconds": 6}
+    assert submitted["assetValues"]["<Picture 1>"] == "shotmill/assets/asset-1/asset-1.png"
     assert response.provider_job_id == "prompt-1"
     assert response.outputs[0].content == b"video-bytes"
     assert response.outputs[0].content_type == "video/mp4"

@@ -4,6 +4,10 @@ import type { PromptEnhancementRequest } from "../services/promptEnhancement";
 import { insertTaskAfter, updateTaskComposerFields } from "../features/storyboard/storyboardMutations";
 import type {
   AssetPatch,
+  ApplicationSettings,
+  BatchPromptEnhancementRequest,
+  BatchPromptEnhancementResponse,
+  ComfyUIWorkflow,
   ProjectGateway,
   ProjectSettings,
   ProjectStatus,
@@ -14,6 +18,37 @@ import type {
   TaskEditorView,
   TaskSummary,
 } from "./projectGateway";
+
+const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
+  providerMode: "local",
+  systemPrompt: "You are the MiniMax H3 full-reference prompt compiler. Rewrite the user's input into one production-ready H3 video prompt; do not return the input verbatim.",
+  systemPromptPresets: [{
+    id: "minimax-h3-default",
+    name: "MiniMax H3 默认",
+    prompt: "You are the MiniMax H3 full-reference prompt compiler. Rewrite the user's input into one production-ready H3 video prompt; do not return the input verbatim.",
+  }],
+  apiBaseUrl: "",
+  apiModel: "",
+  apiKey: "",
+  apiSupportsNativeVideo: false,
+  localInference: {
+    presetPrompt: "Empty - Nothing",
+    inferenceMode: "images",
+    maxFrames: 24,
+    maxSize: 256,
+    seedMode: "randomize",
+    seed: 0,
+    forceOffload: false,
+    saveStates: false,
+  },
+  comfyui: {
+    baseUrl: "http://127.0.0.1:8188",
+    rootPath: "",
+    workflowDirectory: "user/default/workflows",
+    defaultProfileId: "",
+    workflowProfiles: [],
+  },
+};
 
 function orderedTasks(project: DirectorProject) {
   return project.snapshot.scenes
@@ -97,6 +132,7 @@ function editorView(task: GenerationTask, index: number, previous?: GenerationTa
     previousTaskDurationSeconds: previous?.plannedDurationSeconds,
     generation: {
       resolution: String(params.resolution ?? "1080p"),
+      workflowProfileId: typeof params.workflowProfileId === "string" ? params.workflowProfileId : undefined,
       quality: String(params.quality ?? "标准"),
       mode: String(params.generationMode ?? "全能参考"),
       contextMode: String(params.contextMode ?? "不承接"),
@@ -138,6 +174,7 @@ function taskFromInput(id: string, number: number, input: SaveTaskInput): Genera
     promptRevisions: [],
     generationParams: {
       resolution: input.generation.resolution,
+      workflowProfileId: input.generation.workflowProfileId,
       quality: input.generation.quality,
       generationMode: input.generation.mode,
       contextMode: input.generation.contextMode,
@@ -158,6 +195,7 @@ function taskFromInput(id: string, number: number, input: SaveTaskInput): Genera
 
 export class MockProjectGateway implements ProjectGateway {
   private projects: DirectorProject[];
+  private applicationSettings: ApplicationSettings = structuredClone(DEFAULT_APPLICATION_SETTINGS);
 
   constructor(projects = makeMockProjects()) {
     this.projects = structuredClone(projects);
@@ -167,6 +205,19 @@ export class MockProjectGateway implements ProjectGateway {
     const project = this.projects.find((item) => item.id === projectId);
     if (!project) throw new Error(`Unknown project: ${projectId}`);
     return project;
+  }
+
+  async getApplicationSettings() {
+    return structuredClone(this.applicationSettings);
+  }
+
+  async updateApplicationSettings(input: ApplicationSettings) {
+    this.applicationSettings = structuredClone(input);
+    return structuredClone(this.applicationSettings);
+  }
+
+  async listComfyUIWorkflows(): Promise<ComfyUIWorkflow[]> {
+    return [];
   }
 
   async listProjects() {
@@ -323,6 +374,30 @@ export class MockProjectGateway implements ProjectGateway {
       createdAt: new Date().toISOString(),
       prompt: input.userPrompt,
       taskRevision,
+    };
+  }
+
+  async batchEnhancePrompts(
+    projectId: string,
+    input: BatchPromptEnhancementRequest,
+  ): Promise<BatchPromptEnhancementResponse> {
+    const project = this.project(projectId);
+    const items = input.taskIds.map((taskId) => {
+      const task = project.snapshot.tasks.find((item) => item.id === taskId);
+      if (!task) return { taskId, state: "failed" as const, error: "TASK_NOT_FOUND" };
+      task.aiPrompt = task.userIntent || task.finalPrompt || task.summary;
+      task.finalPrompt = task.aiPrompt;
+      task.generationParams = {
+        ...task.generationParams,
+        promptSource: "ai",
+        revision: (typeof task.generationParams.revision === "number" ? task.generationParams.revision : 1) + 1,
+      };
+      return { taskId, state: "completed" as const, revisionId: `mock-${Date.now()}-${taskId}` };
+    });
+    return {
+      batchId: `mock-batch-${Date.now()}`,
+      state: items.every((item) => item.state === "completed") ? "completed" : "partial",
+      items,
     };
   }
 

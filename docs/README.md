@@ -4,6 +4,11 @@ ShotMill 的开发文档按职责拆分，避免单个文档无限膨胀。开�
 
 ## 当前开发任务
 
+2026-09-20：指定工作流的“异星边境”8 项批量生产已实跑通过，详细进展见 [开发记录](./DEVELOPMENT_LOG.md) 和 [验收记录](./UX_ACCEPTANCE_BASELINE.md)。这不代表 V0.4 路线图及所有 UI/UX 待办已经完成。ComfyUI 节点包安装与升级说明见 [Bridge 文档](../integrations/comfyui_shotmill/README.md)。
+
+- [UI/UX 验收底线与实测记录](./UX_ACCEPTANCE_BASELINE.md)
+  行业规范依据、可测量的交互质量要求与真实用户流程缺陷清单。所有 UI 优化同时参考，不能仅以截图作为完成依据。
+
 - [V0.4 Batch Production Pipeline 开发任务](./V0.4_BATCH_PRODUCTION_PIPELINE.md)  
   **当前主执行清单。** 在 V0.3 已完成的后端基础上，实现批量 AI Prompt Enhancement、Prompt Enhancement Queue、人工 Prompt 审核、批量 Video Generation、双 Queue Runtime 与对应测试。默认 Prompt AI Profile 为 Qwen3.8，但 Core 保持 Provider / Model 无关。
 

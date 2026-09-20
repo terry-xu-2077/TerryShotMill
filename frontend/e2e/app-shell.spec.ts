@@ -33,7 +33,7 @@ test("a new task is only created after Save and remains the same in list and car
   const taskArea = page.getByRole("region", { name: "任务区域" });
   await expect(taskArea).toContainText("1 个任务");
   await expect(taskArea).toContainText("角色进入仓库");
-  await page.getByRole("button", { name: "卡片" }).click();
+  await page.getByRole("button", { name: "切换为卡片视图" }).click();
   await expect(taskArea).toContainText("#1 新任务 1");
 
   await taskArea.getByRole("button", { name: /#1 新任务 1/ }).click();

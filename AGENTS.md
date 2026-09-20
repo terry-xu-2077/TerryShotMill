@@ -170,4 +170,5 @@ ShotMill 是面向 AI 视频生产流程的素材生成平台，不是剪辑器�
 
 - 本地命令使用 PowerShell 7，并在中文或文本读写前设置 UTF-8。
 - 文本文件读写显式使用 UTF-8。
+- 通过 `python -c` 传递含 SQL 或嵌套引号的脚本时，先用 PowerShell 单引号 here-string 保存到变量，再将变量作为参数；不要用反斜杠转义双引号，PowerShell 不采用该转义规则。
 - 当前 ComfyUI 开发环境：`G:\AIGC\ComfyUI_Codex`。它是 Video Generation Provider 的执行端，不是 Core 依赖。

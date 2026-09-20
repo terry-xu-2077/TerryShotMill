@@ -1,6 +1,23 @@
 # ShotMill
 
-ShotMill 是面向 AI 视频生产的素材生成工作台。当前后端进入 V0.3 Backend Foundation 阶段，桌面开发入口已经统一为一键启动。
+ShotMill 是面向 AI 视频生产的素材生成工作台。当前推进 V0.4 批量生产流程，默认界面为项目首页、项目工作台和任务编辑弹窗。
+
+## 当前进展（2026-09-20）
+
+- 已接通本地 AI 增强、人工审核、单任务生成和批量视频生成；增强与视频使用独立的持久化队列。
+- 应用通过 ShotMill Bridge API 与 ComfyUI 通信。工作流保留在 ComfyUI 端，应用只读取经过标记节点过滤的目录及输入槽位信息。
+- 槽位支持可选图片、视频和音频，先填充资产再从 `@` 引用。H3 执行时按实际非空输入适配引用编号，不修改任务原文。
+- 支持亮暗主题、任务视图切换、应用设置、工作流配置、实际结果播放及媒体规格显示。
+- “异星边境”8 个任务已用 `异星边境_稳定720P.json` 全部生成，完成解码、播放、文件一致性和服务重启后的读取验收。该文件的默认实际输出为 **864×480、24fps、8 秒**，不是文件名中的 720P；未为验收降低工作流参数。
+- 全量验证七阶段通过，含 28 项桌面/移动端 E2E。详细记录和未完成项见 [验收记录](docs/UX_ACCEPTANCE_BASELINE.md)。数值端口绑定、通用工作流时长控制和部分交互完善仍在后续计划中。
+
+## ComfyUI Bridge
+
+将 [`integrations/comfyui_shotmill`](integrations/comfyui_shotmill) 整个目录复制为 ComfyUI 的 `custom_nodes/ComfyUI-ShotMill`，包括 `web/`，然后在队列空闲时重启 ComfyUI。升级前备份旧节点包及 `output/shotmill/jobs.json`，旧版本迁移见 [Bridge 文档](integrations/comfyui_shotmill/README.md)。
+
+在左下角设置中配置 ComfyUI 地址、AI 增强和生成工作流。ShotMill 复用已有 ComfyUI，不会自行关闭或重启它；工作流所需模型及第三方节点仍需在 ComfyUI 端安装。生成结果隔离保存在 `output/shotmill/results/<job-id>/`，原生保存节点添加的序号不会造成任务之间覆盖。
+
+共享 UI 依赖采用仓库内固定版本包，来源、源码补丁与重建方式见 [`frontend/vendor/README.md`](frontend/vendor/README.md)。安装无需临时源码目录或运行时修改 `node_modules`。
 
 ## 开发环境
 

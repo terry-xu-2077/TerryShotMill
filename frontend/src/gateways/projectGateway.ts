@@ -39,6 +39,11 @@ export type TaskSummary = {
     resolution: string;
     quality: string;
   };
+  promptReviewStatus?: "not_ready" | "pending_review" | "approved";
+  promptEnhancementStatus?: string;
+  videoGenerationStatus?: string;
+  hasActivePromptJob?: boolean;
+  hasActiveVideoJob?: boolean;
   primaryResult?: {
     id: string;
     previewUrl?: string;
@@ -81,6 +86,8 @@ export type TaskEditorView = {
   durationSeconds: number;
   previousTaskDurationSeconds?: number;
   generation: {
+    workflowProfileId?: string;
+    workflowInputs?: WorkflowInputSelection | null;
     resolution: string;
     quality: string;
     mode: string;
@@ -127,13 +134,75 @@ export type BatchPromptEnhancementRequest = {
 
 export type BatchPromptEnhancementResponse = {
   batchId: string;
-  state: "completed" | "partial" | "failed";
+  state: "queued" | "running" | "completed" | "partial" | "failed";
   items: Array<{
     taskId: string;
-    state: "completed" | "failed";
+    state: "completed" | "failed" | "skipped";
     revisionId?: string;
     error?: string;
   }>;
+};
+
+export type LocalInferenceSettings = {
+  presetPrompt: string;
+  inferenceMode: "one by one" | "images" | "video";
+  maxFrames: number;
+  maxSize: number;
+  seedMode: "randomize" | "fixed";
+  seed: number;
+  forceOffload: boolean;
+  saveStates: boolean;
+};
+
+export type ComfyUIWorkflowProfile = {
+  id: string;
+  name: string;
+  resolution: string;
+  quality: string;
+  workflowFile: string;
+  enabled: boolean;
+};
+
+export type ComfyUISettings = {
+  baseUrl: string;
+  rootPath: string;
+  workflowDirectory: string;
+  defaultProfileId: string;
+  workflowProfiles: ComfyUIWorkflowProfile[];
+};
+
+export type ComfyUIWorkflow = {
+  id: string;
+  name: string;
+  fileName: string;
+  relativePath: string;
+  format: string;
+  executable: boolean;
+  hasShotmillBridge: boolean;
+  inputs: Array<{ name: string; direction: string; type: string; portName?: string; targetPort?: string; targetNodeId?: string; sourceNodeId?: string }>;
+  outputs: Array<{ name: string; direction: string; type: string; portName?: string; targetPort?: string }>;
+  warnings: string[];
+};
+
+export type WorkflowInputSelection = {
+  workflowId: string;
+  slots: Array<{ portId: string; assetId: string | null; reference: string }>;
+};
+
+export type ApplicationSettings = {
+  providerMode: "local" | "api";
+  systemPrompt: string;
+  systemPromptPresets: Array<{
+    id: string;
+    name: string;
+    prompt: string;
+  }>;
+  apiBaseUrl: string;
+  apiModel: string;
+  apiKey: string;
+  apiSupportsNativeVideo: boolean;
+  localInference: LocalInferenceSettings;
+  comfyui: ComfyUISettings;
 };
 
 export type SaveTaskInput = {
@@ -163,6 +232,9 @@ export type ProjectEvent = {
 };
 
 export interface ProjectGateway {
+  getApplicationSettings(): Promise<ApplicationSettings>;
+  updateApplicationSettings(input: ApplicationSettings): Promise<ApplicationSettings>;
+  listComfyUIWorkflows(): Promise<ComfyUIWorkflow[]>;
   listProjects(): Promise<ProjectSummary[]>;
   createProject(input: { title: string }): Promise<ProjectSummary>;
   updateProject(
@@ -203,6 +275,9 @@ const errorMessages: Record<string, string> = {
   PROVIDER_UNAVAILABLE: "生成服务当前不可用，请检查服务后重试。",
   PREVIOUS_TASK_REQUIRED: "当前承接方式需要一个上一任务。",
   INVALID_CONTEXT_RANGE: "承接区间超出了上一任务的时长。",
+  PROMPT_NOT_READY: "当前任务还没有可检查的提示词。",
+  USER_PROMPT_REQUIRED: "请先填写用户提示词。",
+  PROMPT_JOB_STALE: "任务在增强期间发生了修改，请重新提交增强。",
 };
 
 export class ProjectGatewayError extends Error {
@@ -242,6 +317,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 type ProjectListResponse = { items: ProjectSummary[] };
+type ApplicationSettingsResponse = ApplicationSettings;
 type AssetListResponse = { items: BackendAsset[] };
 type PromptRevisionListResponse = { items: PromptRevisionView[] };
 type BackendAsset = {
@@ -289,6 +365,22 @@ function mapAsset(projectId: string, asset: BackendAsset): ProjectAsset {
 }
 
 export class HttpProjectGateway implements ProjectGateway {
+  getApplicationSettings() {
+    return request<ApplicationSettingsResponse>("/application/settings");
+  }
+
+  updateApplicationSettings(input: ApplicationSettings) {
+    return request<ApplicationSettingsResponse>("/application/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  }
+
+  listComfyUIWorkflows() {
+    return request<ComfyUIWorkflow[]>("/comfyui/workflows");
+  }
+
   async listProjects() {
     return (await request<ProjectListResponse>("/projects")).items;
   }
@@ -454,9 +546,10 @@ export class HttpProjectGateway implements ProjectGateway {
   }
 
   subscribeProject(projectId: string, listener: (event: ProjectEvent) => void) {
-    const source = new EventSource(
-      `${API_BASE}/projects/${encodeURIComponent(projectId)}/events`,
-    );
+    let source: EventSource;
+    let stopped = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const sync = () => { if (!stopped) listener({ type: "project.sync_required", projectId }); };
     const eventNames = [
       "task.status_changed",
       "task.progress_changed",
@@ -465,15 +558,36 @@ export class HttpProjectGateway implements ProjectGateway {
       "project.summary_changed",
     ];
     const handleEvent = (event: Event) => {
-      if (!(event instanceof MessageEvent)) return;
+      if (stopped || !(event instanceof MessageEvent)) return;
       try {
         listener(JSON.parse(event.data) as ProjectEvent);
       } catch {
         // Ignore malformed event payloads and keep the SSE connection alive.
       }
     };
-    eventNames.forEach((name) => source.addEventListener(name, handleEvent));
-    return () => source.close();
+    const connect = () => {
+      if (stopped) return;
+      source = new EventSource(`${API_BASE}/projects/${encodeURIComponent(projectId)}/events`);
+      const current = source;
+      source.addEventListener("open", sync);
+      source.addEventListener("error", () => {
+        current.close();
+        if (!stopped && source === current) {
+          clearTimeout(retry);
+          retry = setTimeout(connect, 3000);
+        }
+      });
+      eventNames.forEach((name) => source.addEventListener(name, handleEvent));
+    };
+    connect();
+    // SSE is primary; periodically reconcile events lost during disconnects.
+    const reconcile = setInterval(sync, 30000);
+    return () => {
+      stopped = true;
+      clearTimeout(retry);
+      clearInterval(reconcile);
+      source.close();
+    };
   }
 }
 

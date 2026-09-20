@@ -58,14 +58,14 @@ def test_mock_api_exercises_batch_review_product_flow(tmp_path) -> None:
                 "includePreviousTaskSummary": True,
             },
         )
-        assert batch.status_code == 200
+        assert batch.status_code == 202
         assert batch.json()["state"] == "completed"
         assert [item["state"] for item in batch.json()["items"]] == ["completed", "completed"]
 
         review_state = client.get(
             f"/api/v1/projects/{project_id}/prompt-review-state"
         ).json()["items"]
-        assert all(item["promptReviewStatus"] == "pending" for item in review_state)
+        assert all(item["promptReviewStatus"] == "pending_review" for item in review_state)
 
         approved = client.post(
             f"/api/v1/projects/{project_id}/tasks/{task_ids[0]}/prompt-review",
@@ -103,4 +103,7 @@ def test_mock_api_keeps_real_contract_and_may_lead_with_target_routes(tmp_path) 
 
     assert "/api/v1/projects/{project_id}/prompt-enhancement-batches" in mock_schema["paths"]
     assert "/api/v1/projects/{project_id}/tasks/{task_id}/prompt-review" in mock_schema["paths"]
-    assert "/api/v1/projects/{project_id}/video-generation-batches/eligibility" in mock_schema["paths"]
+    assert (
+        "/api/v1/projects/{project_id}/video-generation-batches/eligibility"
+        in mock_schema["paths"]
+    )

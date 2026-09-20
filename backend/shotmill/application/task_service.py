@@ -205,6 +205,7 @@ class TaskService:
             tasks = uow.tasks.list_by_project(project_id)
             previous = self._previous_task(tasks, task.display_order)
             old_final = task.final_prompt
+            old_prompt_source = task.prompt_source
             task.title = data.title.strip() or task.title
             task.summary = data.summary.strip()
             task.script_source = data.script_source
@@ -229,6 +230,11 @@ class TaskService:
                 else "visual"
             )
             task.select_final_prompt()
+            if old_prompt_source != task.prompt_source or old_final != task.final_prompt:
+                task.approved_prompt_source = None
+                task.approved_prompt_hash = None
+                task.approved_at = None
+                task.approved_revision_id = None
             task.revision += 1
             task.updated_at = utcnow()
             task.state = TaskState.READY if task.final_prompt.strip() else TaskState.DRAFT

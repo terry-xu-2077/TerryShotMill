@@ -18,7 +18,10 @@ import type {
 
 const sceneId = "scene-project-workspace";
 
-function taskState(status: TaskSummary["status"]): GenerationTask["state"] {
+function taskState(status: TaskSummary["status"], videoStatus?: string, promptStatus?: string): GenerationTask["state"] {
+  if (videoStatus === "queued") return "queued";
+  if (videoStatus === "running") return "running";
+  if (promptStatus === "running") return "prompt-generating";
   if (status === "running") return "running";
   if (status === "completed") return "completed";
   if (status === "failed") return "failed";
@@ -65,7 +68,7 @@ function summaryTask(summary: TaskSummary): GenerationTask {
       resultCount: summary.resultCount,
     },
     contextLinkIds: [],
-    state: taskState(summary.status),
+    state: taskState(summary.status, summary.videoGenerationStatus, summary.promptEnhancementStatus),
     progress: summary.progress,
     jobIds: Array.from({ length: summary.resultCount }, (_, index) => `summary-job:${summary.id}:${index}`),
     primaryResultId: summary.primaryResult?.id,
@@ -176,6 +179,24 @@ export function mapTaskEditor(
   revisions: PromptRevisionView[],
   fallback?: GenerationTask,
 ): GenerationTask {
+  const chronologicalRevisions = [...revisions].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  const history = chronologicalRevisions.map((revision) => ({
+    id: revision.id,
+    createdAt: revision.createdAt,
+    prompt: revision.prompt,
+    sourceUserPrompt: revision.sourceUserPrompt,
+    previousTaskSummary: revision.previousTaskSummarySnapshot,
+    projectBackgroundUsed: revision.includeProjectBackground,
+  }));
+  let selectedHistory = [...history].reverse().find((item) => item.prompt === view.aiEnhancedPrompt);
+  // The saved task may contain human edits that are not an immutable AI revision.
+  if (!selectedHistory && view.aiEnhancedPrompt.trim()) {
+    selectedHistory = {
+      id: `saved-${view.id}`, createdAt: "", prompt: view.aiEnhancedPrompt,
+      sourceUserPrompt: view.userPrompt, previousTaskSummary: undefined, projectBackgroundUsed: false,
+    };
+    history.push(selectedHistory);
+  }
   return {
     id: view.id,
     number: `T01-${String(view.displayNumber).padStart(3, "0")}`,
@@ -202,6 +223,8 @@ export function mapTaskEditor(
     promptRevisions: revisions.map(promptRevision),
     generationParams: {
       resolution: view.generation.resolution,
+      workflowProfileId: view.generation.workflowProfileId,
+      workflowInputs: view.generation.workflowInputs,
       quality: view.generation.quality,
       generationMode: view.generation.mode,
       contextMode: view.generation.contextMode,
@@ -214,15 +237,8 @@ export function mapTaskEditor(
       aiPromptViewMode: view.editorPreference.aiViewMode,
       revision: view.revision,
       previousTaskDurationSeconds: view.previousTaskDurationSeconds,
-      aiPromptHistory: revisions.map((revision) => ({
-        id: revision.id,
-        createdAt: revision.createdAt,
-        prompt: revision.prompt,
-        sourceUserPrompt: revision.sourceUserPrompt,
-        previousTaskSummary: revision.previousTaskSummarySnapshot,
-        projectBackgroundUsed: revision.includeProjectBackground,
-      })),
-      selectedAiPromptHistoryId: revisions.at(-1)?.id,
+      aiPromptHistory: history,
+      selectedAiPromptHistoryId: selectedHistory?.id ?? history.at(-1)?.id,
     },
     contextLinkIds: [],
     state: fallback?.state ?? (view.finalPrompt.trim() ? "ready" : "draft"),
@@ -246,6 +262,8 @@ export function taskSaveInput(task: GenerationTask): SaveTaskInput {
     durationSeconds: task.plannedDurationSeconds,
     generation: {
       resolution: typeof params.resolution === "string" ? params.resolution : "1080p",
+      workflowProfileId: typeof params.workflowProfileId === "string" ? params.workflowProfileId : undefined,
+      workflowInputs: params.workflowInputs as import("./projectGateway").WorkflowInputSelection | undefined,
       quality: typeof params.quality === "string" ? params.quality : "标准",
       mode: typeof params.generationMode === "string" ? params.generationMode : "全能参考",
       contextMode: typeof params.contextMode === "string" ? params.contextMode : "不承接",

@@ -8,7 +8,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from shotmill.api import assets, events, generation, projects, prompt_enhancements, results, tasks
+from shotmill.api import (
+    application_settings,
+    assets,
+    batch_review,
+    comfyui,
+    events,
+    generation,
+    projects,
+    prompt_enhancements,
+    results,
+    tasks,
+)
 from shotmill.application.container import build_container
 from shotmill.config import Settings, settings
 from shotmill.domain.providers import PromptAIProvider, VideoGenerationProvider
@@ -35,11 +46,13 @@ def create_app(
         selected_settings.projects_root.mkdir(parents=True, exist_ok=True)
         if selected_settings.auto_migrate:
             upgrade_database(selected_settings.database_url)
+        await container.prompt_enhancement_queue.start()
         await container.generation_queue.start()
         try:
             yield
         finally:
             await container.generation_queue.stop()
+            await container.prompt_enhancement_queue.stop()
             container.engine.dispose()
 
     application = FastAPI(
@@ -79,9 +92,12 @@ def create_app(
 
     for router in (
         projects.router,
+        application_settings.router,
         assets.router,
         tasks.router,
         prompt_enhancements.router,
+        batch_review.router,
+        comfyui.router,
         generation.router,
         results.router,
         events.router,

@@ -96,6 +96,10 @@ class TaskModel(Base):
     progress: Mapped[float | None] = mapped_column(Float, nullable=True)
     primary_result_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    approved_prompt_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    approved_prompt_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_revision_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     user_view_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="visual")
     ai_view_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="visual")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -215,3 +219,47 @@ class PromptRevisionModel(Base):
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     previous_task_summary_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PromptEnhancementBatchModel(Base):
+    __tablename__ = "prompt_enhancement_batches"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    total_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    queued_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    running_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cancelled_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PromptEnhancementJobModel(Base):
+    __tablename__ = "prompt_enhancement_jobs"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("prompt_enhancement_batches.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    source_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    context_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    provider_profile_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    target_skill: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revision_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

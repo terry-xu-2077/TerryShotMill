@@ -56,6 +56,27 @@ def test_project_workspace_and_task_editor_contract(client) -> None:
     assert data["revision"] == 1
 
 
+def test_selected_workflow_survives_task_save_and_editor_reload(client) -> None:
+    project = _create_project(client)
+    task = _create_task(client, project["id"], generation={
+        "workflowProfileId": "configured-detail", "contextMode": "不承接",
+    }, durationSeconds=12)
+    url = f"/api/v1/projects/{project['id']}/tasks/{task['id']}"
+    editor = client.get(f"{url}/editor").json()
+    assert editor["generation"]["workflowProfileId"] == "configured-detail"
+    assert editor["durationSeconds"] == 12
+    updated = client.patch(url, json={
+        "title": task["title"], "userPrompt": editor["userPrompt"],
+        "promptSource": "user", "durationSeconds": 8,
+        "generation": {**editor["generation"], "workflowProfileId": "configured-standard"},
+        "revision": editor["revision"],
+    })
+    assert updated.status_code == 200, updated.text
+    reloaded = client.get(f"{url}/editor").json()
+    assert reloaded["generation"]["workflowProfileId"] == "configured-standard"
+    assert reloaded["durationSeconds"] == 8
+
+
 def test_task_optimistic_lock_and_reorder(client) -> None:
     project = _create_project(client)
     first = _create_task(client, project["id"], title="A")
@@ -83,3 +104,16 @@ def test_task_optimistic_lock_and_reorder(client) -> None:
     )
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "TASK_CONFLICT"
+
+
+def test_optional_workflow_slots_survive_save_and_reload(client) -> None:
+    project = _create_project(client)
+    selection = {"workflowId": "reference.json", "slots": [
+        {"portId": "9:image_0:1", "assetId": None, "reference": "<Picture 1>"},
+        {"portId": "9:audio_0:4", "assetId": None, "reference": "<Audio 1>"},
+    ]}
+    task = _create_task(client, project["id"], generation={
+        "workflowInputs": selection, "contextMode": "不承接",
+    })
+    url = f"/api/v1/projects/{project['id']}/tasks/{task['id']}/editor"
+    assert client.get(url).json()["generation"]["workflowInputs"] == selection

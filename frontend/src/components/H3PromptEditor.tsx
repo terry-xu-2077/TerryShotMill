@@ -533,7 +533,7 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }:
             <div className="prompt-asset-options">
               {visibleAssets.map((asset, index) => (
                 <button
-                  key={asset.id}
+                  key={`${asset.id}:${asset.reference}`}
                   id={`${menuId}-${asset.id}`}
                   type="button"
                   role="option"

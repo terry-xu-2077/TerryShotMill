@@ -9,7 +9,7 @@
     "115": {
       "inputs": {
         "aspect_ratio": "16:9 (Widescreen)",
-        "megapixels": 0.9,
+        "megapixels": 0.4,
         "multiple": 32
       },
       "class_type": "ResolutionSelector",
@@ -276,13 +276,25 @@
         "format.codec": "auto",
         "codec": "auto",
         "video": [
-          "130",
+          "203",
           0
         ]
       },
       "class_type": "SaveVideo",
       "_meta": {
         "title": "保存视频"
+      }
+    },
+    "203": {
+      "inputs": {
+        "value": [
+          "130",
+          0
+        ]
+      },
+      "class_type": "ShotMillIOBridgeOut",
+      "_meta": {
+        "title": "ShotMill IO Bridge"
       }
     },
     "201": {

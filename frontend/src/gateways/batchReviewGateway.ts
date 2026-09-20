@@ -1,4 +1,4 @@
-export type PromptReviewStatus = "pending" | "approved";
+export type PromptReviewStatus = "not_ready" | "pending_review" | "approved";
 
 export type PromptReviewItem = {
   taskId: string;
@@ -18,10 +18,10 @@ export type BatchPromptRequest = {
 
 export type BatchPromptResponse = {
   batchId: string;
-  state: "completed" | "partial" | "failed";
+  state: "queued" | "running" | "completed" | "partial" | "failed" | "cancelled";
   items: Array<{
     taskId: string;
-    state: "completed" | "failed";
+    state: "completed" | "failed" | "skipped";
     revisionId?: string;
     error?: string;
   }>;
@@ -67,6 +67,12 @@ export class BatchReviewGateway {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       },
+    );
+  }
+
+  getPromptEnhancementBatch(projectId: string, batchId: string) {
+    return request<BatchPromptResponse>(
+      `/projects/${encodeURIComponent(projectId)}/prompt-enhancement-batches/${encodeURIComponent(batchId)}`,
     );
   }
 

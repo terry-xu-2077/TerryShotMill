@@ -18,6 +18,8 @@ class ApiModel(BaseModel):
 ProjectStatus = Literal["idle", "running", "completed", "failed"]
 TaskStatus = Literal["idle", "running", "completed", "failed"]
 RuntimeState = Literal["idle", "queued", "running", "failed"]
+PromptReviewStatus = Literal["not_ready", "pending_review", "approved"]
+BatchItemState = Literal["queued", "running", "completed", "failed", "skipped", "cancelled"]
 
 
 class ProjectSummary(ApiModel):
@@ -35,6 +37,84 @@ class ProjectSettingsView(ApiModel):
     title: str
     description: str
     use_description_for_ai_prompt: bool
+
+
+class SystemPromptPresetView(ApiModel):
+    id: str
+    name: str
+    prompt: str
+
+
+class LocalInferenceSettingsView(ApiModel):
+    preset_prompt: str
+    inference_mode: Literal["one by one", "images", "video"]
+    max_frames: int
+    max_size: int
+    seed_mode: Literal["randomize", "fixed"]
+    seed: int
+    force_offload: bool
+    save_states: bool
+
+
+class ComfyUIWorkflowProfileView(ApiModel):
+    id: str
+    name: str
+    resolution: str
+    quality: str
+    workflow_file: str
+    enabled: bool
+
+
+class ComfyUISettingsView(ApiModel):
+    base_url: str
+    root_path: str
+    workflow_directory: str
+    default_profile_id: str
+    workflow_profiles: list[ComfyUIWorkflowProfileView]
+
+
+class ComfyUIWorkflowPortView(ApiModel):
+    name: str
+    direction: str
+    type: str
+    source_node_id: str = ""
+    target_node_id: str = ""
+    target_slot: str = ""
+    target_port: str = ""
+    port_name: str = ""
+
+
+class ComfyUIWorkflowView(ApiModel):
+    id: str
+    name: str
+    file_name: str
+    relative_path: str
+    format: str
+    executable: bool
+    has_shotmill_bridge: bool
+    inputs: list[ComfyUIWorkflowPortView]
+    outputs: list[ComfyUIWorkflowPortView]
+    warnings: list[str]
+
+
+class ComfyUIStatusView(ApiModel):
+    connected: bool
+    base_url: str
+    bridge_node_available: bool
+    message: str
+    workflows: list[ComfyUIWorkflowView] = []
+
+
+class ApplicationSettingsView(ApiModel):
+    provider_mode: Literal["local", "api"]
+    system_prompt: str
+    system_prompt_presets: list[SystemPromptPresetView]
+    api_base_url: str
+    api_model: str
+    api_key: str
+    api_supports_native_video: bool
+    local_inference: LocalInferenceSettingsView
+    comfyui: ComfyUISettingsView
 
 
 class PrimaryResultView(ApiModel):
@@ -60,6 +140,11 @@ class TaskSummary(ApiModel):
     result_count: int
     duration_seconds: float
     generation_summary: GenerationSummary
+    prompt_review_status: PromptReviewStatus = "not_ready"
+    prompt_enhancement_status: str = "idle"
+    video_generation_status: str = "idle"
+    has_active_prompt_job: bool = False
+    has_active_video_job: bool = False
     primary_result: PrimaryResultView | None = None
 
 
@@ -87,7 +172,20 @@ class TaskAssetRef(ApiModel):
     role: str | None = None
 
 
+class WorkflowInputSlot(ApiModel):
+    port_id: str
+    asset_id: str | None = None
+    reference: str
+
+
+class WorkflowInputSelection(ApiModel):
+    workflow_id: str
+    slots: list[WorkflowInputSlot] = Field(default_factory=list)
+
+
 class GenerationSettings(ApiModel):
+    workflow_profile_id: str | None = None
+    workflow_inputs: WorkflowInputSelection | None = None
     resolution: str = "1080p"
     quality: str = "标准"
     mode: str = "全能参考"
@@ -119,6 +217,18 @@ class TaskEditorView(ApiModel):
     generation: GenerationSettings
     asset_bindings: list[TaskAssetRef]
     revision: int
+    prompt_review_status: PromptReviewStatus = "not_ready"
+
+
+class PromptReviewItemView(ApiModel):
+    task_id: str
+    prompt_review_status: PromptReviewStatus
+    approved_revision: int | None = None
+    approved_at: datetime | None = None
+
+
+class PromptReviewStateView(ApiModel):
+    items: list[PromptReviewItemView]
 
 
 class AssetReferenceItem(ApiModel):
@@ -189,6 +299,33 @@ class JobView(ApiModel):
     completed_at: datetime | None
     error_code: str | None
     error_message: str | None
+
+
+class BatchPromptEnhancementItemView(ApiModel):
+    task_id: str
+    state: BatchItemState
+    revision_id: str | None = None
+    error: str | None = None
+
+
+class BatchPromptEnhancementResponse(ApiModel):
+    batch_id: str
+    state: Literal["queued", "running", "completed", "partial", "failed", "cancelled"]
+    items: list[BatchPromptEnhancementItemView]
+
+
+class VideoBatchSkippedItem(ApiModel):
+    task_id: str
+    reason: str
+
+
+class VideoBatchEligibilityView(ApiModel):
+    eligible_task_ids: list[str]
+    skipped: list[VideoBatchSkippedItem]
+
+
+class VideoBatchResponse(VideoBatchEligibilityView):
+    batch_id: str
 
 
 class ProjectListResponse(ApiModel):

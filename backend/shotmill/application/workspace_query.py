@@ -5,6 +5,7 @@ from collections.abc import Callable
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import NotFoundError
 from shotmill.frontend_adapter.mapper import (
+    asset_preview_url,
     map_asset,
     map_asset_reference,
     map_project_summary,
@@ -41,6 +42,8 @@ class WorkspaceQuery:
                         tasks,
                         uow.assets.count_by_project(project.id),
                         results_by_task,
+                        asset_previews={asset.id: asset_preview_url(asset, self.storage)
+                                        for asset in uow.assets.list_by_project(project.id)},
                     )
                 )
             return items
@@ -57,6 +60,8 @@ class WorkspaceQuery:
                 tasks,
                 uow.assets.count_by_project(project_id),
                 results_by_task,
+                asset_previews={asset.id: asset_preview_url(asset, self.storage)
+                                for asset in uow.assets.list_by_project(project_id)},
             )
 
     def project_settings(self, project_id: str) -> ProjectSettingsView:
@@ -77,8 +82,19 @@ class WorkspaceQuery:
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
             tasks = uow.tasks.list_by_project(project_id)
+            active_prompt_task_ids = uow.prompt_jobs.active_task_ids_by_project(project_id)
+            active_video_task_ids = uow.jobs.active_task_ids_by_project(project_id)
+            asset_previews = {asset.id: asset_preview_url(asset, self.storage)
+                              for asset in uow.assets.list_by_project(project_id)}
             summaries = [
-                map_task_summary(task, uow.results.list_by_task(task.id)) for task in tasks
+                map_task_summary(
+                    task,
+                    uow.results.list_by_task(task.id),
+                    has_active_prompt_job=task.id in active_prompt_task_ids,
+                    has_active_video_job=task.id in active_video_task_ids,
+                    asset_previews=asset_previews,
+                )
+                for task in tasks
             ]
             active_job = uow.jobs.latest_active_by_project(project_id)
             active_task = uow.tasks.get(active_job.task_id) if active_job else None
@@ -105,7 +121,16 @@ class WorkspaceQuery:
             task = uow.tasks.get(task_id)
             if task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
-            return map_task_summary(task, uow.results.list_by_task(task.id))
+            return map_task_summary(
+                task,
+                uow.results.list_by_task(task.id),
+                has_active_prompt_job=(
+                    task.id in uow.prompt_jobs.active_task_ids_by_project(project_id)
+                ),
+                has_active_video_job=task.id in uow.jobs.active_task_ids_by_project(project_id),
+                asset_previews={asset.id: asset_preview_url(asset, self.storage)
+                                for asset in uow.assets.list_by_project(project_id)},
+            )
 
     def list_assets(
         self,

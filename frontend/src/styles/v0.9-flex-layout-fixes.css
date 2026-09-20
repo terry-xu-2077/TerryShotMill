@@ -1,30 +1,7 @@
 /* V0.9 global layout rule: prefer elastic sizing; scroll only where the workflow explicitly needs it. */
 
 /* Task editor: the dialog itself must never become the scroll container when the viewport shrinks. */
-.sm-dialog:has(.simple-task-editor) > .sm-dialog-content {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
 
-.simple-task-editor {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  grid-template-columns: clamp(210px, 24vw, 280px) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-}
-
-.simple-task-config {
-  min-width: 0;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.simple-prompt-editor,
 .simple-prompt-body,
 .h3-visual-editor-shell,
 .simple-prompt-body .prompt-asset-editor {
@@ -32,7 +9,6 @@
   min-height: 0;
 }
 
-.simple-prompt-editor,
 .simple-prompt-body {
   overflow: hidden;
 }
@@ -60,159 +36,7 @@
 }
 
 /* Keep the editor as a two-column workspace while narrowing. The left parameter column is the intentional scroll area. */
-@media (max-width: 720px) {
-  .simple-task-editor {
-    grid-template-columns: clamp(160px, 34vw, 210px) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
-  }
-
-  .simple-task-config {
-    grid-column: 1;
-    grid-row: 1;
-    display: block;
-    border-right: 1px solid var(--sm-border);
-    border-bottom: 0;
-  }
-
-  .simple-task-config > header {
-    display: block;
-  }
-
-  .simple-task-config section {
-    display: grid;
-    border-right: 0;
-    border-bottom: 1px solid var(--sm-border);
-  }
-
-  .simple-prompt-editor {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .simple-task-editor-actions {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-}
 
 /* Project config: always let the active panel consume the available width instead of being clipped by old breakpoint rules. */
-.sm-dialog:has(.project-config-dialog-v2) > .sm-dialog-content {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.project-config-dialog-v2 {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  grid-template-columns: clamp(132px, 17vw, 174px) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-}
-
-.project-config-dialog-v2 .project-config-tabs {
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 0;
-  min-height: 0;
-  display: block;
-  overflow: hidden;
-  border-right: 1px solid var(--sm-border);
-  border-bottom: 0;
-}
-
-.project-config-dialog-v2 .project-config-tabs button {
-  width: 100%;
-  margin-bottom: 4px;
-}
-
-.project-config-dialog-v2 .project-config-content {
-  grid-column: 2;
-  grid-row: 1;
-  width: 100%;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  overflow: hidden;
-  padding: clamp(12px, 1.5vw, 18px);
-}
-
-.project-config-dialog-v2 .project-config-info,
-.project-config-dialog-v2 .project-asset-manager-v2 {
-  width: 100%;
-  min-width: 0;
-}
-
-.project-config-dialog-v2 .project-config-info {
-  overflow: visible;
-  align-content: start;
-}
-
-.project-config-dialog-v2 .project-config-info textarea {
-  min-height: 88px;
-  height: clamp(96px, 19vh, 150px);
-  resize: none;
-}
-
-.project-config-dialog-v2 .project-config-actions {
-  grid-column: 1 / -1;
-  grid-row: 2;
-}
-
-.project-asset-manager-v2 {
-  min-width: 0;
-  grid-template-columns: minmax(280px, 48%) minmax(0, 1fr);
-  gap: clamp(9px, 1.2vw, 14px);
-}
-
-.project-asset-browser,
-.project-asset-inspector,
-.project-asset-detail {
-  min-width: 0;
-  min-height: 0;
-}
 
 /* The inspector preview absorbs height changes; metadata remains fully visible and does not become a nested scroll area. */
-.project-asset-detail {
-  grid-template-rows: minmax(120px, 1fr) auto;
-}
-
-.project-asset-meta {
-  min-width: 0;
-  min-height: auto;
-  overflow: visible;
-  padding: 12px 14px;
-}
-
-.project-asset-preview,
-.project-asset-preview-empty {
-  min-height: 120px;
-}
-
-@media (max-width: 900px) {
-  .project-config-dialog-v2 {
-    grid-template-columns: clamp(112px, 18vw, 148px) minmax(0, 1fr);
-  }
-
-  .project-asset-manager-v2 {
-    grid-template-columns: minmax(210px, 48%) minmax(0, 1fr);
-    gap: 9px;
-  }
-
-  .project-asset-name-field,
-  .project-asset-category-field,
-  .project-asset-tags-field {
-    grid-template-columns: 54px minmax(0, 1fr);
-  }
-
-  .project-asset-meta dl,
-  .project-asset-readonly-meta {
-    grid-template-columns: 1fr;
-  }
-
-  .project-asset-meta dl > div.is-wide {
-    grid-column: auto;
-  }
-}

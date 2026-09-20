@@ -3,17 +3,6 @@
    and neutralize legacy V0.6 styling that was leaking into shared SegmentedControl. */
 
 /* Give the left rail and bottom source line enough breathing room from the dialog edge. */
-.simple-task-config > header {
-  padding: 10px 16px;
-}
-
-.simple-task-config section {
-  padding: 10px 16px;
-}
-
-.simple-task-editor-actions {
-  padding: 8px 16px;
-}
 
 /* Header controls must sit on the same vertical centerline. */
 .simple-prompt-head {
@@ -21,7 +10,7 @@
 }
 
 .simple-prompt-title-group {
-  height: 100%;
+  min-height: 28px;
   align-items: center;
 }
 
@@ -34,49 +23,6 @@
 
 /* V0.6 used to paint its own rounded shell around the visual/text switch.
    Restore the shared high-level pill control instead of leaving a hybrid style. */
-.simple-prompt-view-tabs.tc-segmented {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.simple-prompt-view-tabs.tc-segmented .tc-segmented-item {
-  height: 100%;
-  padding: 0 8px;
-  border: 1px solid var(--tc-border-color);
-  border-radius: 0;
-  color: var(--tc-text-muted);
-  background: color-mix(in srgb,var(--tc-panel) 90%,var(--tc-surface-2) 10%);
-  font: inherit;
-  font-size: 11px;
-  line-height: 1;
-}
-
-.simple-prompt-view-tabs.tc-segmented .tc-segmented-item + .tc-segmented-item {
-  margin-left: -1px;
-}
-
-.simple-prompt-view-tabs.tc-segmented .tc-segmented-item:first-child {
-  border-radius: 999px 0 0 999px;
-}
-
-.simple-prompt-view-tabs.tc-segmented .tc-segmented-item:last-child {
-  border-radius: 0 999px 999px 0;
-}
-
-.simple-prompt-view-tabs.tc-segmented .tc-segmented-item:hover:not(:disabled):not(.is-active) {
-  color: var(--tc-text);
-  border-color: color-mix(in srgb,var(--tc-accent) 42%,var(--tc-border-color) 58%);
-  background: color-mix(in srgb,var(--tc-panel) 82%,var(--tc-accent) 18%);
-}
-
-.simple-prompt-view-tabs.tc-segmented .tc-segmented-item.is-active {
-  color: var(--tc-accent);
-  border-color: color-mix(in srgb,var(--tc-accent) 58%,var(--tc-border-color) 42%);
-  background: color-mix(in srgb,var(--tc-panel) 72%,var(--tc-accent) 28%);
-  box-shadow: inset 0 1px 0 color-mix(in srgb,var(--tc-text-bright) 7%,transparent 93%);
-}
 
 /* Empty AI state: keep one quiet gray instruction line only. */
 .simple-ai-prompt-empty {
@@ -106,36 +52,4 @@
 .simple-ai-enhance-button {
   right: 22px;
   bottom: 34px;
-}
-
-.simple-ai-enhance-button.tc-button.variant-accent {
-  min-width: 72px;
-  height: 28px;
-  padding-inline: 10px;
-  border: 1px solid var(--sm-border-strong);
-  color: var(--sm-text-muted);
-  background: var(--sm-surface-2);
-  box-shadow: none;
-}
-
-.simple-ai-enhance-button.tc-button.variant-accent:hover:not(:disabled) {
-  border-color: color-mix(in srgb,var(--sm-accent) 30%,var(--sm-border-strong) 70%);
-  color: var(--sm-text);
-  background: var(--sm-surface-3);
-  box-shadow: none;
-}
-
-.simple-ai-enhance-button.tc-button.variant-accent:disabled {
-  opacity: .42;
-}
-
-@media (max-width: 720px) {
-  .simple-task-config > header,
-  .simple-task-config section {
-    padding-inline: 12px;
-  }
-
-  .simple-task-editor-actions {
-    padding-inline: 12px;
-  }
 }

@@ -37,7 +37,7 @@ describe("V0.6 Terry导演工作台", () => {
 
     expect(screen.getByRole("main", { name: "项目工作台" })).toBeInTheDocument();
     expect(screen.getAllByText("异星边境 初到基地").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /表格/ })).toHaveClass("is-active");
+    expect(screen.getByRole("button", { name: "切换为卡片视图" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("button", { name: "新建任务卡" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^新建任务$/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "返回项目首页" })).toBeInTheDocument();
@@ -56,7 +56,7 @@ describe("V0.6 Terry导演工作台", () => {
 
     const info = screen.getByRole("complementary", { name: "任务信息" });
     expect(within(info).getByText("任务名：越过断层台地")).toBeInTheDocument();
-    expect(within(info).getByText("提示词")).toBeInTheDocument();
+    expect(within(info).getByRole("heading", { name: "提示词" })).toBeInTheDocument();
     expect(within(info).getByText("生成参数")).toBeInTheDocument();
     expect(within(info).queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -113,12 +113,33 @@ describe("V0.6 Terry导演工作台", () => {
 
     await user.click(screen.getByRole("button", { name: /卡片/ }));
 
-    expect(screen.getByRole("button", { name: /卡片/ })).toHaveClass("is-active");
+    expect(screen.getByRole("button", { name: "切换为表格视图" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "新建任务卡" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^新建任务$/ })).not.toBeInTheDocument();
     expect(screen.getByText("#1 特瑞在荒漠驰骋")).toBeInTheDocument();
     expect(screen.getByText("#2 越过断层台地")).toBeInTheDocument();
     expect(screen.getByText("#3 驶入临时基地")).toBeInTheDocument();
+  });
+
+  it("首页导航旁打开项目配置，标题只展示，视图切换归属任务区", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await openFirstProject(user);
+
+    const config = screen.getByRole("button", { name: "项目配置" });
+    expect(config.closest(".workspace-navigation")).not.toBeNull();
+    expect(document.querySelector(".workspace-project-title button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "重命名项目" })).not.toBeInTheDocument();
+    const area = screen.getByRole("region", { name: "任务区域" });
+    const cards = within(area).getByRole("button", { name: "切换为卡片视图" });
+    expect(cards.textContent).toBe("");
+    expect(screen.getByRole("button", { name: "暗色" }).closest(".project-workspace-topbar")).not.toBeNull();
+    await user.click(screen.getByText("#2 越过断层台地").closest("button")!);
+    await user.click(cards);
+    expect(screen.getByText("#2 越过断层台地").closest("button")).toHaveClass("is-selected");
+    await user.click(config);
+    expect(screen.getByRole("dialog", { name: "项目配置" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "重命名项目" })).not.toBeInTheDocument();
   });
 
   it("项目配置可以修改项目标题、简介和 AI 项目背景开关", async () => {
@@ -137,7 +158,9 @@ describe("V0.6 Terry导演工作台", () => {
     await user.type(title, "异星边境 第二版");
     await user.clear(description);
     await user.type(description, "新的项目背景信息");
-    await user.click(background);
+    background.focus();
+    await user.keyboard(" ");
+    expect(background).not.toBeChecked();
     await user.click(within(dialog).getByRole("button", { name: "保存" }));
 
     expect((await screen.findAllByText("异星边境 第二版")).length).toBeGreaterThan(0);
@@ -163,8 +186,13 @@ describe("V0.6 Terry导演工作台", () => {
     await user.click(screen.getByRole("button", { name: "新建任务卡" }));
 
     const dialog = screen.getByRole("dialog", { name: /新任务/ });
-    expect(within(dialog).getByText("任务配置")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "生成参数" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(within(dialog).getByRole("button", { name: "生成参数" }));
+    expect(within(dialog).getByRole("complementary", { name: "任务配置" })).toBeInTheDocument();
     expect(within(dialog).getByRole("region", { name: "提示词编辑" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("textbox", { name: "用户提示词可视化" }).textContent).toBe("");
+    expect(within(dialog).queryByText("等待填写提示词。")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("tab", { name: "不承接" })).toHaveAttribute("aria-selected", "true");
     expect(within(dialog).getByRole("button", { name: "取消" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "保存" })).toBeInTheDocument();
   });
@@ -175,7 +203,7 @@ describe("V0.6 Terry导演工作台", () => {
     await openFirstProject(user);
 
     expect(screen.getByRole("button", { name: /设置/ })).toBeInTheDocument();
-    expect(screen.getByText(/当前运行：异星边境 初到基地 · 任务名：越过断层台地/)).toBeInTheDocument();
+    expect(screen.getByText(/视频生成：越过断层台地/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "素材" })).not.toBeInTheDocument();
   });

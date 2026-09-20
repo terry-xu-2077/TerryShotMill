@@ -1,11 +1,13 @@
-import { Check, ChevronLeft, ChevronRight, Clapperboard, Code2, Eye, Pencil, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Button, SegmentedControl, Select, SlidingTabs } from "terry-react-ui-library";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Clapperboard, Code2, Eye, Pencil, SlidersHorizontal, Sparkles } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Button, SegmentedControl, Select } from "terry-react-ui-library";
 
 import { H3PromptEditor, type H3PromptViewMode } from "../../components/H3PromptEditor";
 import type { PromptAsset } from "../../components/PromptAssetEditor";
 import type { GenerationTask, ProjectAsset } from "../../domain/storyboard";
 import type { PromptReviewStatus } from "../../gateways/batchReviewGateway";
+import type { ComfyUIWorkflow, ComfyUIWorkflowProfile, WorkflowInputSelection } from "../../gateways/projectGateway";
+import { WorkflowInputSlots } from "./WorkflowInputSlots";
 import type {
   PromptEnhancementRequest,
   PromptEnhancementResponse,
@@ -31,6 +33,9 @@ type TaskEditorDialogProps = {
   open: boolean;
   task?: GenerationTask;
   assets: ProjectAsset[];
+  workflowProfiles?: ComfyUIWorkflowProfile[];
+  defaultWorkflowProfileId?: string;
+  onLoadWorkflows?: () => Promise<ComfyUIWorkflow[]>;
   previousTaskDurationSeconds?: number;
   previousTaskId?: string;
   previousTaskSummary?: string;
@@ -46,7 +51,6 @@ type TaskEditorDialogProps = {
 
 type PromptMode = "user" | "ai";
 type ContextMode = "片段承接" | "尾帧承接" | "不承接";
-type ChoiceOption = { value: string; label: string };
 type AiPromptHistoryItem = {
   id: string;
   createdAt: string;
@@ -63,21 +67,33 @@ function assetKind(asset: ProjectAsset, role?: string): PromptAsset["kind"] {
   return "picture";
 }
 
-function promptAssetsForTask(task: GenerationTask | undefined, assets: ProjectAsset[]): PromptAsset[] {
+function promptAssetsForTask(task: GenerationTask | undefined, assets: ProjectAsset[], aiHistory: AiPromptHistoryItem[]): PromptAsset[] {
   if (!task) return [];
-  const bindings = new Map(task.assetBindings.map((binding) => [binding.assetId, binding]));
+  const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
+  const reservedReferences = new Set(task.assetBindings.flatMap((binding) => binding.reference ? [binding.reference] : []));
+  // Logical H3 subjects are not project assets. Never allocate their identifiers
+  // to unrelated library items just because those items are available in @.
+  const existingPrompts = [task.finalPrompt, task.aiPrompt ?? "", task.userIntent, ...aiHistory.map((item) => item.prompt)].join("\n");
+  for (const match of existingPrompts.matchAll(/<(Subject|Picture|Video|Audio)\s+(\d+)>/gi)) {
+    const kind = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
+    reservedReferences.add(`<${kind} ${Number(match[2])}>`);
+  }
   const counters: Record<PromptAsset["kind"], number> = { subject: 0, picture: 0, video: 0, audio: 0 };
-  return assets.map((asset) => {
-    const binding = bindings.get(asset.id);
+  return task.assetBindings.filter((binding) => assetsById.has(binding.assetId)).map((binding) => {
+    const asset = assetsById.get(binding.assetId)!;
     const role = binding?.role ?? (asset.mediaType === "audio" ? "audio" : asset.category);
     const kind = assetKind(asset, role);
-    counters[kind] += 1;
     const referenceType = kind === "subject" ? "Subject" : kind[0].toUpperCase() + kind.slice(1);
+    let reference = binding?.reference;
+    if (!reference) {
+      do { reference = `<${referenceType} ${++counters[kind]}>`; } while (reservedReferences.has(reference));
+      reservedReferences.add(reference);
+    }
     return {
       id: asset.id,
       name: asset.name,
       kind,
-      reference: binding?.reference ?? `<${referenceType} ${counters[kind]}>`,
+      reference,
       detail: role === "character" ? "角色素材" : role === "scene" ? "场景素材" : role === "prop" ? "道具素材" : role === "audio" ? "音频素材" : "参考素材",
       tone: kind === "subject" ? "amber" : kind === "video" ? "green" : kind === "audio" ? "violet" : "blue",
       previewUrl: asset.previewUrl,
@@ -135,14 +151,11 @@ function readAiHistory(params: Record<string, unknown>, task: GenerationTask): A
   }] : [];
 }
 function formatHistoryLabel(item: AiPromptHistoryItem, index: number, total: number) {
+  if (item.id.startsWith("saved-")) return "已保存的修改";
   if (!item.createdAt) return total === 1 ? "已有 AI 提示词" : `增强记录 ${index + 1}`;
   const date = new Date(item.createdAt);
   const time = Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(date);
   return `${index === total - 1 ? "最新版本" : `增强记录 ${index + 1}`}${time ? ` · ${time}` : ""}`;
-}
-
-function ParameterTabs({ label, value, options, onChange }: { label: string; value: string; options: ChoiceOption[]; onChange: (value: string) => void }) {
-  return <SlidingTabs value={value} options={options} onChange={onChange} ariaLabel={label} fluid compact className="simple-parameter-tabs" />;
 }
 
 function ContinuationRange({ maxSeconds, start, end, onChange }: { maxSeconds: number; start: number; end: number; onChange: (start: number, end: number) => void }) {
@@ -165,10 +178,18 @@ function ContinuationRange({ maxSeconds, start, end, onChange }: { maxSeconds: n
 }
 
 export function TaskEditorDialog({
-  open, task, assets, previousTaskDurationSeconds = 0, previousTaskId, previousTaskSummary = "", isNewTask = false,
-  reviewNavigation, reviewStatus = "pending", projectContext, onEnhancePrompt, onApproveAndNext, onClose, onSave,
+  open, task: incomingTask, assets, previousTaskDurationSeconds = 0, previousTaskId, previousTaskSummary = "", isNewTask = false,
+  reviewNavigation, reviewStatus = "pending_review", projectContext, onEnhancePrompt, onApproveAndNext, onClose, onSave,
+  workflowProfiles = [], defaultWorkflowProfileId = "", onLoadWorkflows,
 }: TaskEditorDialogProps) {
+  // Keep the last task rendered while its dialog finishes the exit transition.
+  const lastTask = useRef(incomingTask);
+  if (incomingTask) lastTask.current = incomingTask;
+  const task = incomingTask ?? lastTask.current;
   const [promptMode, setPromptMode] = useState<PromptMode>("user");
+  const [parametersOpen, setParametersOpen] = useState(false);
+  const parameterPanelId = useId();
+  useEffect(() => { setParametersOpen(false); }, [open, task?.id]);
   const [userViewMode, setUserViewMode] = useState<H3PromptViewMode>("visual");
   const [aiViewMode, setAiViewMode] = useState<H3PromptViewMode>("visual");
   const [taskTitle, setTaskTitle] = useState("");
@@ -179,20 +200,27 @@ export function TaskEditorDialog({
   const [selectedAiHistoryId, setSelectedAiHistoryId] = useState("");
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [enhanceError, setEnhanceError] = useState("");
   const [duration, setDuration] = useState(6);
   const [resolution, setResolution] = useState("1080p");
   const [quality, setQuality] = useState("标准");
+  const [workflowProfileId, setWorkflowProfileId] = useState("");
   const [generationMode, setGenerationMode] = useState("全能参考");
   const [contextMode, setContextMode] = useState<ContextMode>("片段承接");
   const [contextStartSeconds, setContextStartSeconds] = useState(0);
   const [contextEndSeconds, setContextEndSeconds] = useState(0);
   const [taskRevision, setTaskRevision] = useState<number | undefined>();
+  const [inputBindings, setInputBindings] = useState<GenerationTask["assetBindings"]>([]);
+  const [workflowInputs, setWorkflowInputs] = useState<WorkflowInputSelection | null>(null);
   const [reviewBaselineSignature, setReviewBaselineSignature] = useState("");
 
   useEffect(() => {
     if (!open || !task) return;
     const params = task.generationParams ?? {};
+    setInputBindings(task.assetBindings);
+    setWorkflowInputs((params.workflowInputs as WorkflowInputSelection | undefined) ?? null);
     const initialPromptMode = normalizePromptMode(params, task);
     const storedUserPrompt = stringParam(params, "userPrompt", "");
     const initialUserPrompt = storedUserPrompt || (initialPromptMode === "user" ? task.finalPrompt || task.userIntent || task.summary || "" : task.userIntent || task.summary || "");
@@ -216,10 +244,12 @@ export function TaskEditorDialog({
     setAiPrompt(selectedHistory?.prompt ?? task.aiPrompt ?? "");
     setIsEnhancing(false);
     setIsApproving(false);
+    setSaveError("");
     setEnhanceError("");
     setDuration(task.plannedDurationSeconds || 6);
     setResolution(stringParam(params, "resolution", "1080p"));
     setQuality(stringParam(params, "quality", "标准"));
+    setWorkflowProfileId(stringParam(params, "workflowProfileId", ""));
     setGenerationMode(stringParam(params, "generationMode", "全能参考"));
     setContextMode(normalizeContextMode(stringParam(params, "contextMode", "片段承接")));
     setContextStartSeconds(storedStart);
@@ -229,8 +259,17 @@ export function TaskEditorDialog({
     setReviewBaselineSignature(`${initialPromptMode}|${initialPromptMode === "ai" ? selectedHistory?.id ?? "" : ""}|${initialActive}`);
   }, [open, previousTaskDurationSeconds, task]);
 
-  const promptAssets = useMemo(() => promptAssetsForTask(task, assets), [assets, task]);
+  const promptAssets = useMemo(() => promptAssetsForTask(task ? { ...task, assetBindings: inputBindings } : undefined, assets, aiHistory), [assets, task, aiHistory, inputBindings]);
   if (!task) return null;
+  const availableWorkflows = workflowProfiles.filter((profile) => profile.enabled && profile.workflowFile.trim());
+  const defaultWorkflow = availableWorkflows.find((profile) => profile.id === defaultWorkflowProfileId)
+    ?? availableWorkflows.find((profile) => profile.resolution === resolution && profile.quality === quality)
+    ?? availableWorkflows[0];
+  const selectedWorkflowId = workflowProfileId || defaultWorkflow?.id || "";
+  const selectedWorkflow = availableWorkflows.find((profile) => profile.id === selectedWorkflowId);
+  const workflowLabel = selectedWorkflow?.name || (selectedWorkflowId ? "工作流不可用" : "未配置工作流");
+  const selectedResolution = selectedWorkflow?.resolution || resolution;
+  const selectedQuality = selectedWorkflow?.quality || quality;
   const previousDuration = Math.max(0, Math.floor(previousTaskDurationSeconds));
   const contextDurationSeconds = previousDuration > 0 ? Math.max(1, contextEndSeconds - contextStartSeconds) : 0;
   const activePrompt = promptMode === "ai" ? aiPrompt : userPrompt;
@@ -238,7 +277,7 @@ export function TaskEditorDialog({
   const setActiveViewMode = promptMode === "ai" ? setAiViewMode : setUserViewMode;
   const projectBackground = projectContext?.useDescriptionForAiPrompt && projectContext.description.trim() ? projectContext.description.trim() : undefined;
   const currentSignature = `${promptMode}|${promptMode === "ai" ? selectedAiHistoryId : ""}|${activePrompt}`;
-  const effectiveReviewStatus: PromptReviewStatus = reviewStatus === "approved" && currentSignature === reviewBaselineSignature ? "approved" : "pending";
+  const effectiveReviewStatus: PromptReviewStatus = reviewStatus === "approved" && currentSignature === reviewBaselineSignature ? "approved" : "pending_review";
 
   const updateAiPrompt = (value: string) => {
     setAiPrompt(value);
@@ -261,8 +300,8 @@ export function TaskEditorDialog({
       const response = await onEnhancePrompt({
         taskId: task.id, isDraft: isNewTask, previousTaskId, userPrompt: userPrompt.trim(),
         previousTaskSummary: previousTaskSummary.trim() || undefined, projectBackground,
-        assets: promptAssets.filter((asset) => userPrompt.includes(asset.reference)).map((asset) => ({ id: asset.id, name: asset.name, reference: asset.reference, kind: asset.kind })),
-        generation: { resolution, quality, mode: generationMode, durationSeconds: duration, contextMode, contextStartSeconds: contextMode === "片段承接" ? contextStartSeconds : undefined, contextEndSeconds: contextMode === "片段承接" ? contextEndSeconds : undefined },
+        assets: promptAssets.map((asset) => ({ id: asset.id, name: asset.name, reference: asset.reference, kind: asset.kind })),
+        generation: { resolution: selectedResolution, quality: selectedQuality, mode: generationMode, durationSeconds: duration, contextMode, contextStartSeconds: contextMode === "片段承接" ? contextStartSeconds : undefined, contextEndSeconds: contextMode === "片段承接" ? contextEndSeconds : undefined },
       });
       if (!response.prompt.trim()) throw new Error("AI 增强没有返回提示词。 ");
       const item: AiPromptHistoryItem = { id: response.id || `ai-${Date.now()}`, createdAt: response.createdAt || new Date().toISOString(), prompt: response.prompt, sourceUserPrompt: userPrompt, previousTaskSummary: previousTaskSummary.trim() || undefined, projectBackgroundUsed: Boolean(projectBackground) };
@@ -277,24 +316,30 @@ export function TaskEditorDialog({
   };
 
   const buildPatch = (): TaskEditorPatch => {
-    const referencedAssets = promptAssets.filter((asset) => userPrompt.includes(asset.reference) || aiPrompt.includes(asset.reference));
     return {
       title: taskTitle.trim() || task.title,
       finalPrompt: activePrompt,
       aiPrompt,
       plannedDurationSeconds: duration,
-      assetBindings: referencedAssets.map((promptAsset) => {
-        const asset = assets.find((item) => item.id === promptAsset.id)!;
-        return { assetId: asset.id, role: asset.mediaType === "audio" ? "audio" : asset.category, reference: promptAsset.reference };
-      }),
+      assetBindings: inputBindings,
       generationParams: {
-        ...task.generationParams, resolution, quality, generationMode, contextMode, contextDurationSeconds, contextStartSeconds, contextEndSeconds,
+        ...task.generationParams, workflowProfileId: selectedWorkflowId || undefined, workflowInputs, resolution: selectedResolution, quality: selectedQuality, generationMode, contextMode, contextDurationSeconds, contextStartSeconds, contextEndSeconds,
         promptSource: promptMode, userPrompt, userPromptViewMode: userViewMode, aiPromptViewMode: aiViewMode,
         aiPromptHistory: aiHistory, selectedAiPromptHistoryId: selectedAiHistoryId || undefined, revision: taskRevision,
       },
     };
   };
-  const save = () => { void onSave(buildPatch()); onClose(); };
+  const save = async () => {
+    if (isSaving || isEnhancing || isApproving) return;
+    setIsSaving(true);
+    setSaveError("");
+    try {
+      await onSave(buildPatch());
+      onClose();
+    } catch {
+      setSaveError("保存失败，编辑内容已保留。请检查服务连接后重试。");
+    } finally { setIsSaving(false); }
+  };
   const approveAndNext = async () => {
     if (!onApproveAndNext || isApproving) return;
     setIsApproving(true);
@@ -324,18 +369,30 @@ export function TaskEditorDialog({
   return (
     <Dialog open={open} size="wide" title={titleNode} description={`任务编号 ${task.number}`} onClose={onClose}>
       <div className="simple-task-editor" data-testid="simple-task-editor">
-        <aside className="simple-task-config" aria-label="任务配置">
-          <header>任务配置</header>
+        <section className="task-parameter-disclosure">
+          <button type="button" className="task-parameter-toggle" aria-label="生成参数" aria-expanded={parametersOpen} aria-controls={parameterPanelId} onClick={() => setParametersOpen((value) => !value)}>
+            <SlidersHorizontal size={15} /> 生成参数 <ChevronDown className="task-parameter-chevron" size={14} />
+            <span className="task-parameter-summary">{workflowLabel} · {duration} 秒 · {contextMode}</span>
+          </button>
+        <div className={`task-parameter-content ${parametersOpen ? "is-open" : ""}`} aria-hidden={!parametersOpen} inert={!parametersOpen}>
+        <div className="task-parameter-clip">
+        <aside id={parameterPanelId} className="simple-task-config" aria-label="任务配置">
           <section>
             <h3>生成参数</h3>
-            <div className="simple-choice-field"><span>分辨率</span><ParameterTabs label="分辨率" value={resolution} onChange={setResolution} options={[{ value: "480p", label: "480P" }, { value: "720p", label: "720P" }, { value: "1080p", label: "1080P" }]} /></div>
-            <div className="simple-choice-field"><span>质量</span><ParameterTabs label="质量档位" value={quality} onChange={setQuality} options={[{ value: "快速", label: "快速" }, { value: "标准", label: "标准" }, { value: "高质量", label: "高质量" }]} /></div>
+            <div className="simple-generation-row">
+            <div className="simple-workflow-field">
+              <Select ariaLabel="生成工作流" value={selectedWorkflowId} onChange={(id) => { setWorkflowProfileId(id); setInputBindings([]); setWorkflowInputs(null); }} disabled={availableWorkflows.length === 0} options={[
+                ...(!selectedWorkflow ? [{ value: selectedWorkflowId, label: workflowLabel }] : []),
+                ...availableWorkflows.map((profile) => ({ value: profile.id, label: profile.name })),
+              ]} />
+            </div>
             <label className="simple-slider-field"><span>总秒数 <strong>{duration} 秒</strong></span><input type="range" min={1} max={60} step={1} value={duration} aria-label="总秒数" onChange={(event) => setDuration(Number(event.target.value))} /></label>
+            </div>
           </section>
-          <section><h3>生成模式</h3><ParameterTabs label="生成模式" value={generationMode} onChange={setGenerationMode} options={[{ value: "全能参考", label: "全能参考" }, { value: "首尾帧", label: "首尾帧" }]} /></section>
+          <section><h3>生成模式</h3><SegmentedControl ariaLabel="生成模式" presentation="tabs" fluid value={generationMode} onChange={setGenerationMode} options={[{ value: "全能参考", label: "全能参考" }, { value: "首尾帧", label: "首尾帧" }]} /></section>
           <section className="simple-context-section">
             <h3>上下文承接</h3>
-            <SlidingTabs<ContextMode> value={contextMode} onChange={setContextMode} ariaLabel="上下文承接方式" fluid compact className="simple-context-tabs" options={[{ value: "片段承接", label: "片段承接" }, { value: "尾帧承接", label: "尾帧承接" }, { value: "不承接", label: "不承接" }]} />
+            <SegmentedControl<ContextMode> value={contextMode} onChange={setContextMode} ariaLabel="上下文承接方式" presentation="tabs" fluid options={[{ value: "片段承接", label: "片段承接" }, { value: "尾帧承接", label: "尾帧承接" }, { value: "不承接", label: "不承接" }]} />
             <div className="simple-context-detail-slot">
               {contextMode === "片段承接" && <div className="simple-context-params simple-context-interval"><span className="simple-context-param-label">承接区间</span><ContinuationRange maxSeconds={previousDuration} start={contextStartSeconds} end={contextEndSeconds} onChange={(start, end) => { setContextStartSeconds(start); setContextEndSeconds(end); }} /><small>区间来自上一任务；新任务默认选择上一任务末尾 1 秒，可拖动两端调整。</small></div>}
               {contextMode === "尾帧承接" && <p className="simple-context-note">使用上一任务最终帧作为本任务的起始视觉参考。</p>}
@@ -343,6 +400,9 @@ export function TaskEditorDialog({
             </div>
           </section>
         </aside>
+        </div>
+        </div>
+        </section>
 
         <section className="simple-prompt-editor" aria-label="提示词编辑">
           <header className="simple-prompt-head">
@@ -359,18 +419,19 @@ export function TaskEditorDialog({
               <Button className="simple-ai-enhance-button" disabled={isEnhancing || !userPrompt.trim()} onClick={enhancePrompt}><Sparkles size={14} /> {isEnhancing ? "增强中…" : "增强"}</Button>
             </>}
           </div>
-          <footer className="simple-prompt-footer"><span><strong>@</strong> 输入 @ 引用当前任务资产</span>{promptMode === "ai" && previousTaskSummary.trim() && <span className="simple-ai-context-note">AI增强会参考上一任务摘要</span>}{promptMode === "ai" && projectBackground && <span className="simple-project-context-hint">AI增强已启用项目背景</span>}</footer>
+          <WorkflowInputSlots open={open} workflowFile={selectedWorkflow?.workflowFile} loadWorkflows={onLoadWorkflows} assets={assets} bindings={inputBindings} value={workflowInputs} onChange={(value, bindings) => { setWorkflowInputs(value); setInputBindings(bindings); }} />
         </section>
 
         <footer className="simple-task-editor-actions">
           <div className="simple-task-prompt-source">
+            {saveError && <span role="alert">{saveError}</span>}
             <span>{promptMode === "ai" ? aiPrompt.trim() ? "已使用AI增强提示词" : "当前使用：AI增强提示词（尚未生成）" : "当前使用：用户提示词"}</span>
             {!isNewTask && <span className={`task-review-state is-${effectiveReviewStatus}`}>{effectiveReviewStatus === "approved" ? <><Check size={13} /> 已检查</> : "待检查"}</span>}
           </div>
           <div className="simple-task-editor-action-buttons">
             <Button onClick={onClose}>取消</Button>
-            {!isNewTask && onApproveAndNext && <Button disabled={isApproving || (promptMode === "ai" && !aiPrompt.trim())} onClick={() => void approveAndNext()}>{isApproving ? "确认中…" : reviewNavigation?.canNext ? "确认并下一个" : "确认提示词"}</Button>}
-            <Button variant="accent" disabled={promptMode === "ai" && !aiPrompt.trim()} onClick={save}>保存</Button>
+            {!isNewTask && onApproveAndNext && <Button disabled={isSaving || isEnhancing || isApproving || (promptMode === "ai" && !aiPrompt.trim())} onClick={() => void approveAndNext()}>{isApproving ? "确认中…" : reviewNavigation?.canNext ? "确认并下一个" : "确认提示词"}</Button>}
+            <Button variant="accent" disabled={isSaving || isEnhancing || isApproving || (promptMode === "ai" && !aiPrompt.trim())} onClick={() => void save()}>{isSaving ? "保存中…" : "保存"}</Button>
           </div>
         </footer>
       </div>
