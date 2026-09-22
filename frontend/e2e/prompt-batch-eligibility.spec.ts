@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createProject, createTask, openProject } from "./helpers";
+import { selectAllTasks, createProject, createTask, openProject } from "./helpers";
 
 test("prompt batch previews empty tasks and only submits eligible tasks", async ({ page }) => {
   await page.setViewportSize({ width: 960, height: 540 });
@@ -12,7 +12,7 @@ test("prompt batch previews empty tasks and only submits eligible tasks", async 
     if (request.url().endsWith("/prompt-enhancement-batches") && request.method() === "POST") submitted = request.postDataJSON().taskIds;
   });
   await openProject(page, project.title);
-  await page.getByRole("button", { name: "全选任务", exact: true }).click();
+  await selectAllTasks(page);
   await page.getByRole("button", { name: "增强提示词", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "批量 AI 增强" });
   await expect(dialog).toContainText("已选择 2 个任务");
@@ -53,7 +53,7 @@ test("changed task eligibility requires confirmation again and supports rechecki
   });
   page.on("request", request => { if (request.url().endsWith("/prompt-enhancement-batches") && request.method() === "POST") submissions += 1; });
   await openProject(page, project.title);
-  await page.getByRole("button", { name: "全选任务", exact: true }).click();
+  await selectAllTasks(page);
   await page.getByRole("button", { name: "增强提示词", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "批量 AI 增强" });
   await expect(dialog).toContainText("2 个任务可增强");
@@ -74,7 +74,7 @@ test("failed prompt preview blocks submission and retry keeps context choices", 
   await createTask(page, project.id, "第二任务");
   await page.route("**/prompt-enhancement-batches/eligibility", route => route.fulfill({ status: 503, json: {} }), { times: 1 });
   await openProject(page, project.title);
-  await page.getByRole("button", { name: "全选任务", exact: true }).click();
+  await selectAllTasks(page);
   await page.getByRole("button", { name: "增强提示词", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "批量 AI 增强" });
   await expect(dialog.getByRole("alert")).toContainText("任务状态检查失败");

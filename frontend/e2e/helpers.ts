@@ -62,3 +62,9 @@ export async function useTextPrompt(page: Page, value: string) {
   await prompt.fill(value);
   return prompt;
 }
+
+export async function selectAllTasks(page: Page) {
+  const manage = page.getByRole("button", { name: "管理任务", exact: true });
+  if (await manage.isVisible()) await manage.click();
+  await page.getByRole("button", { name: "全选", exact: true }).click();
+}

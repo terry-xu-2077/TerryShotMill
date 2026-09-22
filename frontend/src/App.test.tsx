@@ -19,6 +19,25 @@ async function openFirstProject(user: ReturnType<typeof userEvent.setup>) {
 
 describe("V0.6 Terry导演工作台", () => {
   beforeEach(() => localStorage.clear());
+  it("管理任务仅开启复选框，底栏支持全选与清空并保留管理模式", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await openFirstProject(user);
+    expect(screen.queryByRole("checkbox", { name: /^选择任务/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "管理任务" }));
+    const checks = screen.getAllByRole("checkbox", { name: /^选择任务/ });
+    checks.forEach(check => expect(check).not.toBeChecked());
+    const toolbar = screen.getByRole("region", { name: "任务操作" });
+    expect(within(toolbar).getByRole("button", { name: "生成视频" })).toBeDisabled();
+    await user.click(within(toolbar).getByRole("button", { name: "全选" }));
+    checks.forEach(check => expect(check).toBeChecked());
+    await user.click(screen.getByRole("button", { name: "切换为卡片视图" }));
+    screen.getAllByRole("checkbox", { name: /^选择任务/ }).forEach(check => expect(check).toBeChecked());
+    await user.click(within(toolbar).getByRole("button", { name: "取消选择" }));
+    screen.getAllByRole("checkbox", { name: /^选择任务/ }).forEach(check => expect(check).not.toBeChecked());
+    await user.click(screen.getByRole("button", { name: "完成管理" }));
+    expect(screen.queryByRole("checkbox", { name: /^选择任务/ })).not.toBeInTheDocument();
+  });
   it("selects tasks with Ctrl+A and keeps text selection native inside the editor", async () => {
     const user = userEvent.setup();
     renderApp();
@@ -32,7 +51,7 @@ describe("V0.6 Terry导演工作台", () => {
     expect(within(toolbar).getByRole("button", { name: "增强提示词" })).toBeVisible();
     await user.click(within(toolbar).getByRole("button", { name: "取消选择" }));
     checks.forEach(check => expect(check).not.toBeChecked());
-    expect(screen.queryByRole("region", { name: "任务操作" })).not.toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: "生成视频" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "新建任务卡" }));
     const input = screen.getAllByRole("textbox")[0];
     const textShortcut = new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true, cancelable: true });

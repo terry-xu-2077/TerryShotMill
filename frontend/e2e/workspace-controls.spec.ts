@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createProject, createTask, openProject } from "./helpers";
+import { selectAllTasks, createProject, createTask, openProject } from "./helpers";
 
 test("theme stays in the same corner and local controls keep their scope", async ({ page }) => {
   const project = await createProject(page, "区域布局");
@@ -47,7 +47,7 @@ test("single generation submits only the current task, and select-all generation
   await expect(single).toHaveCount(0);
   expect(checks[0]).toEqual([second.id]);
   expect(submissions).toEqual([[second.id]]);
-  await page.getByRole("button", { name: "全选任务", exact: true }).click();
+  await selectAllTasks(page);
   await page.getByRole("button", { name: "生成视频", exact: true }).click();
   const queue = page.getByRole("dialog", { name: "批量生成视频" });
   await queue.getByRole("button", { name: "生成 2 个视频" }).click();
@@ -116,11 +116,12 @@ test("visible checkboxes support keyboard selection, both views, select all and 
   await createTask(page, project.id, "第二条");
   await openProject(page, project.title);
   await expect(page.locator(".task-list-row:not(.is-create) .task-preview").first()).toHaveCSS("background-size", "cover");
+  await page.getByRole("button", { name: "管理任务", exact: true }).click();
   const first = page.getByRole("checkbox", { name: "选择任务 · 第一条", exact: true });
   await first.focus();
   await first.press("Space");
   await expect(first).toBeChecked();
-  await expect(page.locator(".project-task-info").getByRole("region", { name: "任务操作" })).toBeVisible();
+  await expect(page.locator(".task-action-dock").getByRole("region", { name: "任务操作" })).toBeVisible();
   await page.getByRole("button", { name: "切换为卡片视图", exact: true }).click();
   await expect(first).toBeChecked();
   const mediaSelection = page.locator(".is-card .tc-checkbox-media").first();
@@ -142,12 +143,12 @@ test("visible checkboxes support keyboard selection, both views, select all and 
   await expect(page.locator(".task-card-item.is-batch-selected")).toHaveCount(2);
   await page.getByRole("button", { name: "取消选择", exact: true }).click();
   await expect(first).not.toBeChecked();
-  await page.getByRole("button", { name: "全选任务", exact: true }).click();
+  await selectAllTasks(page);
   await expect(page.locator(".task-card-item.is-batch-selected")).toHaveCount(2);
-  await page.getByRole("button", { name: "取消全选", exact: true }).click();
+  await page.getByRole("button", { name: "取消选择", exact: true }).click();
   await expect(page.locator(".task-card-item.is-batch-selected")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "全选任务", exact: true }).click();
+  await selectAllTasks(page);
   await expect(page.getByRole("button", { name: "增强提示词", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const navigation = await page.locator(".workspace-navigation").boundingBox();
@@ -170,7 +171,7 @@ test("batch enhancement defaults to all tasks and respects explicit selection", 
     await route.fulfill({ json: { batchId: "test-enhancement", state: "queued", items: [] } });
   });
   await openProject(page, project.title);
-  await page.getByRole("button", { name: "全选任务", exact: true }).click();
+  await selectAllTasks(page);
   const open = page.getByRole("button", { name: "增强提示词", exact: true });
   const dialog = page.getByRole("dialog", { name: "批量 AI 增强", exact: true });
   await open.click();

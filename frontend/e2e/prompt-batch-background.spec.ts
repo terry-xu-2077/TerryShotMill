@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createProject, createTask, openProject } from "./helpers";
+import { selectAllTasks, createProject, createTask, openProject } from "./helpers";
 
 test("prompt batch returns to workspace once queued, without waiting or opening an editor", async ({ page }) => {
   const project = await createProject(page, "后台增强");
@@ -14,7 +14,7 @@ test("prompt batch returns to workspace once queued, without waiting or opening 
     return route.fulfill({ json: { batchId: "pending-batch", state: "running", items: [] } });
   });
   await openProject(page, project.title);
-  await page.getByRole("button", { name: "全选任务", exact: true }).click();
+  await selectAllTasks(page);
   await page.getByRole("region", { name: "任务操作" }).getByRole("button", { name: "增强提示词" }).click();
   await page.getByRole("button", { name: "开始增强" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -30,7 +30,7 @@ test("failed batch submission stays visible and can be retried", async ({ page }
     status: 503, json: { detail: "unavailable" },
   }));
   await openProject(page, project.title);
-  await page.getByRole("button", { name: "全选任务", exact: true }).click();
+  await selectAllTasks(page);
   await page.getByRole("region", { name: "任务操作" }).getByRole("button", { name: "增强提示词" }).click();
   await page.getByRole("button", { name: "开始增强" }).click();
   await expect(page.getByRole("dialog").getByRole("alert")).toContainText("增强提交未确认");
