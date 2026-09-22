@@ -34,7 +34,7 @@
 :root[data-tc-mode], :root {
   --tc-text: var(--tc-text-main);
   --tc-text-muted: color-mix(in srgb, var(--tc-text-main) 70%, var(--sm-bg));
-  --tc-text-subtle: color-mix(in srgb, var(--tc-text-main) 60%, var(--sm-bg));
+  --tc-text-subtle: color-mix(in srgb, var(--tc-text-main) 70%, var(--sm-bg));
   --tc-text-accent: var(--tc-accent);
   --tc-border-color: color-mix(in srgb, var(--sm-bg) 82%, var(--tc-text-main));
   --tc-button-radius: 999px;
@@ -56,9 +56,16 @@
   --sm-text-muted: var(--tc-text-muted);
   --sm-text-dim: var(--tc-text-subtle);
   --sm-accent: var(--tc-accent);
+  --sm-folder: oklch(from var(--tc-accent) .78 .115 230);
   --sm-accent-soft: color-mix(in srgb, var(--tc-accent) 9%, var(--sm-surface-1));
   --sm-effect: var(--tc-effect);
   --sm-success: light-dark(#237b65, #73c4a7);
+  /* Prompt syntax hues follow Accent; light/dark luminance keeps small labels readable. */
+  --sm-prompt-section: light-dark(oklch(from var(--tc-accent) .40 calc(c * .55) calc(h + 150)), oklch(from var(--tc-accent) .84 calc(c * .55) calc(h + 150)));
+  --sm-prompt-camera: light-dark(oklch(from var(--tc-accent) .42 calc(c * .65) h), oklch(from var(--tc-accent) .82 calc(c * .65) h));
+  --sm-prompt-time: light-dark(oklch(from var(--tc-accent) .40 calc(c * .5) calc(h - 120)), oklch(from var(--tc-accent) .84 calc(c * .5) calc(h - 120)));
+  --sm-prompt-transition: light-dark(oklch(from var(--tc-accent) .42 calc(c * .65) calc(h + 40)), oklch(from var(--tc-accent) .82 calc(c * .65) calc(h + 40)));
+  --sm-prompt-dialogue: light-dark(oklch(from var(--tc-accent) .40 calc(c * .7) calc(h + 85)), oklch(from var(--tc-accent) .84 calc(c * .7) calc(h + 85)));
   --sm-glass: color-mix(in srgb, var(--sm-surface-1) 86%, transparent);
   --sm-glass-edge: color-mix(in srgb, white 13%, transparent);
   --sm-surface-gradient: linear-gradient(135deg, color-mix(in srgb, var(--sm-surface-1) 97%, var(--tc-text-bright)), var(--sm-glass));
@@ -69,8 +76,9 @@
   --sm-radius: 16px;
   --sm-radius-lg: 16px;
   --sm-shadow: 0 24px 72px var(--sm-shadow-color), inset 0 1px 0 var(--sm-glass-edge);
-  --sm-fast: 180ms cubic-bezier(.2,.7,.2,1);
-  --sm-enter: 260ms cubic-bezier(.16,1,.3,1);
+  --sm-ease: cubic-bezier(.22,1,.36,1);
+  --sm-fast: 200ms var(--sm-ease);
+  --sm-enter: 300ms var(--sm-ease);
 
 }
 
@@ -85,9 +93,6 @@
 html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
 body { background: var(--sm-bg); color: var(--sm-text); overflow: hidden; }
 .theme-switch { display: flex; align-items: center; flex: 0 0 auto; width: 80px; --tc-accent: var(--sm-text-muted); }
-@media (prefers-reduced-motion: reduce) {
-  /* Accessibility takes precedence over shared-library motion and inline timing. */
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
-}
+
 button, input { font: inherit; }
 button { color: inherit; }

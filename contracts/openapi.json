@@ -188,6 +188,11 @@
           "localInference": {
             "$ref": "#/components/schemas/LocalInferenceSettingsView"
           },
+          "promptAiLabel": {
+            "default": "AI 增强服务",
+            "title": "Promptailabel",
+            "type": "string"
+          },
           "providerMode": {
             "enum": [
               "local",
@@ -480,6 +485,38 @@
         "title": "Body_import_asset_api_v1_projects__project_id__assets_post",
         "type": "object"
       },
+      "CancelVideoJobsRequest": {
+        "properties": {
+          "jobIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Jobids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "jobIds"
+        ],
+        "title": "CancelVideoJobsRequest",
+        "type": "object"
+      },
+      "CancelledVideoJobsView": {
+        "properties": {
+          "cancelledJobIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cancelledjobids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cancelledJobIds"
+        ],
+        "title": "CancelledVideoJobsView",
+        "type": "object"
+      },
       "ComfyUISettingsPayload": {
         "properties": {
           "baseUrl": {
@@ -560,6 +597,17 @@
             "title": "Bridgenodeavailable",
             "type": "boolean"
           },
+          "bridgeState": {
+            "default": "disconnected",
+            "enum": [
+              "connected",
+              "disconnected",
+              "missing",
+              "error"
+            ],
+            "title": "Bridgestate",
+            "type": "string"
+          },
           "connected": {
             "title": "Connected",
             "type": "boolean"
@@ -636,6 +684,12 @@
       },
       "ComfyUIWorkflowProfilePayload": {
         "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
           "enabled": {
             "default": true,
             "title": "Enabled",
@@ -652,6 +706,14 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "numericBindings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WorkflowNumericBindingView"
+            },
+            "title": "Numericbindings",
+            "type": "array"
           },
           "quality": {
             "default": "",
@@ -678,6 +740,11 @@
       },
       "ComfyUIWorkflowProfileView": {
         "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -689,6 +756,14 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "numericBindings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WorkflowNumericBindingView"
+            },
+            "title": "Numericbindings",
+            "type": "array"
           },
           "quality": {
             "title": "Quality",
@@ -805,6 +880,30 @@
         "title": "EditorPreference",
         "type": "object"
       },
+      "EditorPreferencePatch": {
+        "properties": {
+          "aiViewMode": {
+            "default": "visual",
+            "enum": [
+              "visual",
+              "text"
+            ],
+            "title": "Aiviewmode",
+            "type": "string"
+          },
+          "userViewMode": {
+            "default": "visual",
+            "enum": [
+              "visual",
+              "text"
+            ],
+            "title": "Userviewmode",
+            "type": "string"
+          }
+        },
+        "title": "EditorPreferencePatch",
+        "type": "object"
+      },
       "GenerationSettings": {
         "properties": {
           "contextDurationSeconds": {
@@ -830,7 +929,7 @@
             "title": "Contextendseconds"
           },
           "contextMode": {
-            "default": "不承接",
+            "default": "尾帧承接",
             "title": "Contextmode",
             "type": "string"
           },
@@ -1157,6 +1256,17 @@
       },
       "PrimaryResultView": {
         "properties": {
+          "durationSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Durationseconds"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1275,6 +1385,52 @@
         "title": "ProjectAssetView",
         "type": "object"
       },
+      "ProjectCoverSelection": {
+        "properties": {
+          "assetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assetid"
+          },
+          "kind": {
+            "enum": [
+              "auto",
+              "asset",
+              "video"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "resultId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resultid"
+          },
+          "seconds": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ProjectCoverSelection",
+        "type": "object"
+      },
       "ProjectCreateRequest": {
         "properties": {
           "description": {
@@ -1316,6 +1472,16 @@
       },
       "ProjectPatchRequest": {
         "properties": {
+          "cover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectCoverSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "anyOf": [
               {
@@ -1388,6 +1554,13 @@
             ],
             "title": "Progress"
           },
+          "promptBatches": {
+            "items": {
+              "$ref": "#/components/schemas/PromptBatchRuntime"
+            },
+            "title": "Promptbatches",
+            "type": "array"
+          },
           "state": {
             "default": "idle",
             "enum": [
@@ -1398,13 +1571,69 @@
             ],
             "title": "State",
             "type": "string"
+          },
+          "videoJobs": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTaskItem"
+            },
+            "title": "Videojobs",
+            "type": "array"
           }
         },
         "title": "ProjectRuntimeSummary",
         "type": "object"
       },
+      "ProjectRuntimeView": {
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/WorkspaceProject"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/ProjectRuntimeSummary"
+          }
+        },
+        "required": [
+          "project",
+          "runtime"
+        ],
+        "title": "ProjectRuntimeView",
+        "type": "object"
+      },
       "ProjectSettingsView": {
         "properties": {
+          "automaticCoverUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Automaticcoverurl"
+          },
+          "coverAssetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverassetid"
+          },
+          "coverUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverurl"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -1437,6 +1666,11 @@
             "title": "Assetcount",
             "type": "integer"
           },
+          "completedTaskCount": {
+            "default": 0,
+            "title": "Completedtaskcount",
+            "type": "integer"
+          },
           "coverUrl": {
             "anyOf": [
               {
@@ -1448,9 +1682,43 @@
             ],
             "title": "Coverurl"
           },
+          "createdAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "generationWarnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Generationwarnings",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "newResults": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Newresults",
+            "type": "array"
           },
           "status": {
             "enum": [
@@ -1509,6 +1777,128 @@
           "runtime"
         ],
         "title": "ProjectWorkspaceView",
+        "type": "object"
+      },
+      "PromptBatchEligibilityRequest": {
+        "properties": {
+          "taskIds": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Taskids",
+            "type": "array"
+          }
+        },
+        "title": "PromptBatchEligibilityRequest",
+        "type": "object"
+      },
+      "PromptBatchEligibilityView": {
+        "properties": {
+          "eligibleTaskIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Eligibletaskids",
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/PromptBatchSkippedItem"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "eligibleTaskIds",
+          "skipped"
+        ],
+        "title": "PromptBatchEligibilityView",
+        "type": "object"
+      },
+      "PromptBatchRuntime": {
+        "properties": {
+          "cancelledCount": {
+            "title": "Cancelledcount",
+            "type": "integer"
+          },
+          "completedCount": {
+            "title": "Completedcount",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "failedCount": {
+            "title": "Failedcount",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeTaskItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "queuedCount": {
+            "title": "Queuedcount",
+            "type": "integer"
+          },
+          "runningCount": {
+            "title": "Runningcount",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "state",
+          "completedCount",
+          "failedCount",
+          "cancelledCount",
+          "queuedCount",
+          "runningCount",
+          "items"
+        ],
+        "title": "PromptBatchRuntime",
+        "type": "object"
+      },
+      "PromptBatchSkippedItem": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "busy",
+              "empty-prompt"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "taskId": {
+            "title": "Taskid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "reason",
+          "message"
+        ],
+        "title": "PromptBatchSkippedItem",
         "type": "object"
       },
       "PromptEnhancementContextRequest": {
@@ -1875,6 +2265,116 @@
         "title": "ResultView",
         "type": "object"
       },
+      "RuntimeActionRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "up",
+              "down",
+              "pause",
+              "resume",
+              "remove"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "RuntimeActionRequest",
+        "type": "object"
+      },
+      "RuntimeTaskItem": {
+        "properties": {
+          "continuationFallback": {
+            "default": false,
+            "title": "Continuationfallback",
+            "type": "boolean"
+          },
+          "elapsedSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsedseconds"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "skipped",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "statusNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statusnote"
+          },
+          "taskId": {
+            "title": "Taskid",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "title",
+          "state"
+        ],
+        "title": "RuntimeTaskItem",
+        "type": "object"
+      },
       "SystemPromptPresetPayload": {
         "properties": {
           "id": {
@@ -2112,7 +2612,7 @@
           "generation": {
             "$ref": "#/components/schemas/GenerationSettings",
             "default": {
-              "contextMode": "不承接",
+              "contextMode": "尾帧承接",
               "mode": "全能参考",
               "quality": "标准",
               "resolution": "1080p"
@@ -2183,8 +2683,26 @@
             "title": "Durationseconds",
             "type": "number"
           },
+          "generationStatusNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generationstatusnote"
+          },
           "generationSummary": {
             "$ref": "#/components/schemas/GenerationSummary"
+          },
+          "generationWarnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Generationwarnings",
+            "type": "array"
           },
           "hasActivePromptJob": {
             "default": false,
@@ -2199,6 +2717,28 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "latestPromptRevisionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestpromptrevisionid"
+          },
+          "latestVideoResultId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestvideoresultid"
           },
           "previewUrl": {
             "anyOf": [
@@ -2265,6 +2805,9 @@
             "title": "Status",
             "type": "string"
           },
+          "timing": {
+            "$ref": "#/components/schemas/TaskTiming"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -2289,6 +2832,88 @@
           "generationSummary"
         ],
         "title": "TaskSummary",
+        "type": "object"
+      },
+      "TaskTiming": {
+        "properties": {
+          "measuredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measuredat"
+          },
+          "promptQueueSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promptqueueseconds"
+          },
+          "promptQueued": {
+            "default": false,
+            "title": "Promptqueued",
+            "type": "boolean"
+          },
+          "promptRunning": {
+            "default": false,
+            "title": "Promptrunning",
+            "type": "boolean"
+          },
+          "promptSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promptseconds"
+          },
+          "videoQueueSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Videoqueueseconds"
+          },
+          "videoQueued": {
+            "default": false,
+            "title": "Videoqueued",
+            "type": "boolean"
+          },
+          "videoRunning": {
+            "default": false,
+            "title": "Videorunning",
+            "type": "boolean"
+          },
+          "videoSeconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Videoseconds"
+          }
+        },
+        "title": "TaskTiming",
         "type": "object"
       },
       "ValidationError": {
@@ -2346,6 +2971,16 @@
             },
             "title": "Skipped",
             "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
@@ -2388,6 +3023,16 @@
             },
             "title": "Skipped",
             "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
@@ -2400,6 +3045,28 @@
       },
       "VideoBatchSkippedItem": {
         "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
           "reason": {
             "title": "Reason",
             "type": "string"
@@ -2463,6 +3130,62 @@
           "reference"
         ],
         "title": "WorkflowInputSlot",
+        "type": "object"
+      },
+      "WorkflowNumericBindingView": {
+        "properties": {
+          "fps": {
+            "default": 24,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1000.0,
+            "title": "Fps",
+            "type": "number"
+          },
+          "frameMultiple": {
+            "default": 1,
+            "maximum": 1024.0,
+            "minimum": 1.0,
+            "title": "Framemultiple",
+            "type": "integer"
+          },
+          "frameOffset": {
+            "default": 0,
+            "maximum": 1023.0,
+            "minimum": 0.0,
+            "title": "Frameoffset",
+            "type": "integer"
+          },
+          "portId": {
+            "minLength": 1,
+            "title": "Portid",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "constant",
+              "durationSeconds",
+              "frameCount"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "portId",
+          "source"
+        ],
+        "title": "WorkflowNumericBindingView",
         "type": "object"
       },
       "WorkspaceProject": {
@@ -2579,6 +3302,18 @@
     "/api/v1/comfyui/status": {
       "get": {
         "operationId": "get_status_api_v1_comfyui_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_workflows",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Workflows",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2589,6 +3324,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Get Status",
@@ -2719,6 +3464,31 @@
           }
         },
         "summary": "Create Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/runtime": {
+      "get": {
+        "operationId": "global_runtime_api_v1_projects_runtime_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectRuntimeView"
+                  },
+                  "title": "Response Global Runtime Api V1 Projects Runtime Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Global Runtime",
         "tags": [
           "projects"
         ]
@@ -3079,6 +3849,58 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/prompt-enhancement-batches/eligibility": {
+      "post": {
+        "operationId": "check_prompt_batch_eligibility_api_v1_projects__project_id__prompt_enhancement_batches_eligibility_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromptBatchEligibilityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptBatchEligibilityView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Prompt Batch Eligibility",
+        "tags": [
+          "batch-review"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/prompt-enhancement-batches/{batch_id}": {
       "get": {
         "operationId": "get_prompt_enhancement_batch_api_v1_projects__project_id__prompt_enhancement_batches__batch_id__get",
@@ -3125,6 +3947,108 @@
           }
         },
         "summary": "Get Prompt Enhancement Batch",
+        "tags": [
+          "batch-review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/prompt-enhancement-batches/{batch_id}/cancel": {
+      "post": {
+        "operationId": "cancel_prompt_enhancement_batch_api_v1_projects__project_id__prompt_enhancement_batches__batch_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchPromptEnhancementResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Prompt Enhancement Batch",
+        "tags": [
+          "batch-review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/prompt-enhancement-batches/{batch_id}/retry-failed": {
+      "post": {
+        "operationId": "retry_failed_prompt_enhancement_batch_api_v1_projects__project_id__prompt_enhancement_batches__batch_id__retry_failed_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchPromptEnhancementResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Failed Prompt Enhancement Batch",
         "tags": [
           "batch-review"
         ]
@@ -3221,6 +4145,78 @@
         "summary": "Get Prompt Review State",
         "tags": [
           "batch-review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/runtime/{kind}/{job_id}": {
+      "post": {
+        "operationId": "runtime_action_api_v1_projects__project_id__runtime__kind___job_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "prompt",
+                "video"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Runtime Action",
+        "tags": [
+          "projects"
         ]
       }
     },
@@ -3470,6 +4466,67 @@
           }
         },
         "summary": "Get Task Editor",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/{task_id}/editor-preference": {
+      "patch": {
+        "operationId": "update_editor_preference_api_v1_projects__project_id__tasks__task_id__editor_preference_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditorPreferencePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditorPreference"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Editor Preference",
         "tags": [
           "tasks"
         ]
@@ -4023,6 +5080,58 @@
         "summary": "Check Video Batch Eligibility",
         "tags": [
           "batch-review"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/video-generation-queue/cancel": {
+      "post": {
+        "operationId": "cancel_queued_videos_api_v1_projects__project_id__video_generation_queue_cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelVideoJobsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelledVideoJobsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Queued Videos",
+        "tags": [
+          "generation"
         ]
       }
     },

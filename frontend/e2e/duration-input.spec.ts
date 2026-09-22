@@ -1,0 +1,30 @@
+import { expect, test } from "@playwright/test";
+import { createProject, createTask, openProject } from "./helpers";
+
+test("duration track ends at 15 while typed values above the track survive saving", async ({ page }) => {
+  const project = await createProject(page, "秒数输入");
+  const task = await createTask(page, project.id);
+  await openProject(page, project.title);
+  await page.locator(".task-list-row:not(.is-create)").dblclick();
+  const toggle = page.getByRole("button", { name: "生成参数", exact: true });
+  if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+  const slider = page.getByRole("slider", { name: "总秒数", exact: true });
+  const number = page.getByRole("spinbutton", { name: "总秒数数值", exact: true });
+  await expect(slider).toHaveAttribute("max", "15");
+  await slider.focus();
+  await slider.press("End");
+  await expect(number).toHaveValue("15");
+  await number.fill("90");
+  await number.blur();
+  await expect(slider).toHaveValue("15");
+  await expect(number).toHaveValue("90");
+  const saved = page.waitForResponse(response => response.url().endsWith(`/tasks/${task.id}`) && response.request().method() === "PATCH");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  expect((await saved).ok()).toBeTruthy();
+  const editor = await (await page.request.get(`/api/v1/projects/${project.id}/tasks/${task.id}/editor`)).json();
+  expect(editor.durationSeconds).toBe(90);
+  await page.locator(".task-list-row:not(.is-create)").dblclick();
+  if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+  await expect(number).toHaveValue("90");
+  await expect(slider).toHaveValue("15");
+});

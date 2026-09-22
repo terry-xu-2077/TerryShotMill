@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
+import shutil
+import subprocess
 from pathlib import Path, PurePosixPath
+from uuid import uuid4
+
+from shotmill.errors import ShotMillError
 
 _SAFE_NAME_RE = re.compile(r"[^\w.()\-\u4e00-\u9fff]+", re.UNICODE)
 
@@ -57,6 +63,45 @@ class MediaStorage:
         except ValueError as exc:
             raise ValueError("Path escapes project storage root") from exc
         return candidate
+
+    def video_thumbnail(self, project_id: str, relative_path: str, *, seconds: float = 0) -> str:
+        source = self.resolve(project_id, relative_path)
+        if not math.isfinite(seconds) or seconds < 0:
+            raise ShotMillError("FRAME_TIME_INVALID", "截帧时间无效。", 422)
+        if not source.is_file():
+            raise ShotMillError("MEDIA_NOT_FOUND", "视频文件不存在。", 404)
+        stat = source.stat()
+        key = hashlib.sha256(
+            f"{relative_path}|{stat.st_size}|{stat.st_mtime_ns}|{seconds:.6f}".encode()
+        ).hexdigest()
+        relative = f"thumbnails/{key}.png"
+        destination = self.resolve(project_id, relative)
+        if destination.is_file():
+            return relative
+        executable = shutil.which("ffmpeg")
+        if not executable:
+            raise ShotMillError("FRAME_TOOL_UNAVAILABLE", "缺少 FFmpeg，无法截取视频封面。", 503)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(f"{key}-{uuid4().hex}.png")
+        try:
+            subprocess.run(
+                [executable, "-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe",
+                 "-ss", str(seconds), "-i", str(source), "-frames:v", "1",
+                 "-vf", "scale=960:960:force_original_aspect_ratio=decrease",
+                 "-update", "1", str(temporary)],
+                check=True, capture_output=True, timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if not temporary.is_file() or not temporary.stat().st_size:
+                raise ShotMillError("FRAME_UNAVAILABLE", "该时间点没有可用画面，请重新选择。", 422)
+            temporary.replace(destination)
+        except (subprocess.SubprocessError, OSError) as exc:
+            raise ShotMillError(
+                "FRAME_UNAVAILABLE", "视频截帧失败，请检查视频后重试。", 422
+            ) from exc
+        finally:
+            temporary.unlink(missing_ok=True)
+        return relative
 
     @staticmethod
     def media_url(project_id: str, project_relative_path: str) -> str:

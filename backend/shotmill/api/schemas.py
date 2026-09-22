@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from shotmill.frontend_adapter.models import (
     ApiModel,
     EditorPreference,
     GenerationSettings,
     TaskAssetRef,
+    WorkflowNumericBindingView,
 )
 
 
@@ -31,6 +32,21 @@ class ComfyUIWorkflowProfilePayload(ApiModel):
     quality: str = ""
     workflow_file: str = ""
     enabled: bool = True
+    description: str = Field(default="", max_length=2000)
+    numeric_bindings: list[WorkflowNumericBindingView] = []
+
+    @model_validator(mode="after")
+    def valid_numeric_bindings(self):
+        seen = set()
+        for binding in self.numeric_bindings:
+            if binding.port_id in seen:
+                raise ValueError("同一个输入端口只能配置一次")
+            seen.add(binding.port_id)
+            if binding.source == "constant" and binding.value is None:
+                raise ValueError("固定数值不能为空")
+            if binding.frame_offset >= binding.frame_multiple:
+                raise ValueError("帧数偏移必须小于帧数倍数")
+        return self
 
 
 class ComfyUISettingsPayload(ApiModel):
@@ -64,10 +80,18 @@ class ApplicationSettingsPatch(ApiModel):
     comfyui: ComfyUISettingsPayload = ComfyUISettingsPayload()
 
 
+class ProjectCoverSelection(ApiModel):
+    kind: Literal["auto", "asset", "video"]
+    asset_id: str | None = None
+    result_id: str | None = None
+    seconds: float = Field(default=0, ge=0, allow_inf_nan=False)
+
+
 class ProjectPatchRequest(ApiModel):
     title: str | None = None
     description: str | None = None
     use_description_for_ai_prompt: bool | None = None
+    cover: ProjectCoverSelection | None = None
 
 
 class AssetPatchRequest(ApiModel):
@@ -89,6 +113,11 @@ class TaskSaveRequest(ApiModel):
     asset_bindings: list[TaskAssetRef] = []
     editor_preference: EditorPreference = EditorPreference()
     revision: int | None = None
+
+
+class EditorPreferencePatch(ApiModel):
+    user_view_mode: Literal["visual", "text"] = "visual"
+    ai_view_mode: Literal["visual", "text"] = "visual"
 
 
 class TaskReorderRequest(ApiModel):
@@ -124,6 +153,10 @@ class PromptEnhancementPreviewRequest(PromptEnhancementRequest):
     previous_task_id: str | None = None
 
 
+class CancelVideoJobsRequest(ApiModel):
+    job_ids: list[str]
+
+
 class GenerationSubmitRequest(ApiModel):
     seed: int | None = None
 
@@ -136,6 +169,10 @@ class BatchPromptEnhancementRequest(ApiModel):
     task_ids: list[str] = []
     include_project_background: bool = False
     include_previous_task_summary: bool = False
+
+
+class PromptBatchEligibilityRequest(ApiModel):
+    task_ids: list[str] = []
 
 
 class VideoBatchRequest(ApiModel):

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from shotmill.application.context_duration import previous_video_duration
 from shotmill.domain.entities import ContextLink, Task, TaskAssetBinding, new_id, utcnow
 from shotmill.domain.enums import PromptSource, TaskState
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import ConflictError, NotFoundError, ShotMillError
+from shotmill.media.storage import MediaStorage
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,8 +37,11 @@ class SaveTaskData:
 
 
 class TaskService:
-    def __init__(self, uow_factory: Callable[[], UnitOfWork]) -> None:
+    def __init__(
+        self, uow_factory: Callable[[], UnitOfWork], storage: MediaStorage | None = None
+    ) -> None:
         self.uow_factory = uow_factory
+        self.storage = storage
 
     def _validate_assets(
         self,
@@ -68,7 +74,7 @@ class TaskService:
     @staticmethod
     def _normalize_generation(generation: dict | None, previous_duration: float | None) -> dict:
         value = dict(generation or {})
-        context_mode = str(value.get("contextMode", value.get("context_mode", "不承接")))
+        context_mode = str(value.get("contextMode", value.get("context_mode", "尾帧承接")))
         start = value.get("contextStartSeconds", value.get("context_start_seconds"))
         end = value.get("contextEndSeconds", value.get("context_end_seconds"))
         duration = value.get("contextDurationSeconds", value.get("context_duration_seconds"))
@@ -88,7 +94,13 @@ class TaskService:
                     start = max(0.0, end - 1.0)
             start = float(start)
             end = float(end)
-            if start < 0 or end <= start or end > previous_duration + 1e-9:
+            if (
+                not math.isfinite(start)
+                or not math.isfinite(end)
+                or start < 0
+                or end <= start
+                or end > previous_duration + 1e-9
+            ):
                 raise ShotMillError(
                     "INVALID_CONTEXT_RANGE",
                     "Continuation range is outside the previous task duration",
@@ -107,11 +119,24 @@ class TaskService:
             "contextStartSeconds": start,
             "contextEndSeconds": end,
             "contextDurationSeconds": duration,
-            **{key: item for key, item in value.items() if key not in {
-                "resolution", "quality", "mode", "contextMode", "context_mode",
-                "contextStartSeconds", "context_start_seconds", "contextEndSeconds",
-                "context_end_seconds", "contextDurationSeconds", "context_duration_seconds"
-            }},
+            **{
+                key: item
+                for key, item in value.items()
+                if key
+                not in {
+                    "resolution",
+                    "quality",
+                    "mode",
+                    "contextMode",
+                    "context_mode",
+                    "contextStartSeconds",
+                    "context_start_seconds",
+                    "contextEndSeconds",
+                    "context_end_seconds",
+                    "contextDurationSeconds",
+                    "context_duration_seconds",
+                }
+            },
         }
 
     @staticmethod
@@ -149,7 +174,7 @@ class TaskService:
             previous = self._previous_task(tasks, order)
             generation = self._normalize_generation(
                 data.generation,
-                previous.planned_duration_seconds if previous else None,
+                previous_video_duration(uow, previous, self.storage),
             )
             bindings = self._validate_assets(uow, project_id, data.asset_bindings)
             source = PromptSource(data.prompt_source)
@@ -168,14 +193,10 @@ class TaskService:
                 generation_params=generation,
                 planned_duration_seconds=max(0.1, float(data.duration_seconds)),
                 user_view_mode=(
-                    data.user_view_mode
-                    if data.user_view_mode in {"visual", "text"}
-                    else "visual"
+                    data.user_view_mode if data.user_view_mode in {"visual", "text"} else "visual"
                 ),
                 ai_view_mode=(
-                    data.ai_view_mode
-                    if data.ai_view_mode in {"visual", "text"}
-                    else "visual"
+                    data.ai_view_mode if data.ai_view_mode in {"visual", "text"} else "visual"
                 ),
                 asset_bindings=bindings,
                 created_at=now,
@@ -188,6 +209,26 @@ class TaskService:
             project.updated_at = now
             uow.projects.update(project)
             return task
+
+    def update_editor_preference(
+        self, project_id: str, task_id: str, *,
+        user_view_mode: str | None = None, ai_view_mode: str | None = None,
+    ) -> dict[str, str]:
+        # Presentation preferences must not save drafts or change production/review state.
+        values = {key: value for key, value in {
+            "user_view_mode": user_view_mode, "ai_view_mode": ai_view_mode,
+        }.items() if value is not None}
+        if any(value not in {"visual", "text"} for value in values.values()):
+            raise ShotMillError("INVALID_VIEW_MODE", "Invalid prompt view mode", 422)
+        with self.uow_factory() as uow:
+            task = uow.tasks.get(task_id)
+            if task is None or task.project_id != project_id:
+                raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            uow.tasks.update_editor_preference(task_id, values)
+            return {
+                "user_view_mode": values.get("user_view_mode", task.user_view_mode),
+                "ai_view_mode": values.get("ai_view_mode", task.ai_view_mode),
+            }
 
     def update(self, project_id: str, task_id: str, data: SaveTaskData) -> Task:
         with self.uow_factory() as uow:
@@ -216,18 +257,14 @@ class TaskService:
             task.planned_duration_seconds = max(0.1, float(data.duration_seconds))
             task.generation_params = self._normalize_generation(
                 data.generation,
-                previous.planned_duration_seconds if previous else None,
+                previous_video_duration(uow, previous, self.storage),
             )
             task.asset_bindings = self._validate_assets(uow, project_id, data.asset_bindings)
             task.user_view_mode = (
-                data.user_view_mode
-                if data.user_view_mode in {"visual", "text"}
-                else "visual"
+                data.user_view_mode if data.user_view_mode in {"visual", "text"} else "visual"
             )
             task.ai_view_mode = (
-                data.ai_view_mode
-                if data.ai_view_mode in {"visual", "text"}
-                else "visual"
+                data.ai_view_mode if data.ai_view_mode in {"visual", "text"} else "visual"
             )
             task.select_final_prompt()
             if old_prompt_source != task.prompt_source or old_final != task.final_prompt:

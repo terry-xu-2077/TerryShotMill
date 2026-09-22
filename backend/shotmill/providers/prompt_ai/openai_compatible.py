@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+from typing import Any
 
 import httpx
 
@@ -37,6 +39,31 @@ class OpenAICompatiblePromptAIProvider:
             audio_understanding=False,
             system_prompt=True,
             structured_output=False,
+        )
+
+    @property
+    def display_name(self) -> str:
+        return f"API · {self.model}"
+
+    def capture_profile(self) -> dict[str, Any]:
+        return {
+            "providerId": self.id, "version": 1, "baseUrl": self.base_url,
+            "modelId": self.model, "nativeVideo": self.capability.native_video_input,
+            "timeoutSeconds": self.timeout_seconds,
+            "credentialFingerprint": hashlib.sha256((self.api_key or "").encode()).hexdigest(),
+        }
+
+    def bind_profile(self, profile: dict[str, Any]) -> OpenAICompatiblePromptAIProvider:
+        if profile.get("credentialFingerprint") != hashlib.sha256(
+            (self.api_key or "").encode()
+        ).hexdigest():
+            raise ShotMillError(
+                "PROMPT_CREDENTIAL_CHANGED", "增强服务凭据已变化，请重新提交增强。", 409
+            )
+        return OpenAICompatiblePromptAIProvider(
+            profile["baseUrl"], profile["modelId"], self.api_key,
+            supports_native_video=profile["nativeVideo"],
+            timeout_seconds=profile["timeoutSeconds"], transport=self.transport,
         )
 
     async def enhance(self, request: PromptAIRequest) -> PromptAIResponse:
@@ -142,6 +169,7 @@ class OpenAICompatiblePromptAIProvider:
 
 class UnavailablePromptAIProvider:
     id = "unconfigured"
+    display_name = "未配置增强模型"
     capability = PromptAIProviderCapability(
         image_input=False,
         native_video_input=False,

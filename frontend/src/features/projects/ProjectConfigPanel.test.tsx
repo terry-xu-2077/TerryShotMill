@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -6,20 +6,52 @@ import { makeMockProjects } from "../../mock/projects";
 import { OverlayProvider } from "../../ui/overlay";
 import { ProjectConfigPanel } from "./ProjectConfigPanel";
 
-function renderPanel(onSave = vi.fn()) {
+function renderPanel(onSave = vi.fn(), onClose = vi.fn()) {
   const project = makeMockProjects()[0];
   return {
     project,
     onSave,
+    onClose,
     ...render(
       <OverlayProvider>
-        <ProjectConfigPanel open project={project} onClose={vi.fn()} onSave={onSave} />
+        <ProjectConfigPanel open project={project} onClose={onClose} onSave={onSave} />
       </OverlayProvider>,
     ),
   };
 }
 
 describe("ProjectConfigPanel", () => {
+  it("waits for saving, prevents duplicate submissions and preserves edits on failure", async () => {
+    const user = userEvent.setup();
+    let rejectSave!: (error: Error) => void;
+    const onSave = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectSave = reject; })).mockResolvedValue(undefined);
+    const { onClose } = renderPanel(onSave);
+    const title = screen.getByRole("textbox", { name: "项目标题" });
+    await user.clear(title);
+    await user.type(title, "保留我的修改");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "保存中…" })).toBeDisabled();
+    rejectSave(new Error("offline"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("保存失败");
+    expect(title).toHaveValue("保留我的修改");
+    expect(onClose).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(onSave.mock.calls[1]).toEqual(onSave.mock.calls[0]);
+  });
+
+  it("opens an asset image directly and closes it by clicking the large image", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(screen.getByRole("button", { name: /资产管理/ }));
+    expect(screen.queryByRole("button", { name: "全屏查看资产" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("img", { name: "林澜 · 雨夜造型" }));
+    const preview = screen.getByRole("dialog", { name: "林澜 · 雨夜造型" });
+    await user.click(within(preview).getByRole("img", { name: "林澜 · 雨夜造型" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "林澜 · 雨夜造型" })).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog", { name: "项目配置" })).toBeInTheDocument();
+  });
   it("uses a fixed two-column asset manager with an internal scroll list", async () => {
     const user = userEvent.setup();
     renderPanel();

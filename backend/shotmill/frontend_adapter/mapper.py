@@ -103,8 +103,10 @@ def map_task_summary(
             id=primary.id,
             preview_url=primary.preview_url,
             video_url=primary.video_url,
+            duration_seconds=primary.metadata.get("durationSeconds"),
         )
     return TaskSummary(
+        latest_video_result_id=latest.id if latest else None,
         id=task.id,
         display_number=task.display_order,
         title=task.title,
@@ -196,23 +198,23 @@ def map_project_summary(
     asset_previews: dict[str, str | None] | None = None,
 ) -> ProjectSummary:
     cover_url = None
-    for task in tasks:
+    for task in sorted(tasks, key=lambda item: item.display_order)[:1]:
         results = results_by_task.get(task.id, [])
         primary = next((item for item in results if item.id == task.primary_result_id), None)
         candidate = primary or (results[0] if results else None)
         if candidate and candidate.preview_url:
             cover_url = candidate.preview_url
-            break
+        else:
+            cover_url = task_reference_preview(task, asset_previews or {})
     asset_previews = asset_previews or {}
     cover_url = asset_previews.get(project.cover_asset_id) or cover_url
-    if not cover_url:
-        cover_url = next((preview for task in tasks
-                          if (preview := task_reference_preview(task, asset_previews))), None)
-    if not cover_url:
-        cover_url = next((preview for preview in asset_previews.values() if preview), None)
     return ProjectSummary(
+        created_at=project.created_at,
+        new_results=[{"video": results[0].id} for results in results_by_task.values() if results],
         id=project.id,
         title=project.title,
+        description=project.description,
+        completed_task_count=sum(bool(results_by_task.get(task.id)) for task in tasks),
         status=project_status(tasks),
         cover_url=cover_url,
         task_count=len(tasks),

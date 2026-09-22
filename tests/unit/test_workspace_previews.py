@@ -50,3 +50,13 @@ def test_explicit_project_cover_is_respected_without_tasks():
     assert map_project_summary(project, [], 2, {}, asset_previews={
         "other": "/other.png", "cover": "/cover.png",
     }).cover_url == "/cover.png"
+
+
+def test_automatic_cover_follows_first_task_even_if_later_task_has_video():
+    first = task_with_references()
+    later = Task(id="later-task", project_id="project", display_order=2, title="Later")
+    result = Result(id="r", project_id="project", task_id=later.id, job_id="j",
+                    video_url="/later.mp4", preview_url="/later-result.png")
+    view = map_project_summary(Project(id="project", title="Project"), [later, first],
+                               3, {later.id: [result]}, asset_previews={"first": "/first.png"})
+    assert view.cover_url == "/first.png"

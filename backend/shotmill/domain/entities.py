@@ -114,6 +114,7 @@ class Job:
     provider_profile_snapshot: dict[str, Any]
     params_snapshot: dict[str, Any]
     context_snapshot: dict[str, Any]
+    execution_context: dict[str, Any] | None = None
     seed: int | None = None
     provider_job_id: str | None = None
     submitted_at: datetime = field(default_factory=utcnow)
@@ -150,6 +151,7 @@ class AiPromptRevision:
     skill_version: str
     provider_profile_id: str | None = None
     model: str | None = None
+    elapsed_seconds: float | None = None
     previous_task_summary_snapshot: str | None = None
     created_at: datetime = field(default_factory=utcnow)
 

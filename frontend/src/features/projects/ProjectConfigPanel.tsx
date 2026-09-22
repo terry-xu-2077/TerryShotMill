@@ -1,3 +1,4 @@
+import { categoryLabel } from "../assets/assetCategories";
 import {
   FileImage,
   Folder,
@@ -14,23 +15,19 @@ import { Button, Checkbox, SegmentedControl, SlidingTabs, TextField } from "terr
 import type { ProjectAsset } from "../../domain/storyboard";
 import type { DirectorProject } from "../../mock/projects";
 import { Dialog } from "../../ui/overlay";
+import type { ProjectCoverSelection } from "../../gateways/projectGateway";
+import { ProjectCoverEditor } from "./ProjectCoverEditor";
 
 type ProjectConfigTab = "info" | "assets";
-type ProjectSettingsPatch = Pick<DirectorProject, "title" | "description" | "useDescriptionForAiPrompt">;
+type ProjectSettingsPatch = Pick<DirectorProject, "title" | "description" | "useDescriptionForAiPrompt"> & { cover?: ProjectCoverSelection };
 
 type Props = {
   open: boolean;
   project: DirectorProject;
   onClose: () => void;
-  onSave: (settings: ProjectSettingsPatch, assets: ProjectAsset[]) => void;
+  onSave: (settings: ProjectSettingsPatch, assets: ProjectAsset[]) => void | Promise<void>;
 };
 
-const categoryLabel: Record<ProjectAsset["category"], string> = {
-  character: "角色",
-  scene: "场景",
-  prop: "道具",
-  reference: "参考",
-};
 
 const categories = Object.entries(categoryLabel) as Array<[ProjectAsset["category"], string]>;
 
@@ -77,10 +74,12 @@ function AssetPreview({
   onTagsChange: (tags: string[]) => void;
 }) {
   const previewRef = useRef<HTMLDivElement>(null);
+  const [imageOpen, setImageOpen] = useState(false);
   const [tagText, setTagText] = useState(asset?.tags.join("、") ?? "");
 
   useEffect(() => {
     setTagText(asset?.tags.join("、") ?? "");
+    setImageOpen(false);
   }, [asset?.id]);
 
   if (!asset) {
@@ -98,7 +97,7 @@ function AssetPreview({
     <div className="project-asset-detail">
       <div ref={previewRef} className={`project-asset-preview is-${asset.mediaType}`}>
         {asset.mediaType === "image" && source ? (
-          <img src={source} alt={asset.name} />
+          <button type="button" className="project-asset-image-button" aria-label={`放大 ${asset.name}`} onClick={() => setImageOpen(true)}><img src={source} alt={asset.name} /></button>
         ) : asset.mediaType === "video" ? (
           <video controls preload="metadata" poster={asset.previewUrl} src={asset.mediaUrl || asset.projectRelativePath} />
         ) : asset.mediaType === "audio" ? (
@@ -111,12 +110,16 @@ function AssetPreview({
           <div className="project-asset-preview-empty">暂无预览</div>
         )}
 
-        {asset.mediaType !== "audio" && (
+        {asset.mediaType === "video" && (
           <button type="button" className="project-asset-fullscreen" aria-label="全屏查看资产" title="全屏查看" onClick={requestFullscreen}>
             <Maximize2 size={15} />
           </button>
         )}
       </div>
+
+      {asset.mediaType === "image" && <Dialog open={imageOpen} size="wide" icon="image" title={asset.name} onClose={() => setImageOpen(false)}>
+        <button type="button" className="project-asset-large-image" aria-label="关闭大图" onClick={() => setImageOpen(false)}><img src={source} alt={asset.name} /></button>
+      </Dialog>}
 
       <section className="project-asset-meta" aria-label="资产信息">
         <div className="project-asset-editable-meta">
@@ -165,9 +168,17 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
   const [assets, setAssets] = useState<ProjectAsset[]>(project.snapshot.assets);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(project.snapshot.assets[0]?.id ?? null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [cover, setCover] = useState<ProjectCoverSelection>();
+  const [coverPreview, setCoverPreview] = useState<string>();
+  const savePending = useRef(false);
+  const editSession = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { editSession.current = null; return; }
+    if (editSession.current === project.id) return;
+    editSession.current = project.id;
     const nextAssets = project.snapshot.assets.map((asset) => ({ ...asset, tags: [...asset.tags] }));
     setTab("info");
     setTitle(project.title);
@@ -175,6 +186,9 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
     setUseDescriptionForAiPrompt(project.useDescriptionForAiPrompt);
     setAssets(nextAssets);
     setSelectedAssetId(nextAssets[0]?.id ?? null);
+    setSaveError("");
+    setCover(undefined);
+    setCoverPreview(undefined);
   }, [open, project]);
 
   const selectedAsset = useMemo(
@@ -220,14 +234,36 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
 
   const removeAsset = (assetId: string) => {
     setAssets((current) => current.filter((asset) => asset.id !== assetId));
+    if (cover?.assetId === assetId || (!cover && project.coverAssetId === assetId)) {
+      setCover({ kind: "auto" });
+      setCoverPreview(undefined);
+    }
   };
 
   const patchAsset = (assetId: string, patch: Partial<Pick<ProjectAsset, "name" | "category" | "tags">>) => {
     setAssets((current) => current.map((asset) => asset.id === assetId ? { ...asset, ...patch } : asset));
   };
 
+  const close = () => { if (!savePending.current) onClose(); };
+  const save = async () => {
+    if (savePending.current || !title.trim()) return;
+    savePending.current = true;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onSave({ title: title.trim(), description: description.trim(), useDescriptionForAiPrompt, ...(cover ? { cover } : {}) },
+        assets.map((asset) => ({ ...asset, name: asset.name.trim() || originalFileName(asset).replace(/\.[^.]+$/, "") || "未命名资产" })));
+      onClose();
+    } catch {
+      setSaveError("保存失败，修改已保留，请检查连接后重试。");
+    } finally {
+      savePending.current = false;
+      setSaving(false);
+    }
+  };
+
   return (
-    <Dialog open={open} size="wide" title="项目配置" onClose={onClose}>
+    <Dialog open={open} size="wide" icon="configure" title="项目配置" onClose={close}>
       <div className="project-config-dialog project-config-dialog-v2">
         <nav className="project-config-tabs" aria-label="项目配置分类">
           <div className="project-config-tab-slot">
@@ -238,9 +274,10 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
           </div>
         </nav>
 
-        <section className="project-config-content">
+        <section className="project-config-content" inert={saving}>
           {tab === "info" ? (
             <div className="project-config-info">
+              <ProjectCoverEditor assets={assets} results={project.snapshot.results} coverUrl={project.coverUrl} automaticCoverUrl={project.automaticCoverUrl} previewUrl={coverPreview} custom={Boolean(project.coverAssetId)} value={cover} onChange={(selection, preview) => { setCover(selection); setCoverPreview(preview); }} />
               <label>
                 <span>项目标题</span>
                 <TextField value={title} onChange={setTitle} />
@@ -335,15 +372,9 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
         </section>
 
         <footer className="project-config-actions">
-          <Button onClick={onClose}>取消</Button>
-          <Button variant="accent" disabled={!title.trim()} onClick={() => {
-            onSave({
-              title: title.trim(),
-              description: description.trim(),
-              useDescriptionForAiPrompt,
-            }, assets.map((asset) => ({ ...asset, name: asset.name.trim() || originalFileName(asset).replace(/\.[^.]+$/, "") || "未命名资产" })));
-            onClose();
-          }}>保存</Button>
+          {saveError && <span className="project-config-save-error" role="alert">{saveError}</span>}
+          <Button disabled={saving} onClick={close}>取消</Button>
+          <Button variant="accent" disabled={saving || !title.trim()} onClick={() => void save()}>{saving ? "保存中…" : "保存"}</Button>
         </footer>
       </div>
     </Dialog>

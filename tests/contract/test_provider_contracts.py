@@ -256,6 +256,7 @@ def test_comfyui_optional_asset_slots_are_pruned_with_dangling_inputs(
 
 def test_comfyui_provider_uploads_assets_submits_and_collects_video(
     tmp_path: Path,
+    bridge_snapshot,
 ) -> None:
     media_path = tmp_path / "frame.png"
     media_path.write_bytes(b"image-bytes")
@@ -290,6 +291,14 @@ def test_comfyui_provider_uploads_assets_submits_and_collects_video(
     submitted: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/shotmill/v1/workflows/validate":
+            assert "assetValues" not in json.loads(request.content)
+            return httpx.Response(200, json={"ok": True})
+        if request.url.path == "/shotmill/v1/workflows/snapshot":
+            assert request.url.params["workflowId"] == "workflow.json"
+            return httpx.Response(200, json={"snapshot": bridge_snapshot(
+                "workflow.json", [{"name": "image", "direction": "input", "type": "IMAGE"}],
+            )})
         if request.url.path == "/shotmill/v1/assets":
             assert b"image-bytes" in request.content
             return httpx.Response(

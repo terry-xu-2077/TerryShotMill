@@ -13,7 +13,22 @@ chcp.com 65001 > $null
 
 $ProjectRoot = $PSScriptRoot
 $FrontendRoot = Join-Path $ProjectRoot 'frontend'
-$UiUrl = 'http://127.0.0.1:1420/dev/ui'
+$UiPath = '/dev/ui'
+$UiUrl = "http://127.0.0.1:1420$UiPath"
+
+function Get-LanUrls([int]$Port, [string]$Path) {
+    $Addresses = @([System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+        Where-Object {
+            $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and
+            $_.IPAddressToString -notmatch '^(127\.|169\.254\.)'
+        } |
+        ForEach-Object { $_.IPAddressToString } |
+        Select-Object -Unique)
+
+    foreach ($Address in $Addresses) {
+        "http://${Address}:$Port$Path"
+    }
+}
 
 if (-not (Test-Path -LiteralPath (Join-Path $FrontendRoot 'package.json'))) {
     throw "未找到前端工程：$FrontendRoot"
@@ -41,7 +56,11 @@ if ($Desktop) {
     return
 }
 
-Write-Host "地址：$UiUrl"
+Write-Host "本机地址：$UiUrl"
+$LanUrls = @(Get-LanUrls -Port 1420 -Path $UiPath)
+foreach ($LanUrl in $LanUrls) {
+    Write-Host "局域网地址：$LanUrl"
+}
 Write-Host '模式：浏览器 UI 工作台（支持热更新）'
 Write-Host '按 Ctrl+C 停止。' -ForegroundColor DarkGray
 

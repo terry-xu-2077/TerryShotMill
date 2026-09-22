@@ -169,6 +169,7 @@ class JobModel(Base):
     provider_profile_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     params_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     context_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    execution_context: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     provider_job_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -217,6 +218,7 @@ class PromptRevisionModel(Base):
     skill_version: Mapped[str] = mapped_column(String(40), nullable=False)
     provider_profile_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    elapsed_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     previous_task_summary_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -263,3 +265,11 @@ class PromptEnhancementJobModel(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revision_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class RuntimeControlModel(Base):
+    __tablename__ = "runtime_controls"
+    job_id: Mapped[str] = mapped_column(String, primary_key=True)
+    paused: Mapped[bool] = mapped_column(Boolean, default=False)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    position: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -1,3 +1,6 @@
+import { BrandLogo } from "../../components/BrandLogo";
+import { TaskNewResults, useViewedResults } from "./TaskNewResults";
+import { TaskRiskSticker } from "./TaskRiskSticker";
 import {
   Check,
   FileImage,
@@ -64,11 +67,6 @@ function displayTaskStatus(task: GenerationTask): DisplayStatus {
   return "idle";
 }
 
-function projectStatusLabel(status: DisplayStatus) {
-  if (status === "running") return "正在生成中";
-  return taskStatusLabel[status];
-}
-
 function orderedTasks(snapshot: StoryboardDomainSnapshot) {
   return snapshot.scenes
     .slice()
@@ -121,7 +119,7 @@ function makeDraftTask(snapshot: StoryboardDomainSnapshot): GenerationTask {
       resolution: "1080p",
       quality: "标准",
       generationMode: "全能参考",
-      contextMode: "片段承接",
+      contextMode: "尾帧承接",
       promptSource: "user",
       userPromptViewMode: "visual",
       aiPromptViewMode: "visual",
@@ -132,75 +130,40 @@ function makeDraftTask(snapshot: StoryboardDomainSnapshot): GenerationTask {
   };
 }
 
-export function ProjectHome({
-  projects,
-  loading = false,
-  error = "",
-  onRetry,
-  onOpenProject,
-  onCreateProject,
-}: {
-  projects: ProjectSummary[];
-  loading?: boolean;
-  error?: string;
-  onRetry?: () => void;
-  onOpenProject: (projectId: string) => void;
-  onCreateProject: () => void;
+export function ProjectHome({ bridgeStatus, projects, loading = false, error = "", onRetry, onOpenProject, onCreateProject }: {
+  bridgeStatus?: import("react").ReactNode;
+  projects: ProjectSummary[]; loading?: boolean; error?: string; onRetry?: () => void;
+  onOpenProject: (projectId: string) => void; onCreateProject: () => void;
 }) {
-  return (
-    <main className="project-home" aria-label="项目首页">
-      <header className="project-home-title">
-        <h1><Film size={26} />Terry导演工作台</h1>
-        <ThemeSwitch />
-      </header>
-
-      <div className="project-home-collection">
+  const { unread } = useViewedResults();
+  return <main className="project-home" aria-label="项目首页">
+    <header className="project-home-title"><h1><BrandLogo />Terry导演工作台</h1>{bridgeStatus}<ThemeSwitch /></header>
+    <div className="project-home-collection">
       <header className="project-collection-heading"><h2>项目</h2><span className="project-home-count">{projects.length} 个项目</span></header>
+      <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}><defs>
+        <clipPath id="project-folder-outline" clipPathUnits="objectBoundingBox"><path d="M0 .15 Q0 0 .06 0 H.32 C.36 0 .36 .13 .42 .13 H.94 Q1 .13 1 .27 V.87 Q1 1 .94 1 H.06 Q0 1 0 .87 Z" /></clipPath>
+      </defs></svg>
       <section className="project-folder-grid" aria-label="项目列表">
-        {loading && projects.length === 0 && (
-          <div className="project-folder-card project-create-card" role="status">正在加载项目…</div>
-        )}
-        {!loading && error && projects.length === 0 && (
-          <button type="button" className="project-folder-card project-create-card" onClick={onRetry}>
-            <div><span>项目加载失败，点击重试</span></div>
-          </button>
-        )}
-        {projects.map((project) => {
-          const status = project.status;
-          return (
-            <button
-              key={project.id}
-              type="button"
-              className={`project-folder-card is-${status}`}
-              onClick={() => onOpenProject(project.id)}
-              aria-label={`打开项目 ${project.title}`}
-            >
-              <div
-                className="project-folder-cover"
-                style={project.coverUrl ? { backgroundImage: `url("${project.coverUrl}")` } : undefined}
-              >
-                {!project.coverUrl && <Folder size={36} strokeWidth={1.25} />}
-              </div>
+        <button type="button" className="project-folder-card project-create-card" onClick={onCreateProject}><div><Plus className="creation-motion-icon" size={30} /><span>新建项目</span></div></button>
+        {loading && projects.length === 0 && <div className="project-folder-card project-create-card" role="status">正在加载项目…</div>}
+        {!loading && error && projects.length === 0 && <button type="button" className="project-folder-card project-create-card" onClick={onRetry}><div><span>项目加载失败，点击重试</span></div></button>}
+        {projects.map(project => {
+          const kinds = [...new Set((project.newResults ?? []).flatMap(unread))];
+          return <div key={project.id} className="project-folder-item">
+            <button type="button" className={`project-folder-card is-${project.status} ${project.coverUrl ? "has-cover" : "is-empty"}`} onClick={() => onOpenProject(project.id)} aria-label={`打开项目 ${project.title}`}>
+              {project.coverUrl && <><div className="project-folder-sheet project-folder-paper" aria-hidden="true" /><div className="project-folder-sheet project-folder-paper-middle" aria-hidden="true" /></>}
+              <div className="project-folder-sheet project-folder-cover" style={project.coverUrl ? { backgroundImage: `url("${project.coverUrl}")` } : undefined} />
               <div className="project-folder-front">
-                <div className="project-folder-tab">
-                  <Film size={18} strokeWidth={1.6} />
-                  <span><i />{projectStatusLabel(status)}</span>
-                </div>
-                <h2>{project.title}</h2>
-                <footer><span>{project.taskCount} 个任务</span><span>{project.assetCount} 个资产</span></footer>
+                <div className="project-folder-tab"><time className="project-folder-date" dateTime={project.createdAt}>{project.createdAt ? new Date(project.createdAt).toLocaleDateString("zh-CN") : ""}</time></div>
+                <h2>{project.title}</h2><p className="project-folder-description">{project.description || "暂无项目简介"}</p>
+                <footer><span>{project.taskCount} 个任务</span><span>{project.assetCount} 个资产</span><span>已生成 {project.completedTaskCount ?? 0}/{project.taskCount}</span></footer>
               </div>
-            </button>
-          );
+            </button><div className="project-folder-notices"><TaskNewResults kinds={kinds} /><TaskRiskSticker warnings={project.generationWarnings ?? []} /></div>
+          </div>;
         })}
-
-        <button type="button" className="project-folder-card project-create-card" onClick={onCreateProject}>
-          <div><Plus size={30} /><span>新建项目</span></div>
-        </button>
       </section>
-      </div>
-
-    </main>
-  );
+    </div>
+  </main>;
 }
 
 function TaskPreview({ previewUrl, compact = false }: { previewUrl?: string; compact?: boolean }) {
@@ -323,7 +286,7 @@ function ProjectConfigDialog({
   };
 
   return (
-    <Dialog open={open} size="wide" title="项目配置" description="管理项目级信息与资产。" onClose={onClose}>
+    <Dialog open={open} size="wide" icon="configure" title="项目配置" description="管理项目级信息与资产。" onClose={onClose}>
       <div className="project-config-dialog">
         <nav className="project-config-tabs" aria-label="项目配置分类">
           <button type="button" className={tab === "info" ? "is-active" : ""} onClick={() => setTab("info")}>项目信息</button>
@@ -547,7 +510,7 @@ export function ProjectWorkspace({
                         <span>使用{task.assetBindings.length}个资产</span>
                         <span>{versions > 0 ? `${versions}个生成版本` : "无生成结果"}</span>
                       </div>
-                      <div className={`task-list-status is-${status}`}><i />{taskStatusLabel[status]}</div>
+                      <div className={`task-list-status status-sticker is-${status}`}><i />{taskStatusLabel[status]}</div>
                     </button>
                   </ContextMenu>
                 );
@@ -556,7 +519,7 @@ export function ProjectWorkspace({
           ) : (
             <div className="task-card-view">
               <button type="button" className="task-create-card" onClick={openNewTask}>
-                <div><Plus size={46} /></div>
+                <div><Plus className="creation-motion-icon" size={46} /></div>
                 <strong>新建任务卡</strong>
               </button>
 
@@ -573,7 +536,7 @@ export function ProjectWorkspace({
                     >
                       <div className="task-card-preview-wrap">
                         <TaskPreview previewUrl={taskPreview(project.snapshot, task)} />
-                        <span className={`task-card-status is-${status}`}><i />{taskStatusLabel[status]}</span>
+                        <span className={`task-card-status status-sticker is-${status}`}><i />{taskStatusLabel[status]}</span>
                       </div>
                       <strong>#{index + 1} {task.title}</strong>
                       <p>提示词 {promptSummary(task)}</p>
@@ -626,7 +589,7 @@ export function ProjectWorkspace({
         }}
       />
 
-      <Dialog open={renameOpen} title="重命名项目" onClose={() => setRenameOpen(false)}>
+      <Dialog open={renameOpen} icon="edit" title="重命名项目" onClose={() => setRenameOpen(false)}>
         <div className="project-simple-dialog">
           <label><span>项目名称</span><input autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} /></label>
           <footer>
@@ -640,7 +603,7 @@ export function ProjectWorkspace({
         </div>
       </Dialog>
 
-      <Dialog open={Boolean(playing)} title={playing ? `播放结果 · ${playing.task.title}` : "播放结果"} onClose={() => setPlaying(null)}>
+      <Dialog open={Boolean(playing)} icon="video" title={playing ? `播放结果 · ${playing.task.title}` : "播放结果"} onClose={() => setPlaying(null)}>
         {playing && (
           <div className="task-playback-dialog">
             <video controls autoPlay={false} poster={playing.result.previewUrl} src={playing.result.videoUrl} />
@@ -649,7 +612,7 @@ export function ProjectWorkspace({
         )}
       </Dialog>
 
-      <Dialog open={settingsOpen} title="设置" onClose={() => setSettingsOpen(false)}>
+      <Dialog open={settingsOpen} icon="settings" title="设置" onClose={() => setSettingsOpen(false)}>
         <div className="project-settings-placeholder">
           <Settings size={22} />
           <h3>应用设置</h3>
@@ -677,7 +640,7 @@ export function CreateProjectDialog({
   }, [open]);
 
   return (
-    <Dialog open={open} title="新建项目" description="创建后进入项目工作台。" onClose={onClose}>
+    <Dialog open={open} icon="create" title="新建项目" description="创建后进入项目工作台。" onClose={onClose}>
       <div className="project-simple-dialog">
         <label><span>项目名称</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：异星边境 初到基地" /></label>
         <footer>

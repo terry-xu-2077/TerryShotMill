@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useModalPortalTarget } from "terry-react-ui-library";
 
 type OverlayRegistration = {
   id: string;
@@ -67,15 +68,15 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       const top = stack.current.at(-1);
       if (!top) return;
       event.preventDefault();
       event.stopPropagation();
       top.close();
     };
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const value = useMemo(() => ({ register, pushToast }), [pushToast, register]);
@@ -98,7 +99,8 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
 }
 
 export function OverlayPortal({ children }: { children: ReactNode }) {
-  return createPortal(children, overlayRoot());
+  const modalTarget = useModalPortalTarget();
+  return createPortal(children, modalTarget ?? overlayRoot());
 }
 
 export function OverlayDepth({ children }: { children: ReactNode }) {

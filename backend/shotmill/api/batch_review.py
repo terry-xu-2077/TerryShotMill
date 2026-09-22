@@ -3,10 +3,16 @@ from __future__ import annotations
 from fastapi import APIRouter, status
 
 from shotmill.api.dependencies import ContainerDep
-from shotmill.api.schemas import BatchPromptEnhancementRequest, VideoBatchRequest
+from shotmill.api.schemas import (
+    BatchPromptEnhancementRequest,
+    PromptBatchEligibilityRequest,
+    VideoBatchRequest,
+)
 from shotmill.frontend_adapter.models import (
     BatchPromptEnhancementItemView,
     BatchPromptEnhancementResponse,
+    PromptBatchEligibilityView,
+    PromptBatchSkippedItem,
     PromptReviewItemView,
     PromptReviewStateView,
     VideoBatchEligibilityView,
@@ -23,6 +29,45 @@ def _review_item(item) -> PromptReviewItemView:
         prompt_review_status=item.prompt_review_status,
         approved_revision=item.approved_revision,
         approved_at=item.approved_at,
+    )
+
+
+def _prompt_batch_response(result) -> BatchPromptEnhancementResponse:
+    return BatchPromptEnhancementResponse(
+        batch_id=result.batch_id,
+        state=result.state,
+        items=[
+            BatchPromptEnhancementItemView(
+                task_id=item.task_id, state=item.state,
+                revision_id=item.revision_id, error=item.error,
+            )
+            for item in result.items
+        ],
+    )
+
+
+@router.post(
+    "/prompt-enhancement-batches/{batch_id}/cancel",
+    response_model=BatchPromptEnhancementResponse,
+)
+async def cancel_prompt_enhancement_batch(
+    project_id: str, batch_id: str, container: ContainerDep,
+) -> BatchPromptEnhancementResponse:
+    return _prompt_batch_response(
+        await container.batch_production_service.cancel_prompt_batch(project_id, batch_id)
+    )
+
+
+@router.post(
+    "/prompt-enhancement-batches/{batch_id}/retry-failed",
+    response_model=BatchPromptEnhancementResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_failed_prompt_enhancement_batch(
+    project_id: str, batch_id: str, container: ContainerDep,
+) -> BatchPromptEnhancementResponse:
+    return _prompt_batch_response(
+        await container.batch_production_service.retry_failed_prompt_batch(project_id, batch_id)
     )
 
 
@@ -73,6 +118,21 @@ async def create_prompt_enhancement_batch(
     )
 
 
+@router.post("/prompt-enhancement-batches/eligibility", response_model=PromptBatchEligibilityView)
+def check_prompt_batch_eligibility(
+    project_id: str, payload: PromptBatchEligibilityRequest, container: ContainerDep,
+) -> PromptBatchEligibilityView:
+    result = container.batch_production_service.prompt_batch_eligibility(
+        project_id, payload.task_ids,
+    )
+    return PromptBatchEligibilityView(
+        eligible_task_ids=result.eligible_task_ids,
+        skipped=[PromptBatchSkippedItem(
+            task_id=item.task_id, reason=item.reason, message=item.message,
+        ) for item in result.skipped],
+    )
+
+
 @router.get(
     "/prompt-enhancement-batches/{batch_id}",
     response_model=BatchPromptEnhancementResponse,
@@ -100,9 +160,12 @@ def get_prompt_enhancement_batch(
 
 def _video_eligibility_response(eligibility) -> VideoBatchEligibilityView:
     return VideoBatchEligibilityView(
+        warnings=eligibility.warnings,
         eligible_task_ids=eligibility.eligible_task_ids,
         skipped=[
-            VideoBatchSkippedItem(task_id=item.task_id, reason=item.reason)
+            VideoBatchSkippedItem(
+                task_id=item.task_id, reason=item.reason, code=item.code, message=item.message
+            )
             for item in eligibility.skipped
         ],
     )
@@ -111,14 +174,15 @@ def _video_eligibility_response(eligibility) -> VideoBatchEligibilityView:
 @router.post(
     "/video-generation-batches/eligibility",
     response_model=VideoBatchEligibilityView,
+    response_model_exclude_none=True,
 )
-def check_video_batch_eligibility(
+async def check_video_batch_eligibility(
     project_id: str,
     payload: VideoBatchRequest,
     container: ContainerDep,
 ) -> VideoBatchEligibilityView:
     return _video_eligibility_response(
-        container.batch_production_service.video_batch_eligibility(
+        await container.batch_production_service.video_batch_eligibility(
             project_id,
             payload.task_ids,
         )
@@ -128,6 +192,7 @@ def check_video_batch_eligibility(
 @router.post(
     "/video-generation-batches",
     response_model=VideoBatchResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_video_generation_batch(
@@ -140,10 +205,13 @@ async def create_video_generation_batch(
         payload.task_ids,
     )
     return VideoBatchResponse(
+        warnings=result.warnings,
         batch_id=result.batch_id,
         eligible_task_ids=result.eligible_task_ids,
         skipped=[
-            VideoBatchSkippedItem(task_id=item.task_id, reason=item.reason)
+            VideoBatchSkippedItem(
+                task_id=item.task_id, reason=item.reason, code=item.code, message=item.message
+            )
             for item in result.skipped
         ],
     )

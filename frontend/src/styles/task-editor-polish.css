@@ -1,6 +1,7 @@
-.task-dialog-title-shell { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 22px; }
+.task-dialog-title-shell { display: flex; align-items: center; gap: 10px 22px; }
 
 .task-dialog-title {
+  flex: 1;
   min-width: 0;
   display: inline-flex;
   align-items: center;
@@ -32,7 +33,8 @@
   background: var(--sm-surface-2);
 }
 
-.task-dialog-title-edit span {
+.task-dialog-title-edit span,
+.task-dialog-title > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -70,8 +72,7 @@
   background: rgba(255,255,255,.015);
 }
 
-.simple-context-params small,
-.simple-context-note {
+.simple-context-params small {
   margin: 0;
   color: var(--sm-text-dim);
   font-size: 8.5px;

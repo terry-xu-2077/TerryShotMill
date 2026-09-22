@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 1420",
+    "dev": "vite --host 0.0.0.0 --port 1420",
     "build": "tsc -b && vite build",
     "capture:ui": "node scripts/capture-dev-ui.mjs",
     "preview": "vite preview",
@@ -18,7 +18,7 @@
     "lucide-react": "^0.544.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "terry-react-ui-library": "file:vendor/terry-react-ui-library-0.2.1-shotmill.1.tgz"
+    "terry-react-ui-library": "file:vendor\\terry-react-ui-library-0.2.1-shotmill.11.tgz"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

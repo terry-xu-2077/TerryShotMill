@@ -1,6 +1,7 @@
+import { categoryLabel } from "../assets/assetCategories";
 import { FileImage, Film, Music2, RefreshCw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button, TextField } from "terry-react-ui-library";
+import { Button, SlidingTabs, TextField } from "terry-react-ui-library";
 import type { ProjectAsset, TaskAssetBinding } from "../../domain/storyboard";
 import type { ComfyUIWorkflow, WorkflowInputSelection } from "../../gateways/projectGateway";
 import { Dialog } from "../../ui/overlay";
@@ -8,6 +9,7 @@ import "./WorkflowInputSlots.css";
 
 type Props = {
   open: boolean;
+  readOnly?: boolean;
   workflowFile?: string;
   bindings: TaskAssetBinding[];
   assets: ProjectAsset[];
@@ -34,23 +36,24 @@ function AssetThumbnail({ asset }: { asset: ProjectAsset }) {
   return <Icon size={22} aria-hidden="true" />;
 }
 
-export function WorkflowInputSlots({ open, workflowFile, bindings, assets, loadWorkflows, value, onChange }: Props) {
+export function WorkflowInputSlots({ open, workflowFile, bindings, assets, loadWorkflows, value, onChange, readOnly = false }: Props) {
   const loader = useRef(loadWorkflows);
   loader.current = loadWorkflows;
   const [catalog, setCatalog] = useState<ComfyUIWorkflow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [editingPort, setEditingPort] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [tag, setTag] = useState("");
   useEffect(() => {
     if (!open || !workflowFile || !loader.current) return;
     let active = true;
     setCatalog([]);
     setLoading(true);
-    setError(false);
+    setError("");
     void loader.current().then((items) => { if (active) setCatalog(items); })
-      .catch(() => { if (active) setError(true); })
+      .catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : "无法读取工作流槽位，请检查服务连接后重试。"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [open, workflowFile, attempt]);
@@ -72,6 +75,7 @@ export function WorkflowInputSlots({ open, workflowFile, bindings, assets, loadW
   });
   const activePort = descriptors.find((port) => port.portId === editingPort);
   const assign = (portId: string, assetId: string | null) => {
+    if (readOnly) return;
     const slots = descriptors.map((slot) => ({ portId: slot.portId, reference: slot.reference, assetId: slot.portId === portId ? assetId : slot.assetId }));
     onChange({ workflowId: key, slots }, slots.flatMap((slot): TaskAssetBinding[] => {
       const asset = slot.assetId ? assetsById.get(slot.assetId) : undefined;
@@ -80,7 +84,8 @@ export function WorkflowInputSlots({ open, workflowFile, bindings, assets, loadW
     }));
     setEditingPort(null);
   };
-  const availableAssets = assets.filter((asset) => activePort && (activePort.type === "*" || activePort.type === asset.mediaType.toUpperCase()) && asset.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  const filters = [{ value: "", label: "全部" }, ...Object.entries(categoryLabel).map(([value, label]) => ({ value: `category:${value}`, label }))];
+  const availableAssets = assets.filter((asset) => activePort && (activePort.type === "*" || activePort.type === asset.mediaType.toUpperCase()) && (!tag || asset.category === tag.slice(9)) && [asset.name, ...asset.tags].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className="workflow-input-slots" aria-label="工作流输入资产" aria-busy={loading}>
     <header className="workflow-input-slots-heading">
       <strong>输入资产</strong>
@@ -88,7 +93,7 @@ export function WorkflowInputSlots({ open, workflowFile, bindings, assets, loadW
     </header>
     {!workflowFile ? <p className="workflow-input-slots-message">未配置生成工作流</p>
       : loading ? <p className="workflow-input-slots-message" role="status">正在读取工作流输入槽位…</p>
-        : error ? <div className="workflow-input-slots-message" role="alert">无法读取输入槽位<Button size="icon" aria-label="重试读取输入槽位" onClick={() => setAttempt((value) => value + 1)}><RefreshCw size={16} /></Button></div>
+        : error ? <div className="workflow-input-slots-message" role="alert">{error}<Button size="icon" aria-label="重试读取输入槽位" onClick={() => setAttempt((value) => value + 1)}><RefreshCw size={16} /></Button></div>
           : !workflow ? <p className="workflow-input-slots-message">工作流槽位信息不可用</p>
             : ports.length === 0 ? <p className="workflow-input-slots-message">此工作流没有媒体输入槽位</p>
               : <ul className="workflow-input-slot-list" aria-label="媒体输入槽位">
@@ -97,7 +102,7 @@ export function WorkflowInputSlots({ open, workflowFile, bindings, assets, loadW
                   const mismatch = asset && type !== "*" && type !== asset.mediaType.toUpperCase();
                   const Icon = type === "AUDIO" ? Music2 : type === "VIDEO" ? Film : FileImage;
                   const target = port.portName || port.targetPort || port.name;
-                  return <li className="workflow-input-slot-item" key={portId}><button type="button" className={`workflow-input-slot${asset ? " is-filled" : ""}${mismatch ? " is-invalid" : ""}`} aria-label={`${label} · ${target} · ${asset?.name ?? (assetId ? "资产不可用" : "空槽位（可选）")}${mismatch ? " · 类型不匹配" : ""}`} onClick={() => { setEditingPort(portId); setQuery(""); }}>
+                  return <li className="workflow-input-slot-item" key={portId}><button type="button" disabled={readOnly} className={`workflow-input-slot${asset ? " is-filled" : ""}${mismatch ? " is-invalid" : ""}`} aria-label={`${label} · ${target} · ${asset?.name ?? (assetId ? "资产不可用" : "空槽位（可选）")}${mismatch ? " · 类型不匹配" : ""}`} onClick={() => { setEditingPort(portId); setQuery(""); setTag(""); }}>
                     <div className="workflow-input-slot-media">{asset ? <AssetThumbnail key={asset.id} asset={asset} /> : <Icon size={22} aria-hidden="true" />}</div>
                     <strong className="workflow-input-slot-label">{label}</strong>
                     <span className="workflow-input-slot-target" title={target}>{target.split(".").at(-1)}</span>
@@ -106,9 +111,12 @@ export function WorkflowInputSlots({ open, workflowFile, bindings, assets, loadW
                 })}
               </ul>}
     {workflow && !value && bindings.length > ports.length && <p className="workflow-input-slots-warning" role="alert">有 {bindings.length - ports.length} 项资产超出当前工作流槽位。</p>}
-    <Dialog open={Boolean(activePort) && open} title={`选择资产 · ${activePort?.label ?? ""}`} onClose={() => setEditingPort(null)}>
+    <Dialog open={!readOnly && Boolean(activePort) && open} icon="assets" title={`选择资产 · ${activePort?.label ?? ""}`} onClose={() => setEditingPort(null)}>
       <div className="workflow-slot-picker">
-        <label className="workflow-slot-search">搜索资产<TextField placeholder="搜索项目资产" value={query} onChange={setQuery} /></label>
+        <div className="workflow-slot-filters">
+          <label className="workflow-slot-search">搜索资产<TextField placeholder="搜索项目资产" value={query} onChange={setQuery} /></label>
+          <div className="workflow-slot-tag-filter"><span>分类</span><SlidingTabs fluid ariaLabel="资产分类筛选" value={tag} onChange={setTag} options={filters} /></div>
+        </div>
         <div className="workflow-slot-picker-assets" role="group" aria-label="可填入的项目资产">
           {availableAssets.map((asset) => <button type="button" className="workflow-slot-picker-asset" key={asset.id} onClick={() => activePort && assign(activePort.portId, asset.id)} aria-label={`填入 ${asset.name}`}>
             <div className="workflow-input-slot-media"><AssetThumbnail asset={asset} /></div><span>{asset.name}</span>

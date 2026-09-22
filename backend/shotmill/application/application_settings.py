@@ -6,11 +6,19 @@ from pathlib import Path
 
 from shotmill.domain.application_settings import (
     DEFAULT_SYSTEM_PROMPT_PRESET,
+    DEFAULT_SYSTEM_PROMPT_PRESETS,
     ComfyUISettings,
     ComfyUIWorkflowProfile,
     LocalInferenceSettings,
     PromptSystemSettings,
     SystemPromptPreset,
+    WorkflowNumericBinding,
+)
+from shotmill.prompt_skills.minimax_h3_system_prompt import (
+    CHINESE_H3_SYSTEM_PROMPT,
+    DEFAULT_H3_SYSTEM_PROMPT,
+    LEGACY_CHINESE_H3_SYSTEM_PROMPT,
+    LEGACY_H3_SYSTEM_PROMPT,
 )
 
 
@@ -112,11 +120,31 @@ class ApplicationSettingsStore:
                 and str(item.get("name") or "").strip()
                 and str(item.get("prompt") or "").strip()
             )
+            # Upgrade only untouched built-ins; user-authored prompt text remains authoritative.
+            old_to_new = {
+                LEGACY_H3_SYSTEM_PROMPT: DEFAULT_H3_SYSTEM_PROMPT,
+                LEGACY_CHINESE_H3_SYSTEM_PROMPT: CHINESE_H3_SYSTEM_PROMPT,
+            }
+            presets = tuple(
+                SystemPromptPreset(p.id, p.name, old_to_new.get(p.prompt, p.prompt))
+                if p.id in {item.id for item in DEFAULT_SYSTEM_PROMPT_PRESETS} else p
+                for p in presets
+            )
+            if (
+                len(presets) == 1
+                and presets[0].id == DEFAULT_SYSTEM_PROMPT_PRESET.id
+                and presets[0].prompt == DEFAULT_SYSTEM_PROMPT_PRESET.prompt
+                and presets[0].name in {"MiniMax H3 默认", DEFAULT_SYSTEM_PROMPT_PRESET.name}
+            ):
+                presets = DEFAULT_SYSTEM_PROMPT_PRESETS
             base = PromptSystemSettings()
             return PromptSystemSettings(
                 provider_mode=values.get("provider_mode", base.provider_mode),
-                system_prompt=str(values.get("system_prompt") or base.system_prompt),
-                system_prompt_presets=presets or (DEFAULT_SYSTEM_PROMPT_PRESET,),
+                system_prompt=old_to_new.get(
+                    str(values.get("system_prompt") or base.system_prompt),
+                    str(values.get("system_prompt") or base.system_prompt),
+                ),
+                system_prompt_presets=presets or DEFAULT_SYSTEM_PROMPT_PRESETS,
                 api_base_url=str(values.get("api_base_url") or base.api_base_url),
                 api_model=str(values.get("api_model") or base.api_model),
                 api_key=str(values.get("api_key") or base.api_key),
@@ -144,6 +172,11 @@ class ApplicationSettingsStore:
                     quality=str(item.get("quality") or ""),
                     workflow_file=str(item.get("workflow_file") or ""),
                     enabled=bool(item.get("enabled", True)),
+                    description=str(item.get("description") or ""),
+                    numeric_bindings=tuple(
+                        WorkflowNumericBinding(**binding)
+                        for binding in item.get("numeric_bindings", [])
+                    ),
                 )
                 for item in values.get("workflow_profiles", [])
                 if isinstance(item, dict)
@@ -153,12 +186,8 @@ class ApplicationSettingsStore:
             return ComfyUISettings(
                 base_url=str(values.get("base_url") or base.base_url),
                 root_path=str(values.get("root_path") or base.root_path),
-                workflow_directory=str(
-                    values.get("workflow_directory") or base.workflow_directory
-                ),
-                default_profile_id=str(
-                    values.get("default_profile_id") or base.default_profile_id
-                ),
+                workflow_directory=str(values.get("workflow_directory") or base.workflow_directory),
+                default_profile_id=str(values.get("default_profile_id") or base.default_profile_id),
                 workflow_profiles=profiles,
             )
         except (OSError, TypeError, ValueError, json.JSONDecodeError):

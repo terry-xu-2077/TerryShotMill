@@ -138,6 +138,20 @@ function Get-ProcessIdentity($Process) {
     }
 }
 
+function Get-LanUrls([int]$Port, [string]$Path) {
+    $Addresses = @([System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+        Where-Object {
+            $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and
+            $_.IPAddressToString -notmatch '^(127\.|169\.254\.)'
+        } |
+        ForEach-Object { $_.IPAddressToString } |
+        Select-Object -Unique)
+
+    foreach ($Address in $Addresses) {
+        "http://${Address}:$Port$Path"
+    }
+}
+
 function Write-LauncherState {
     New-Item -ItemType Directory -Path $StateDir -Force | Out-Null
     $State = [ordered]@{
@@ -260,7 +274,7 @@ try {
     Write-Host "`n==> Starting UI: $UiUrl" -ForegroundColor Cyan
     $UiProcess = Start-Process `
         -FilePath $Pnpm `
-        -ArgumentList @('exec', 'vite', '--host', '127.0.0.1', '--port', [string]$DevPort) `
+        -ArgumentList @('exec', 'vite', '--host', '0.0.0.0', '--port', [string]$DevPort) `
         -WorkingDirectory $Frontend `
         -NoNewWindow `
         -PassThru
@@ -281,6 +295,10 @@ try {
     if (-not $UiReady) { Fail 'The UI did not become ready in time.' }
 
     Write-Host "`nMock UI is ready. Data resets when this launcher stops." -ForegroundColor Green
+    Write-Host "Local UI: $UiUrl" -ForegroundColor DarkGray
+    foreach ($LanUrl in @(Get-LanUrls -Port $DevPort -Path '/dev/ui')) {
+        Write-Host "LAN UI: $LanUrl" -ForegroundColor DarkGray
+    }
     Write-Host 'Close this window or press Ctrl+C to stop both services.' -ForegroundColor DarkGray
     if (-not $NoBrowser) {
         Start-Process $UiUrl

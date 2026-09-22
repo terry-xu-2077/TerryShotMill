@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
+from time import perf_counter
+from typing import Any
 
 from shotmill.domain.entities import AiPromptRevision, new_id, utcnow
 from shotmill.domain.enums import PromptSource, TaskState
-from shotmill.domain.providers import PromptAIProvider, PromptAIRequest, ResolvedMedia
+from shotmill.domain.providers import (
+    PromptAIProvider,
+    PromptAIRequest,
+    ResolvedMedia,
+    SnapshotPromptAIProvider,
+)
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import NotFoundError, ShotMillError
 from shotmill.media.resolver import MediaResolver
@@ -50,6 +58,21 @@ class PromptEnhancementService:
         self.provider = provider
         self.skills = skills
         self.media_resolver = media_resolver
+
+    def capture_provider_profile(self) -> dict[str, Any]:
+        if isinstance(self.provider, SnapshotPromptAIProvider):
+            return deepcopy(self.provider.capture_profile())
+        return {"providerId": self.provider.id}
+
+    def _execution_provider(self, profile: dict[str, Any] | None = None) -> PromptAIProvider:
+        profile = self.capture_provider_profile() if profile is None else profile
+        if profile.get("providerId") != self.provider.id:
+            raise ShotMillError(
+                "PROMPT_PROFILE_UNAVAILABLE", "原增强服务不可用，请检查设置。", 409
+            )
+        if isinstance(self.provider, SnapshotPromptAIProvider):
+            return self.provider.bind_profile(deepcopy(profile))
+        return self.provider
 
     @staticmethod
     def _validate_provider_media(
@@ -122,6 +145,7 @@ class PromptEnhancementService:
         context_mode: str | None,
         expected_task_revision: int | None = None,
         force_ai_source: bool = True,
+        provider_profile_snapshot: dict[str, Any] | None = None,
     ) -> AiPromptRevision:
         return await self._enhance(
             project_id,
@@ -140,6 +164,8 @@ class PromptEnhancementService:
             project_background_override=project_background_snapshot,
             previous_summary_override=previous_task_summary_snapshot,
             force_ai_source=force_ai_source,
+            provider_profile_snapshot=provider_profile_snapshot,
+            context_is_snapshot=True,
         )
 
     async def _enhance(
@@ -158,6 +184,8 @@ class PromptEnhancementService:
         project_background_override: str | None = None,
         previous_summary_override: str | None = None,
         force_ai_source: bool = False,
+        provider_profile_snapshot: dict[str, Any] | None = None,
+        context_is_snapshot: bool = False,
     ) -> AiPromptRevision:
         clean_prompt = user_prompt.strip()
         if not clean_prompt:
@@ -185,7 +213,7 @@ class PromptEnhancementService:
                 )
 
             project_background = project_background_override
-            if project_background is None:
+            if project_background is None and not context_is_snapshot:
                 if (
                     context.include_project_background
                     and project.use_description_for_ai_prompt
@@ -194,7 +222,8 @@ class PromptEnhancementService:
                     project_background = project.description.strip()
 
             previous_summary = previous_summary_override
-            if context.include_previous_task_summary and previous_summary is None:
+            if (context.include_previous_task_summary and previous_summary is None
+                    and not context_is_snapshot):
                 tasks = uow.tasks.list_by_project(project_id)
                 previous = next(
                     (item for item in reversed(tasks) if item.display_order < task.display_order),
@@ -209,7 +238,8 @@ class PromptEnhancementService:
                     )
 
         resolved_tuple = tuple(resolved)
-        self._validate_provider_media(self.provider, resolved_tuple)
+        provider = self._execution_provider(provider_profile_snapshot)
+        self._validate_provider_media(provider, resolved_tuple)
         skill = self.skills.get(target)
         message = skill.build(
             SkillInput(
@@ -222,7 +252,8 @@ class PromptEnhancementService:
                 media=resolved_tuple,
             )
         )
-        response = await self.provider.enhance(
+        inference_started = perf_counter()
+        response = await provider.enhance(
             PromptAIRequest(
                 system_prompt=message.system_prompt,
                 user_text=message.user_text,
@@ -242,6 +273,7 @@ class PromptEnhancementService:
             skill_version=skill.version,
             provider_profile_id=response.provider_id,
             model=response.model_id,
+            elapsed_seconds=perf_counter() - inference_started,
             previous_task_summary_snapshot=previous_summary,
         )
         with self.uow_factory() as uow:
@@ -264,7 +296,8 @@ class PromptEnhancementService:
             current.approved_prompt_hash = None
             current.approved_at = None
             current.approved_revision_id = None
-            current.state = TaskState.PROMPT_READY if current.final_prompt else TaskState.DRAFT
+            if current.id not in uow.jobs.active_task_ids_by_project(project_id):
+                current.state = TaskState.PROMPT_READY if current.final_prompt else TaskState.DRAFT
             current.revision += 1
             current.updated_at = utcnow()
             uow.prompt_revisions.add(revision)
@@ -336,7 +369,8 @@ class PromptEnhancementService:
                 )
 
         resolved_tuple = tuple(resolved)
-        self._validate_provider_media(self.provider, resolved_tuple)
+        provider = self._execution_provider()
+        self._validate_provider_media(provider, resolved_tuple)
         skill = self.skills.get(target)
         message = skill.build(
             SkillInput(
@@ -349,7 +383,7 @@ class PromptEnhancementService:
                 media=resolved_tuple,
             )
         )
-        response = await self.provider.enhance(
+        response = await provider.enhance(
             PromptAIRequest(
                 system_prompt=message.system_prompt,
                 user_text=message.user_text,

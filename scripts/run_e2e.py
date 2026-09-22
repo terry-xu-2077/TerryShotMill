@@ -37,7 +37,19 @@ def wait_for_server(process: subprocess.Popen[bytes], port: int, timeout: float 
 
 
 def stop_process(process: subprocess.Popen[bytes]) -> None:
-    process.terminate()
+    if process.poll() is not None:
+        return
+    # The Windows venv executable is a launcher with a real interpreter child.
+    # Terminating only the launcher leaves uvicorn holding the temporary database.
+    if sys.platform == "win32":
+        stopped = subprocess.run(
+            ["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        if stopped.returncode != 0:
+            process.terminate()
+    else:
+        process.terminate()
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
@@ -104,7 +116,7 @@ def main() -> int:
                 environment["SHOTMILL_E2E_EXTERNAL_SERVER"] = "1"
                 environment["SHOTMILL_E2E_BASE_URL"] = f"http://{HOST}:{FRONTEND_PORT}"
                 completed = subprocess.run(
-                    [node, str(playwright_cli), "test"],
+                    [node, str(playwright_cli), "test", *sys.argv[1:]],
                     cwd=FRONTEND,
                     env=environment,
                     check=False,

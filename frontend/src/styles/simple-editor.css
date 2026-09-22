@@ -37,15 +37,15 @@
   font-size: 13px;
 }
 .task-parameter-toggle:focus-visible { outline: 2px solid var(--sm-accent); outline-offset: -2px; }
-.task-parameter-chevron { transition: transform 260ms ease; }
+.task-parameter-chevron { transition: transform 280ms var(--sm-ease); }
 .task-parameter-toggle[aria-expanded="true"] > .task-parameter-chevron { transform: rotate(180deg); }
-.task-parameter-content { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 280ms cubic-bezier(.2,.7,.2,1), opacity 200ms ease; }
+.task-parameter-content { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 320ms var(--sm-ease), opacity 220ms var(--sm-ease); }
 .task-parameter-content.is-open { grid-template-rows: 1fr; opacity: 1; }
 .task-parameter-clip { min-height: 0; overflow: hidden; }
 .task-parameter-summary { min-width: 0; margin-left: auto; color: var(--sm-text-muted); font-size: 12px; overflow-wrap: anywhere; }
 .simple-task-config {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, .8fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, .65fr) minmax(0, .9fr);
   min-height: 0;
   max-height: 32dvh;
   overflow-y: auto;
@@ -54,13 +54,15 @@
   background: var(--sm-surface-2);
   border-top: 1px solid var(--sm-border);
 }
-.simple-task-config > section { display: grid; align-content: start; min-width: 0; gap: 8px; padding: 10px 12px; border: 1px solid var(--sm-border); border-radius: var(--sm-radius); background: var(--sm-surface-gradient); }
-.simple-task-config > section > h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.simple-task-config > section { display: grid; grid-row: span 3; grid-template-rows: subgrid; min-width: 0; row-gap: 8px; padding: 10px 12px; border: 1px solid var(--sm-border); border-radius: var(--sm-radius); background: var(--sm-surface-gradient); }
+.simple-task-config > section > h3, .simple-generation-heading > h3 { margin: 0; font-size: 13px; font-weight: 600; }
 .simple-task-config .simple-choice-field { display: grid; gap: 6px; }
 .simple-workflow-field { display: grid; min-width: 0; --tc-control-w: 100%; }
-.simple-generation-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: center; min-width: 0; }
-.simple-slider-field { display: grid; gap: 3px; min-width: 0; font-size: 12px; }
-.simple-context-detail-slot { display: grid; align-content: start; min-height: 0; }
+.simple-generation-heading, .simple-generation-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(96px, .65fr) minmax(100px, 1fr); gap: 10px; align-items: center; min-width: 0; }
+.simple-generation-heading > span { font-size: 12px; color: var(--sm-text-muted); }
+.task-parameter-control { display: flex; align-items: center; min-width: 0; }
+.simple-slider-field { --tc-control-w: 100%; display: grid; gap: 3px; min-width: 0; font-size: 12px; }
+.simple-context-detail-slot { display: grid; align-content: end; min-height: 0; }
 .simple-task-config .simple-choice-field > span { color: var(--sm-text-muted); font-size: 12px; }
 .simple-task-editor-actions {
   grid-row: 3;
@@ -213,6 +215,9 @@
 /* Prompt source / view segmented controls are owned by Terry React UI Library. */
 
 .simple-prompt-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
   min-height: 0;
   padding: 15px;
 }
@@ -274,3 +279,5 @@
   .director-storyboard.has-readonly-panel { padding-right: 30px; }
   .director-readonly-detail { width: min(360px, calc(100vw - 72px)); }
 }
+
+.workflow-duration-note, .simple-context-note, .simple-context-range-empty { margin: 0; color: var(--sm-text-muted); font-size: 12px; line-height: 1.5; align-self: end; }

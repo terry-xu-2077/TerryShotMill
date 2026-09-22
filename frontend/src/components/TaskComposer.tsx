@@ -337,14 +337,14 @@ export function TaskComposer({
         </section>
       </div>
 
-      <Dialog open={replaceConfirmOpen} title="替换 Final Prompt？" description="人工编辑内容不会自动被覆盖。仅在你确认后执行本次替换。" onClose={() => setReplaceConfirmOpen(false)}>
+      <Dialog open={replaceConfirmOpen} icon="replace" title="替换 Final Prompt？" description="人工编辑内容不会自动被覆盖。仅在你确认后执行本次替换。" onClose={() => setReplaceConfirmOpen(false)}>
         <div className="confirm-prompt-replace">
           <p>当前 Final Prompt 将被 Revision {revision} 的 AI Prompt 替换。</p>
           <div><Button onClick={() => setReplaceConfirmOpen(false)}>取消</Button><Button variant="accent" onClick={replaceFinalPrompt}>确认替换</Button></div>
         </div>
       </Dialog>
 
-      <Dialog open={revisionOpen} title="Prompt Revision" description="AI Prompt 的生成历史；Final Prompt 始终独立保存。" onClose={() => setRevisionOpen(false)}>
+      <Dialog open={revisionOpen} icon="history" title="Prompt Revision" description="AI Prompt 的生成历史；Final Prompt 始终独立保存。" onClose={() => setRevisionOpen(false)}>
         <div className="revision-list">
           {[revision, revision - 1, 1].map((item, index) => (
             <button key={`${item}-${index}`} type="button" className={index === 0 ? "is-current" : ""}>

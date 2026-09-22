@@ -1,6 +1,8 @@
-import { Network, Palette, Plus, RefreshCw, Save, Sparkles, Trash2, Workflow } from "lucide-react";
+import defaultSystemPromptPresets from "./systemPromptPresets.json";
+import { Network, Palette, RefreshCw, Save, Sparkles, Trash2, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, Checkbox, SegmentedControl, Select, Slider, TextField } from "terry-react-ui-library";
+import { WorkflowPresetEditor } from "./WorkflowPresetEditor";
 import { ThemeSwitch } from "../../ui/ThemeSwitch";
 
 import type {
@@ -53,8 +55,7 @@ const defaultLocalInferenceSettings: LocalInferenceSettings = {
   saveStates: false,
 };
 
-const defaultSystemPrompt = "You are the MiniMax H3 full-reference prompt compiler. Rewrite the user's input into one production-ready H3 video prompt; do not return the input verbatim.";
-const defaultSystemPromptPresets = [{ id: "minimax-h3-default", name: "MiniMax H3 默认", prompt: defaultSystemPrompt }];
+const defaultSystemPrompt = defaultSystemPromptPresets[0].prompt;
 const defaultComfyUISettings: ComfyUISettings = {
   baseUrl: "http://127.0.0.1:8188",
   rootPath: "",
@@ -95,7 +96,7 @@ export function ApplicationSettingsPanel({
     setDraft(settings ? structuredClone(settings.localInference) : structuredClone(defaultLocalInferenceSettings));
     setSystemPrompt(settings?.systemPrompt ?? defaultSystemPrompt);
     setSystemPromptPresets(settings?.systemPromptPresets ? structuredClone(settings.systemPromptPresets) : structuredClone(defaultSystemPromptPresets));
-    setSelectedPresetId(settings?.systemPromptPresets[0]?.id ?? defaultSystemPromptPresets[0].id);
+    setSelectedPresetId(settings?.systemPromptPresets.find((preset) => preset.prompt === settings.systemPrompt)?.id ?? settings?.systemPromptPresets[0]?.id ?? defaultSystemPromptPresets[0].id);
     setProviderMode(settings?.providerMode ?? "local");
     setApiBaseUrl(settings?.apiBaseUrl ?? "");
     setApiModel(settings?.apiModel ?? "");
@@ -109,20 +110,6 @@ export function ApplicationSettingsPanel({
 
   const update = (patch: Partial<LocalInferenceSettings>) => setDraft((current) => ({ ...current, ...patch }));
   const updateComfyui = (patch: Partial<ComfyUISettings>) => setComfyui((current) => ({ ...current, ...patch }));
-  const updateProfile = (id: string, patch: Partial<ComfyUIWorkflowProfile>) => {
-    updateComfyui({ workflowProfiles: comfyui.workflowProfiles.map((profile) => profile.id === id ? { ...profile, ...patch } : profile) });
-  };
-  const addProfile = () => {
-    const profile: ComfyUIWorkflowProfile = {
-      id: `profile-${Date.now()}`,
-      name: "新生成档位",
-      resolution: "720p",
-      quality: "标准",
-      workflowFile: workflows[0]?.relativePath ?? "",
-      enabled: true,
-    };
-    updateComfyui({ workflowProfiles: [...comfyui.workflowProfiles, profile], defaultProfileId: comfyui.defaultProfileId || profile.id });
-  };
   const removeProfile = (id: string) => {
     const next = comfyui.workflowProfiles.filter((profile) => profile.id !== id);
     updateComfyui({ workflowProfiles: next, defaultProfileId: comfyui.defaultProfileId === id ? next[0]?.id ?? "" : comfyui.defaultProfileId });
@@ -132,6 +119,8 @@ export function ApplicationSettingsPanel({
     setWorkflowsLoading(true);
     try {
       setWorkflows(await onRefreshComfyUIWorkflows());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法读取工作流，请检查 Bridge 连接后重试。");
     } finally {
       setWorkflowsLoading(false);
     }
@@ -160,7 +149,7 @@ export function ApplicationSettingsPanel({
     setSystemPrompt(replacement.prompt);
     setSelectedPresetId(replacement.id);
   };
-  const save = async () => {
+  const save = async (nextComfyui = comfyui, closeAfterSave = true): Promise<boolean> => {
     setSaving(true);
     setError("");
     try {
@@ -173,11 +162,13 @@ export function ApplicationSettingsPanel({
         apiKey,
         apiSupportsNativeVideo,
         localInference: draft,
-        comfyui,
+        comfyui: nextComfyui,
       });
-      onClose();
+      if (closeAfterSave) onClose();
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "应用设置保存失败");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -288,16 +279,15 @@ export function ApplicationSettingsPanel({
           <label className="application-settings-field"><span>默认生成档位</span><Select value={comfyui.defaultProfileId} options={[{ value: "", label: "未指定" }, ...comfyui.workflowProfiles.map((profile) => ({ value: profile.id, label: profile.name }))]} onChange={(value) => updateComfyui({ defaultProfileId: value })} ariaLabel="默认生成档位" /></label>
         </div>}
         {section === "workflows" && <>
-        <div className="application-settings-profile-header"><strong>生成档位</strong><Button onClick={addProfile}><Plus size={14} /> 添加档位</Button></div>
-        {comfyui.workflowProfiles.length === 0 ? <p className="application-settings-empty">还没有配置档位。读取工作流后添加档位，并为每个分辨率 / 质量组合选择工作流。</p> : comfyui.workflowProfiles.map((profile) => (
-          <div className="application-settings-profile-row" key={profile.id}>
-            <TextField value={profile.name} onChange={(value) => updateProfile(profile.id, { name: value })} placeholder="档位名称" />
-            <TextField value={profile.resolution} onChange={(value) => updateProfile(profile.id, { resolution: value })} placeholder="分辨率，如 720p" />
-            <TextField value={profile.quality} onChange={(value) => updateProfile(profile.id, { quality: value })} placeholder="质量，如 标准" />
-            <Select value={profile.workflowFile} options={[{ value: "", label: "选择工作流" }, ...workflows.map((workflow) => ({ value: workflow.relativePath, label: `${workflow.name}${workflow.executable ? "" : " · 需API格式"}` }))]} onChange={(value) => updateProfile(profile.id, { workflowFile: value })} ariaLabel={`${profile.name}工作流`} />
-            <Button onClick={() => removeProfile(profile.id)} aria-label={`删除${profile.name}`}><Trash2 size={14} /></Button>
-          </div>
-        ))}
+        <WorkflowPresetEditor profiles={comfyui.workflowProfiles} workflows={workflows} busy={saving} onRemove={removeProfile} onSave={async (profile: ComfyUIWorkflowProfile) => {
+          const next = { ...comfyui, defaultProfileId: comfyui.defaultProfileId || profile.id,
+            workflowProfiles: comfyui.workflowProfiles.some((item) => item.id === profile.id)
+              ? comfyui.workflowProfiles.map((item) => item.id === profile.id ? profile : item)
+              : [...comfyui.workflowProfiles, profile] };
+          const saved = await save(next, false);
+          if (saved) setComfyui(next);
+          return saved;
+        }} />
         {workflows.length > 0 && <div className="application-settings-workflow-list">{workflows.map((workflow) => {
           const inputSummary = workflow.inputs.length > 0 ? <>
             <span>输入</span>

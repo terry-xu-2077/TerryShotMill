@@ -5,7 +5,18 @@
 .project-config-tabs { display: flex; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--sm-border); --tc-accent: var(--sm-text-muted); }
 .project-config-tab-slot { width: 240px; max-width: 100%; }
 .project-config-content { min-width: 0; min-height: 0; padding: 16px 20px; overflow: hidden; }
-.project-config-info { display: grid; grid-template-rows: auto minmax(100px, 1fr) auto; gap: 18px; max-width: 760px; height: 100%; margin-inline: auto; }
+.project-config-info { display: grid; grid-template-rows: auto auto minmax(60px, 1fr) auto; gap: 12px; max-width: 760px; height: 100%; margin-inline: auto; }
+.project-cover-editor { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.project-cover-current { width: clamp(64px, 12vw, 120px); aspect-ratio: 16 / 9; flex: 0 0 auto; background: var(--sm-surface-2); border-radius: var(--sm-radius-sm); overflow: hidden; }
+.project-cover-current > img { width: 100%; height: 100%; object-fit: cover; }
+.project-cover-actions { display: grid; gap: 8px; min-width: 0; }
+.project-cover-actions > strong { font-size: 13px; font-weight: 500; }
+.project-cover-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.project-cover-picker { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; height: 100%; min-height: 0; }
+.project-cover-picker > img, .project-cover-picker > video { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.project-cover-picker > footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.sm-dialog:has(.project-cover-picker) { height: min(640px, calc(100dvh - 40px)); }
+.sm-dialog:has(.project-cover-picker) > .sm-dialog-content { flex: 1; min-height: 0; }
 .project-config-info > label:not(.project-context-checkbox) { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; --tc-control-w: 100%; }
 .project-config-info > label > span { font-size: 13px; color: var(--sm-text-muted); }
 .project-config-info textarea { width: 100%; height: 100%; min-height: 0; resize: none; padding: 12px; border: 1px solid var(--sm-border-strong); border-radius: var(--sm-radius-sm); background: var(--sm-surface-2); color: var(--sm-text); font: inherit; font-size: 14px; line-height: 1.65; }
@@ -13,6 +24,12 @@
 .project-context-checkbox { display: flex; gap: 10px; align-items: center; padding-block: 6px; }
 .project-context-checkbox strong { font-size: 13px; font-weight: 500; }
 .project-config-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--sm-border); }
+.project-config-save-error { margin-right: auto; color: var(--sm-danger); font-size: 13px; }
+.project-asset-image-button, .project-asset-large-image { display: grid; place-items: center; width: 100%; height: 100%; min-height: 0; border: 0; padding: 0; background: transparent; cursor: zoom-in; }
+.project-asset-image-button > img, .project-asset-large-image > img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.project-asset-large-image { cursor: zoom-out; }
+.sm-dialog:has(.project-asset-large-image) { width: min(1100px, calc(100vw - 32px)); height: min(800px, calc(100dvh - 32px)); }
+.sm-dialog:has(.project-asset-large-image) > .sm-dialog-content { display: grid; min-height: 0; flex: 1; }
 .project-asset-manager-v2 { display: grid; grid-template-columns: minmax(250px, .8fr) minmax(0, 1.2fr); gap: 20px; height: 100%; min-width: 0; min-height: 0; }
 .project-asset-browser { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
 .project-asset-browser > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 12px; }

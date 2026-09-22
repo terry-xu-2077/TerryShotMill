@@ -35,6 +35,7 @@ function renderEditor(
     ...render(
       <OverlayProvider>
         <TaskEditorDialog
+          {...{ onApproveAndNext: vi.fn() }}
           open
           task={task ?? structuredClone(mockStoryboard.tasks[0])}
           assets={mockProjectAssets}
@@ -53,6 +54,64 @@ function renderEditor(
 }
 
 describe("TaskEditorDialog", () => {
+  it("protects unsaved content during navigation and retains it when saving fails", async () => {
+    const user = userEvent.setup();
+    const next = vi.fn();
+    const save = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
+    const task = structuredClone(mockStoryboard.tasks[0]);
+    render(<OverlayProvider><TaskEditorDialog open task={task} assets={[]}
+      onSave={save} onClose={vi.fn()} reviewNavigation={{ index: 0, total: 2, canPrevious: false, canNext: true, onPrevious: vi.fn(), onNext: next }}
+    /></OverlayProvider>);
+    await user.click(screen.getByRole("tab", { name: /文本/ }));
+    // A presentation-only change must not create a save confirmation.
+    await user.click(screen.getByRole("button", { name: "下一个任务" }));
+    expect(next).toHaveBeenCalledTimes(1);
+    next.mockClear();
+    await user.type(screen.getByRole("textbox", { name: "用户提示词" }), "新增动作");
+    await user.click(screen.getByRole("button", { name: "下一个任务" }));
+    const confirmation = within(screen.getByRole("dialog", { name: "未保存的修改" }));
+    expect(next).not.toHaveBeenCalled();
+    await user.click(confirmation.getByRole("button", { name: "保存并切换" }));
+    expect(await confirmation.findByRole("alert")).toHaveTextContent("保存失败");
+    expect(next).not.toHaveBeenCalled();
+    await user.click(confirmation.getByRole("button", { name: "保存并切换" }));
+    await waitFor(() => expect(next).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[1][0].finalPrompt).toContain("新增动作");
+  });
+
+  it.each(["queued", "running"] as const)("keeps %s video tasks readable without editing actions", async (state) => {
+    const user = userEvent.setup();
+    const task = structuredClone(mockStoryboard.tasks[0]);
+    task.state = state;
+    task.generationParams = { promptSource: "user", userPrompt: "<d>[Chinese] 再撑一段。</d>" };
+    const { onSave } = renderEditor(vi.fn(), vi.fn(), task);
+    const visual = screen.getByRole("textbox", { name: "用户提示词可视化" });
+    expect(visual).toHaveAttribute("contenteditable", "false");
+    expect(visual.querySelector(".h3-dialogue-text")).toHaveProperty("contentEditable", "false");
+    expect(within(visual).getByRole("combobox", { name: "对白语言" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.queryByTitle("编辑任务名称")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "生成参数" }));
+    expect(screen.getByRole("slider", { name: "总秒数" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "生成工作流" })).toBeDisabled();
+    await user.click(within(screen.getByRole("tablist", { name: "用户提示词显示模式" })).getByRole("tab", { name: /文本/ }));
+    expect(screen.getByRole("textbox", { name: "用户提示词" })).toHaveAttribute("readonly");
+    await user.click(screen.getByRole("tab", { name: /AI 增强/ }));
+    expect(screen.queryByRole("button", { name: "增强" })).not.toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("sends previous task summary only after an independent explicit opt-in", async () => {
+    const user = userEvent.setup();
+    const enhance = vi.fn(async (_request: PromptEnhancementRequest) => ({ id: "context-opt-in", createdAt: "", prompt: "增强结果" }));
+    renderEditor(vi.fn(), vi.fn(), undefined, enhance);
+    await user.click(screen.getByRole("tab", { name: /AI 增强/ }));
+    await user.click(screen.getByRole("button", { name: "增强" }));
+    expect(enhance.mock.calls[0][0].previousTaskSummary).toBeUndefined();
+    await user.click(screen.getByRole("checkbox", { name: "增强时参考上一任务摘要" }).closest("label")!);
+    await user.click(screen.getByRole("button", { name: "增强" }));
+    expect(enhance.mock.calls[1][0].previousTaskSummary).toBe("上一任务中，角色穿过雨夜码头并抵达仓库外。");
+  });
   it("keeps the draft open with a recoverable error when saving fails", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
@@ -94,6 +153,7 @@ describe("TaskEditorDialog", () => {
     expect(screen.queryByRole("option", { name: "停用视频" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: "精细视频" }));
     fireEvent.change(screen.getByRole("slider", { name: "总秒数" }), { target: { value: "12" } });
+    fireEvent.pointerUp(screen.getByRole("slider", { name: "总秒数" }));
     await user.click(screen.getByRole("button", { name: "保存" }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ plannedDurationSeconds: 12, generationParams: expect.objectContaining({ workflowProfileId: "detail", resolution: "1080p", quality: "高质量" }) }));
   });
@@ -162,6 +222,7 @@ describe("TaskEditorDialog", () => {
     expect(screen.queryByRole("tablist", { name: "分辨率" })).not.toBeInTheDocument();
     await user.click(toggle);
     fireEvent.change(screen.getByRole("slider", { name: "总秒数" }), { target: { value: "12" } });
+    fireEvent.pointerUp(screen.getByRole("slider", { name: "总秒数" }));
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     await user.click(screen.getByRole("button", { name: "保存" }));
@@ -172,6 +233,8 @@ describe("TaskEditorDialog", () => {
     renderEditor();
     await screen.findByRole("list", { name: "媒体输入槽位" });
     fireEvent.click(screen.getByRole("button", { name: "生成参数" }));
+    fireEvent.click(screen.getByRole("tab", { name: "片段承接" }));
+    fireEvent.click(screen.getByRole("button", { name: "调整承接区间" }));
 
     const dialog = screen.getByRole("dialog", { name: /抵达仓库并发现门内异常/ });
     expect(within(dialog).getByTitle("编辑任务名称")).toBeInTheDocument();
@@ -182,8 +245,8 @@ describe("TaskEditorDialog", () => {
     expect(within(dialog).getByRole("tablist", { name: "生成模式" })).toHaveClass("tc-segmented");
     expect(within(dialog).getByRole("tablist", { name: "上下文承接方式" })).toHaveClass("tc-segmented");
     expect(within(dialog).getByRole("slider", { name: "总秒数" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("slider", { name: "承接起点" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("slider", { name: "承接终点" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "承接起点" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "承接终点" })).toBeInTheDocument();
     expect(within(dialog).getByRole("tab", { name: "片段承接" })).toHaveAttribute("aria-selected", "true");
     expect(within(dialog).getByRole("tab", { name: "用户" })).toBeInTheDocument();
     expect(within(dialog).getByRole("tab", { name: /AI 增强/ })).toBeInTheDocument();
@@ -213,8 +276,13 @@ describe("TaskEditorDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "生成参数" }));
     fireEvent.change(screen.getByRole("slider", { name: "总秒数" }), { target: { value: "9" } });
-    fireEvent.change(screen.getByRole("slider", { name: "承接起点" }), { target: { value: "11" } });
-    fireEvent.change(screen.getByRole("slider", { name: "承接终点" }), { target: { value: "15" } });
+    fireEvent.pointerUp(screen.getByRole("slider", { name: "总秒数" }));
+    fireEvent.click(screen.getByRole("tab", { name: "片段承接" }));
+    fireEvent.click(screen.getByRole("button", { name: "调整承接区间" }));
+    const startHandle = screen.getByRole("slider", { name: "承接起点" });
+    fireEvent.keyDown(startHandle, { key: "Home" });
+    for (let index = 0; index < 11; index++) fireEvent.keyDown(startHandle, { key: "PageUp" });
+    fireEvent.keyDown(screen.getByRole("slider", { name: "承接终点" }), { key: "End" });
 
     await user.click(screen.getByRole("button", { name: "保存" }));
 
@@ -247,10 +315,51 @@ describe("TaskEditorDialog", () => {
 
     renderEditor(vi.fn(), vi.fn(), task);
     fireEvent.click(screen.getByRole("button", { name: "生成参数" }));
+    fireEvent.click(screen.getByRole("tab", { name: "片段承接" }));
+    fireEvent.click(screen.getByRole("button", { name: "调整承接区间" }));
 
-    expect(screen.getByRole("slider", { name: "承接起点" })).toHaveValue("14");
-    expect(screen.getByRole("slider", { name: "承接终点" })).toHaveValue("15");
-    expect(screen.getByText("14s – 15s · 1s")).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "承接起点" })).toHaveAttribute("aria-valuenow", "14");
+    expect(screen.getByRole("slider", { name: "承接终点" })).toHaveAttribute("aria-valuenow", "15");
+    expect(screen.getByRole("slider", { name: "承接片段" })).toHaveAttribute("aria-valuetext", "14s – 15s · 1s");
+  });
+
+  it("keeps a saved fractional interval when the previous task is shorter than one second", async () => {
+    const onSave = vi.fn();
+    const task = structuredClone(mockStoryboard.tasks[0]);
+    task.generationParams = { ...task.generationParams, contextMode: "片段承接", contextStartSeconds: 0.15, contextEndSeconds: 0.65 };
+    render(<OverlayProvider><TaskEditorDialog open task={task} assets={mockProjectAssets}
+      previousTaskDurationSeconds={0.75} onClose={vi.fn()} onSave={onSave} /></OverlayProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "生成参数" }));
+    fireEvent.click(screen.getByRole("tab", { name: "片段承接" }));
+    fireEvent.click(screen.getByRole("button", { name: "调整承接区间" }));
+    expect(screen.getByRole("slider", { name: "承接起点" })).toHaveAttribute("aria-valuenow", "0.15");
+    expect(screen.getByRole("slider", { name: "承接终点" })).toHaveAttribute("aria-valuenow", "0.65");
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      generationParams: expect.objectContaining({ contextStartSeconds: 0.15, contextEndSeconds: 0.65, contextDurationSeconds: 0.5 }),
+    })));
+  });
+
+  it("moves a fractional clip without changing its duration at either timeline boundary", async () => {
+    const onSave = vi.fn();
+    const task = structuredClone(mockStoryboard.tasks[0]);
+    task.generationParams = { ...task.generationParams, contextMode: "片段承接", contextStartSeconds: 0.15, contextEndSeconds: 0.65 };
+    render(<OverlayProvider><TaskEditorDialog open task={task} assets={mockProjectAssets}
+      previousTaskDurationSeconds={0.75} onClose={vi.fn()} onSave={onSave} /></OverlayProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "生成参数" }));
+    fireEvent.click(screen.getByRole("tab", { name: "片段承接" }));
+    fireEvent.click(screen.getByRole("button", { name: "调整承接区间" }));
+    const clip = screen.getByRole("slider", { name: "承接片段" });
+    fireEvent.keyDown(clip, { key: "ArrowRight" });
+    fireEvent.keyDown(clip, { key: "ArrowRight" });
+    expect(clip).toHaveAttribute("aria-valuetext", "0.25s – 0.75s · 0.5s");
+    fireEvent.keyDown(clip, { key: "Home" });
+    expect(clip).toHaveAttribute("aria-valuetext", "0s – 0.5s · 0.5s");
+    fireEvent.keyDown(clip, { key: "End" });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      generationParams: expect.objectContaining({ contextStartSeconds: 0.25, contextEndSeconds: 0.75, contextDurationSeconds: 0.5 }),
+    })));
   });
 
   it("switches context mode with tabs instead of a select", async () => {
@@ -314,6 +423,7 @@ describe("TaskEditorDialog", () => {
     expect(screen.getByText("点击右下角“增强”，基于用户提示词生成一个新的增强版本。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
 
+    await user.click(screen.getByRole("checkbox", { name: "增强时参考上一任务摘要" }).closest("label")!);
     await user.click(screen.getByRole("button", { name: "增强" }));
     await waitFor(() => expect(onEnhancePrompt).toHaveBeenCalledTimes(1));
     expect(onEnhancePrompt.mock.calls[0][0]).toMatchObject({
@@ -399,9 +509,9 @@ describe("TaskEditorDialog", () => {
     task.finalPrompt = "用户原始提示词";
     renderEditor(onSave, vi.fn(), task);
 
-    expect(screen.getByText("当前使用：用户提示词")).toBeInTheDocument();
+    expect(screen.getByText("任务已保存")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: /AI 增强/ }));
-    expect(screen.getByText("已使用AI增强提示词")).toBeInTheDocument();
+    expect(screen.getByText("任务已修改 · 未保存")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "保存" }));
     expect(onSave.mock.calls[0][0]).toMatchObject({
@@ -422,7 +532,7 @@ describe("TaskEditorDialog", () => {
     renderEditor(vi.fn(), vi.fn(), task);
 
     expect(screen.getByRole("tab", { name: /AI 增强/ })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("已使用AI增强提示词")).toBeInTheDocument();
+    expect(screen.getByText("任务已保存")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /文本/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("combobox")).toHaveAttribute("data-value", `legacy-${task.id}`);
   });
@@ -437,4 +547,11 @@ describe("TaskEditorDialog", () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+});
+
+it("keeps save and cancel without prompt confirmation actions", () => {
+  renderEditor();
+  expect(screen.getByRole("button", { name: "保存" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "取消" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: /确认提示词|确认并下一个/ })).not.toBeInTheDocument();
 });

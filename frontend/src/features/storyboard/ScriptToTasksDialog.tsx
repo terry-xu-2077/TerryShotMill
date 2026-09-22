@@ -98,7 +98,7 @@ export function ScriptToTasksDialog({ open, scenes, defaultSceneId, onClose, onA
     <Dialog
       open={open}
       size="wide"
-      title="从剧本创建分镜"
+      icon="script" title="从剧本创建分镜"
       description="先确认分镜边界和顺序；镜头细节、提示词和生成参数稍后再编辑。"
       onClose={onClose}
     >

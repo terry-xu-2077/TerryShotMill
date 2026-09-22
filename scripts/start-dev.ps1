@@ -30,7 +30,8 @@ $PythonStamp = Join-Path $Venv '.shotmill-pyproject.sha256'
 $TauriManifest = Join-Path $Frontend 'src-tauri\Cargo.toml'
 $ReuseTauriConfig = Join-Path $Frontend 'src-tauri\tauri.reuse-dev.conf.json'
 $BackendRunner = Join-Path $PSScriptRoot 'run-backend.ps1'
-$DevUrl = "http://127.0.0.1:$DevPort/dev/ui"
+$DevPath = '/dev/ui'
+$DevUrl = "http://127.0.0.1:$DevPort$DevPath"
 $BackendBaseUrl = "http://127.0.0.1:$BackendPort"
 $BackendHealthUrl = "$BackendBaseUrl/health"
 $LogDir = Join-Path $Root '.shotmill\logs'
@@ -45,6 +46,20 @@ $BackendStartedHere = $false
 
 function Write-Step([string]$Text) {
     Write-Host "`n==> $Text" -ForegroundColor Cyan
+}
+
+function Get-LanUrls([int]$Port, [string]$Path) {
+    $Addresses = @([System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+        Where-Object {
+            $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and
+            $_.IPAddressToString -notmatch '^(127\.|169\.254\.)'
+        } |
+        ForEach-Object { $_.IPAddressToString } |
+        Select-Object -Unique)
+
+    foreach ($Address in $Addresses) {
+        "http://${Address}:$Port$Path"
+    }
 }
 
 function Fail([string]$Text) {
@@ -350,6 +365,9 @@ if ($env:SHOTMILL_PROMPT_AI_BASE_URL) {
 Write-Host 'ShotMill - Development Launcher' -ForegroundColor Green
 Write-Host "Project: $Root"
 Write-Host "Frontend: $DevUrl" -ForegroundColor DarkGray
+foreach ($LanUrl in @(Get-LanUrls -Port $DevPort -Path $DevPath)) {
+    Write-Host "Frontend LAN: $LanUrl" -ForegroundColor DarkGray
+}
 Write-Host "Backend:  $BackendBaseUrl" -ForegroundColor DarkGray
 
 foreach ($RequiredPath in @($PackageFile, $PyProject, $TauriManifest, $ReuseTauriConfig, $BackendRunner)) {
@@ -494,7 +512,7 @@ if ($BackendState -eq 'free') {
     Write-Host "Backend lifecycle log: $BackendLifecycleLog" -ForegroundColor DarkGray
 }
 
-$env:VITE_SHOTMILL_API_BASE_URL = $BackendBaseUrl
+$env:VITE_SHOTMILL_API_BASE_URL = "$BackendBaseUrl/api/v1"
 $env:SHOTMILL_DEV_BACKEND_URL = $BackendBaseUrl
 $ExitCode = 0
 

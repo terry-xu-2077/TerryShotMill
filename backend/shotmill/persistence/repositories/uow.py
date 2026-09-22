@@ -16,6 +16,7 @@ from shotmill.persistence.repositories.project_asset import (
     SqlAlchemyAssetRepository,
     SqlAlchemyProjectRepository,
 )
+from shotmill.persistence.repositories.runtime_control import SqlAlchemyRuntimeControlRepository
 from shotmill.persistence.repositories.task import SqlAlchemyTaskRepository
 
 
@@ -26,6 +27,7 @@ class SqlAlchemyUnitOfWork:
 
     def __enter__(self) -> SqlAlchemyUnitOfWork:
         self.session = self.session_factory()
+        self.runtime_controls = SqlAlchemyRuntimeControlRepository(self.session)
         self.projects = SqlAlchemyProjectRepository(self.session)
         self.assets = SqlAlchemyAssetRepository(self.session)
         self.tasks = SqlAlchemyTaskRepository(self.session)

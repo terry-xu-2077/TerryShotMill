@@ -127,6 +127,4 @@
   .scenario-body { width: min(270px, calc(100vw - 80px)); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
-}
+/* Reduced-motion policy is owned by tokens.css. */

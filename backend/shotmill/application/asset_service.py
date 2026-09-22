@@ -106,6 +106,11 @@ class AssetService:
             asset = uow.assets.get(asset_id)
             if asset is None or asset.project_id != project_id:
                 raise NotFoundError("ASSET_NOT_FOUND", "Asset not found")
+            project = uow.projects.get(project_id)
+            if project is not None and project.cover_asset_id == asset_id:
+                raise ConflictError(
+                    "ASSET_IS_PROJECT_COVER", "该图片用作项目封面，请先更换封面或恢复自动封面。"
+                )
             count = uow.assets.binding_count(asset_id)
             if count:
                 raise ConflictError(

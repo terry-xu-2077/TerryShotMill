@@ -27,7 +27,7 @@ async def enhance_prompt(
     payload: PromptEnhancementRequest,
     container: ContainerDep,
 ) -> AiPromptRevisionView:
-    revision = await container.prompt_enhancement_service.enhance(
+    revision = await container.batch_production_service.enhance_single(
         project_id,
         task_id,
         target=payload.target,

@@ -110,6 +110,7 @@ def job_from_model(row: models.JobModel) -> Job:
         provider_profile_snapshot=dict(row.provider_profile_snapshot or {}),
         params_snapshot=dict(row.params_snapshot or {}),
         context_snapshot=dict(row.context_snapshot or {}),
+        execution_context=row.execution_context,
         seed=row.seed,
         provider_job_id=row.provider_job_id,
         submitted_at=row.submitted_at,
@@ -148,6 +149,7 @@ def prompt_revision_from_model(row: models.PromptRevisionModel) -> AiPromptRevis
         skill_version=row.skill_version,
         provider_profile_id=row.provider_profile_id,
         model=row.model,
+        elapsed_seconds=row.elapsed_seconds,
         previous_task_summary_snapshot=row.previous_task_summary_snapshot,
         created_at=row.created_at,
     )

@@ -5,7 +5,7 @@ test("configured workflow choice survives save, reload, and reopening the task",
   const original = await (await page.request.get("/api/v1/application/settings")).json();
   const profiles = [
     { id: "standard", name: "标准视频", resolution: "720p", quality: "标准", workflowFile: "standard.json", enabled: true },
-    { id: "detail", name: "精细视频", resolution: "1080p", quality: "高质量", workflowFile: "detail.json", enabled: true },
+    { id: "detail", name: "精细视频", resolution: "1080p", quality: "高质量", workflowFile: "detail.json", enabled: true, numericBindings: [{ portId: "7:frames:2", source: "frameCount", fps: 24, frameMultiple: 4, frameOffset: 1 }] },
   ];
   try {
     const configured = await page.request.patch("/api/v1/application/settings", { data: {
@@ -17,20 +17,29 @@ test("configured workflow choice survives save, reload, and reopening the task",
     await openProject(page, project.title);
     await page.locator(".task-list-row:not(.is-create)").dblclick();
     await page.getByRole("button", { name: "生成参数", exact: true }).click();
-    await expect(page.getByRole("tablist", { name: "分辨率" })).toHaveCount(0);
+    await expect(page.getByText("分辨率与秒数传入 Bridge 选择器；未接入时使用工作流默认值。")).toBeVisible();
+    await page.getByRole("combobox", { name: "生成分辨率" }).click();
+    await page.getByRole("option", { name: "480p", exact: true }).click();
     await expect(page.getByRole("tablist", { name: "质量档位" })).toHaveCount(0);
     await page.getByRole("combobox", { name: "生成工作流" }).click();
     await page.getByRole("option", { name: "精细视频", exact: true }).click();
+    await expect(page.getByText("传入工作流：145 帧（24 fps）")).toBeVisible();
+    await page.getByRole("slider", { name: "总秒数" }).focus();
+    await page.getByRole("slider", { name: "总秒数" }).press("ArrowRight");
+    await expect(page.getByText("传入工作流：169 帧（24 fps）")).toBeVisible();
     const saved = page.waitForResponse((response) => response.url().endsWith(`/tasks/${task.id}`) && response.request().method() === "PATCH");
     await page.getByRole("button", { name: "保存", exact: true }).click();
     expect((await saved).ok()).toBeTruthy();
     const editor = await (await page.request.get(`/api/v1/projects/${project.id}/tasks/${task.id}/editor`)).json();
     expect(editor.generation.workflowProfileId).toBe("detail");
+    expect(editor.generation.resolution).toBe("480p");
     await openProject(page, project.title);
     await page.locator(".task-list-row:not(.is-create)").dblclick();
     await page.getByRole("button", { name: "生成参数", exact: true }).click();
     await expect(page.getByRole("combobox", { name: "生成工作流" })).toContainText("精细视频");
     await expect(page.getByRole("slider", { name: "总秒数" })).toBeVisible();
+    await expect(page.getByText("传入工作流：169 帧（24 fps）")).toBeVisible();
+    await page.screenshot({ path: "test-results/workflow-duration.png", animations: "disabled" });
   } finally {
     await page.request.patch("/api/v1/application/settings", { data: original });
   }

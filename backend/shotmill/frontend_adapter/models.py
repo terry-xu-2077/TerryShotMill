@@ -23,8 +23,13 @@ BatchItemState = Literal["queued", "running", "completed", "failed", "skipped", 
 
 
 class ProjectSummary(ApiModel):
+    created_at: datetime | None = None
+    new_results: list[dict[str, str]] = Field(default_factory=list)
+    generation_warnings: list[str] = Field(default_factory=list)
     id: str
     title: str
+    description: str = ""
+    completed_task_count: int = 0
     status: ProjectStatus
     cover_url: str | None = None
     task_count: int
@@ -33,10 +38,13 @@ class ProjectSummary(ApiModel):
 
 
 class ProjectSettingsView(ApiModel):
+    automatic_cover_url: str | None = None
     id: str
     title: str
     description: str
     use_description_for_ai_prompt: bool
+    cover_asset_id: str | None = None
+    cover_url: str | None = None
 
 
 class SystemPromptPresetView(ApiModel):
@@ -56,6 +64,15 @@ class LocalInferenceSettingsView(ApiModel):
     save_states: bool
 
 
+class WorkflowNumericBindingView(ApiModel):
+    port_id: str = Field(min_length=1)
+    source: Literal["constant", "durationSeconds", "frameCount"]
+    value: float | None = Field(default=None, allow_inf_nan=False)
+    fps: float = Field(default=24, gt=0, le=1000, allow_inf_nan=False)
+    frame_multiple: int = Field(default=1, ge=1, le=1024)
+    frame_offset: int = Field(default=0, ge=0, le=1023)
+
+
 class ComfyUIWorkflowProfileView(ApiModel):
     id: str
     name: str
@@ -63,6 +80,8 @@ class ComfyUIWorkflowProfileView(ApiModel):
     quality: str
     workflow_file: str
     enabled: bool
+    description: str = ""
+    numeric_bindings: list[WorkflowNumericBindingView] = []
 
 
 class ComfyUISettingsView(ApiModel):
@@ -101,11 +120,13 @@ class ComfyUIStatusView(ApiModel):
     connected: bool
     base_url: str
     bridge_node_available: bool
+    bridge_state: Literal["connected", "disconnected", "missing", "error"] = "disconnected"
     message: str
     workflows: list[ComfyUIWorkflowView] = []
 
 
 class ApplicationSettingsView(ApiModel):
+    prompt_ai_label: str = "AI 增强服务"
     provider_mode: Literal["local", "api"]
     system_prompt: str
     system_prompt_presets: list[SystemPromptPresetView]
@@ -121,6 +142,7 @@ class PrimaryResultView(ApiModel):
     id: str
     preview_url: str | None
     video_url: str
+    duration_seconds: float | None = None
 
 
 class GenerationSummary(ApiModel):
@@ -128,7 +150,23 @@ class GenerationSummary(ApiModel):
     quality: str
 
 
+class TaskTiming(ApiModel):
+    video_seconds: float | None = None
+    video_queue_seconds: float | None = None
+    prompt_seconds: float | None = None
+    prompt_queue_seconds: float | None = None
+    video_running: bool = False
+    video_queued: bool = False
+    prompt_running: bool = False
+    prompt_queued: bool = False
+    measured_at: datetime | None = None
+
+
 class TaskSummary(ApiModel):
+    generation_status_note: str | None = None
+    generation_warnings: list[str] = Field(default_factory=list)
+    latest_video_result_id: str | None = None
+    latest_prompt_revision_id: str | None = None
     id: str
     display_number: int
     title: str
@@ -146,6 +184,32 @@ class TaskSummary(ApiModel):
     has_active_prompt_job: bool = False
     has_active_video_job: bool = False
     primary_result: PrimaryResultView | None = None
+    timing: TaskTiming = Field(default_factory=TaskTiming)
+
+
+class RuntimeTaskItem(ApiModel):
+    status_note: str | None = None
+    continuation_fallback: bool = False
+    paused: bool = False
+    position: float | None = None
+    id: str
+    task_id: str
+    title: str
+    state: BatchItemState
+    elapsed_seconds: float | None = None
+    error: str | None = None
+
+
+class PromptBatchRuntime(ApiModel):
+    id: str
+    created_at: datetime
+    state: str
+    completed_count: int
+    failed_count: int
+    cancelled_count: int
+    queued_count: int
+    running_count: int
+    items: list[RuntimeTaskItem]
 
 
 class ProjectRuntimeSummary(ApiModel):
@@ -153,11 +217,18 @@ class ProjectRuntimeSummary(ApiModel):
     active_task_title: str | None = None
     state: RuntimeState = "idle"
     progress: float | None = None
+    prompt_batches: list[PromptBatchRuntime] = Field(default_factory=list)
+    video_jobs: list[RuntimeTaskItem] = Field(default_factory=list)
 
 
 class WorkspaceProject(ApiModel):
     id: str
     title: str
+
+
+class ProjectRuntimeView(ApiModel):
+    project: WorkspaceProject
+    runtime: ProjectRuntimeSummary
 
 
 class ProjectWorkspaceView(ApiModel):
@@ -189,7 +260,7 @@ class GenerationSettings(ApiModel):
     resolution: str = "1080p"
     quality: str = "标准"
     mode: str = "全能参考"
-    context_mode: str = "不承接"
+    context_mode: str = "尾帧承接"
     context_start_seconds: float | None = None
     context_end_seconds: float | None = None
     context_duration_seconds: float | None = None
@@ -289,6 +360,10 @@ class ResultView(ApiModel):
     created_at: datetime
 
 
+class CancelledVideoJobsView(ApiModel):
+    cancelled_job_ids: list[str]
+
+
 class JobView(ApiModel):
     id: str
     task_id: str
@@ -314,12 +389,26 @@ class BatchPromptEnhancementResponse(ApiModel):
     items: list[BatchPromptEnhancementItemView]
 
 
+class PromptBatchSkippedItem(ApiModel):
+    task_id: str
+    reason: Literal["busy", "empty-prompt"]
+    message: str
+
+
+class PromptBatchEligibilityView(ApiModel):
+    eligible_task_ids: list[str]
+    skipped: list[PromptBatchSkippedItem]
+
+
 class VideoBatchSkippedItem(ApiModel):
     task_id: str
     reason: str
+    code: str | None = None
+    message: str | None = None
 
 
 class VideoBatchEligibilityView(ApiModel):
+    warnings: list[dict[str, str]] = Field(default_factory=list)
     eligible_task_ids: list[str]
     skipped: list[VideoBatchSkippedItem]
 

@@ -110,7 +110,7 @@ function summaryHistory(workspace: ProjectWorkspaceView): { jobs: Job[]; results
         jobId,
         videoUrl: primary?.videoUrl ?? "",
         previewUrl: primary?.previewUrl,
-        metadata: {},
+        metadata: { durationSeconds: primary?.durationSeconds },
         reviewState: "pending",
       });
     }
@@ -129,6 +129,14 @@ export function mapWorkspaceProject(
     title: settings.title,
     description: settings.description,
     useDescriptionForAiPrompt: settings.useDescriptionForAiPrompt,
+    coverAssetId: settings.coverAssetId,
+    coverUrl: settings.coverUrl,
+    automaticCoverUrl: settings.automaticCoverUrl,
+    runtime: workspace.runtime,
+    taskTimings: Object.fromEntries(workspace.tasks.filter((task) => task.timing).map((task) => [task.id, task.timing!])),
+    taskNewResults: Object.fromEntries(workspace.tasks.map(task => [task.id, { video: task.latestVideoResultId, prompt: task.latestPromptRevisionId }])),
+    taskGenerationNotes: Object.fromEntries(workspace.tasks.map(task => [task.id, task.generationStatusNote ?? null])),
+    taskWarnings: Object.fromEntries(workspace.tasks.map(task => [task.id, task.generationWarnings ?? []])),
     snapshot: {
       scenes: [{
         id: sceneId,

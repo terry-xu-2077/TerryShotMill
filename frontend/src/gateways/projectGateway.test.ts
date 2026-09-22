@@ -7,6 +7,32 @@ afterEach(() => {
 });
 
 describe("HttpProjectGateway", () => {
+  it("serializes rapid preference switches and waits for them before reopening the task", async () => {
+    let releaseFirst!: () => void;
+    const firstRequest = new Promise<void>(resolve => { releaseFirst = resolve; });
+    let preference = { userViewMode: "visual", aiViewMode: "visual" };
+    let writes = 0;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/editor-preference")) {
+        if (++writes === 1) await firstRequest;
+        preference = { ...preference, ...JSON.parse(String(init?.body)) };
+        return new Response(JSON.stringify(preference));
+      }
+      return new Response(JSON.stringify({ editorPreference: preference }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const gateway = new HttpProjectGateway();
+    const first = gateway.updateEditorPreference("p", "t", { userViewMode: "text" });
+    const second = gateway.updateEditorPreference("p", "t", { userViewMode: "visual", aiViewMode: "text" });
+    const reopened = gateway.getTaskEditor("p", "t");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect((await reopened).editorPreference).toEqual({ userViewMode: "visual", aiViewMode: "text" });
+    expect(fetchMock.mock.calls.map(([url]) => url.split("/").at(-1))).toEqual(["editor-preference", "editor-preference", "editor"]);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ userViewMode: "text" });
+  });
+
   it("keeps the backend /api/v1 route and unwraps project lists", async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({
       items: [{

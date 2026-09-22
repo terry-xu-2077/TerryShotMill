@@ -1,0 +1,3 @@
+.brand-logo { display: inline-grid; place-items: center; flex-shrink: 0; border-radius: 50%; background: #000; --brand-ink: #fff; }
+.brand-logo-mark { display: block; width: 65%; aspect-ratio: 248.41 / 162.99; background: var(--brand-ink); mask-size: contain; mask-position: center; mask-repeat: no-repeat; }
+[data-mode="dark"] .brand-logo { background: #fff; --brand-ink: #000; }

@@ -9,7 +9,7 @@ test("new task draft can enhance a prompt without being persisted on Cancel", as
   await useTextPrompt(page, "角色在雨夜码头回头看向镜头。");
 
   await page.getByRole("tab", { name: /AI 增强/ }).click();
-  await page.getByRole("button", { name: "增强" }).click();
+  await page.getByTestId("simple-task-editor").getByRole("button", { name: "增强", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "AI 增强提示词可视化" })).toContainText("角色在雨夜码头回头看向镜头");
   await page.getByRole("button", { name: "取消" }).click();
 

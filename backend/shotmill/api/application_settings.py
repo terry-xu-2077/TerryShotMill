@@ -12,6 +12,7 @@ from shotmill.domain.application_settings import (
     LocalInferenceSettings,
     PromptSystemSettings,
     SystemPromptPreset,
+    WorkflowNumericBinding,
 )
 from shotmill.frontend_adapter.models import ApplicationSettingsView
 
@@ -22,6 +23,9 @@ def _view(container: ContainerDep) -> ApplicationSettingsView:
     local_inference = container.application_settings.get_local_inference()
     prompt_system = container.application_settings.get_prompt_system()
     return ApplicationSettingsView(
+        prompt_ai_label=getattr(
+            container.prompt_enhancement_service.provider, "display_name", "AI 增强服务"
+        ),
         provider_mode=prompt_system.provider_mode,
         system_prompt=prompt_system.system_prompt,
         system_prompt_presets=[asdict(item) for item in prompt_system.system_prompt_presets],
@@ -64,7 +68,13 @@ def update_application_settings(
             workflow_directory=payload.comfyui.workflow_directory,
             default_profile_id=payload.comfyui.default_profile_id,
             workflow_profiles=tuple(
-                ComfyUIWorkflowProfile(**item.model_dump())
+                ComfyUIWorkflowProfile(
+                    **item.model_dump(exclude={"numeric_bindings"}),
+                    numeric_bindings=tuple(
+                        WorkflowNumericBinding(**binding.model_dump())
+                        for binding in item.numeric_bindings
+                    ),
+                )
                 for item in payload.comfyui.workflow_profiles
             ),
         ),

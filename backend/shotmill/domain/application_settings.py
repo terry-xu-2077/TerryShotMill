@@ -3,11 +3,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from shotmill.prompt_skills.minimax_h3_system_prompt import DEFAULT_H3_SYSTEM_PROMPT
+from shotmill.prompt_skills.minimax_h3_system_prompt import (
+    CHINESE_H3_SYSTEM_PROMPT,
+    DEFAULT_H3_SYSTEM_PROMPT,
+)
 
 InferenceMode = Literal["one by one", "images", "video"]
 SeedMode = Literal["randomize", "fixed"]
 PromptProviderMode = Literal["local", "api"]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowNumericBinding:
+    port_id: str
+    source: Literal["constant", "durationSeconds", "frameCount"]
+    value: float | None = None
+    fps: float = 24
+    frame_multiple: int = 1
+    frame_offset: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +31,8 @@ class ComfyUIWorkflowProfile:
     quality: str = ""
     workflow_file: str = ""
     enabled: bool = True
+    description: str = ""
+    numeric_bindings: tuple[WorkflowNumericBinding, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,8 +53,18 @@ class SystemPromptPreset:
 
 DEFAULT_SYSTEM_PROMPT_PRESET = SystemPromptPreset(
     id="minimax-h3-default",
-    name="MiniMax H3 默认",
+    name="MiniMax H3 · 英文输出",
     prompt=DEFAULT_H3_SYSTEM_PROMPT,
+)
+
+
+DEFAULT_SYSTEM_PROMPT_PRESETS = (
+    DEFAULT_SYSTEM_PROMPT_PRESET,
+    SystemPromptPreset(
+        id="minimax-h3-chinese",
+        name="MiniMax H3 · 中文输出",
+        prompt=CHINESE_H3_SYSTEM_PROMPT,
+    ),
 )
 
 
@@ -47,7 +72,7 @@ DEFAULT_SYSTEM_PROMPT_PRESET = SystemPromptPreset(
 class PromptSystemSettings:
     provider_mode: PromptProviderMode = "local"
     system_prompt: str = DEFAULT_H3_SYSTEM_PROMPT
-    system_prompt_presets: tuple[SystemPromptPreset, ...] = (DEFAULT_SYSTEM_PROMPT_PRESET,)
+    system_prompt_presets: tuple[SystemPromptPreset, ...] = DEFAULT_SYSTEM_PROMPT_PRESETS
     api_base_url: str = ""
     api_model: str = ""
     api_key: str = ""

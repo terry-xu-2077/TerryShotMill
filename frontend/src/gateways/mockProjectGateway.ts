@@ -1,3 +1,4 @@
+import systemPromptPresets from "../features/settings/systemPromptPresets.json";
 import { listTasksInStoryOrder, type GenerationTask } from "../domain/storyboard";
 import { makeEmptyProject, makeMockProjects, type DirectorProject } from "../mock/projects";
 import type { PromptEnhancementRequest } from "../services/promptEnhancement";
@@ -20,13 +21,10 @@ import type {
 } from "./projectGateway";
 
 const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
+  promptAiLabel: "演示增强服务",
   providerMode: "local",
-  systemPrompt: "You are the MiniMax H3 full-reference prompt compiler. Rewrite the user's input into one production-ready H3 video prompt; do not return the input verbatim.",
-  systemPromptPresets: [{
-    id: "minimax-h3-default",
-    name: "MiniMax H3 默认",
-    prompt: "You are the MiniMax H3 full-reference prompt compiler. Rewrite the user's input into one production-ready H3 video prompt; do not return the input verbatim.",
-  }],
+  systemPrompt: systemPromptPresets[0].prompt,
+  systemPromptPresets,
   apiBaseUrl: "",
   apiModel: "",
   apiKey: "",
@@ -194,6 +192,9 @@ function taskFromInput(id: string, number: number, input: SaveTaskInput): Genera
 }
 
 export class MockProjectGateway implements ProjectGateway {
+  async getComfyUIStatus() {
+    return { connected: false, bridgeNodeAvailable: false, baseUrl: "", message: "测试数据，未连接真实 Bridge。" };
+  }
   private projects: DirectorProject[];
   private applicationSettings: ApplicationSettings = structuredClone(DEFAULT_APPLICATION_SETTINGS);
 
@@ -218,6 +219,13 @@ export class MockProjectGateway implements ProjectGateway {
 
   async listComfyUIWorkflows(): Promise<ComfyUIWorkflow[]> {
     return [];
+  }
+
+  async getGlobalRuntime() {
+    return Promise.all(this.projects.map(async project => {
+      const view = await this.getWorkspace(project.id);
+      return { project: view.project, runtime: view.runtime };
+    }));
   }
 
   async listProjects() {
@@ -262,6 +270,7 @@ export class MockProjectGateway implements ProjectGateway {
         activeTaskTitle: running?.title,
         state: running?.state === "queued" ? "queued" : running ? "running" : "idle",
         progress: running?.progress,
+        videoJobs: tasks.filter(task => task.state === "running" || task.state === "queued").map(task => ({ id: `mock-job-${task.id}`, taskId: task.id, title: task.title, state: task.state === "running" ? "running" as const : "queued" as const })),
       },
     };
   }
@@ -271,6 +280,16 @@ export class MockProjectGateway implements ProjectGateway {
     const index = tasks.findIndex((task) => task.id === taskId);
     if (index < 0) throw new Error(`Unknown task: ${taskId}`);
     return editorView(tasks[index], index, tasks[index - 1]);
+  }
+
+  async updateEditorPreference(projectId: string, taskId: string, input: Partial<TaskEditorView["editorPreference"]>) {
+    const task = this.project(projectId).snapshot.tasks.find((item) => item.id === taskId);
+    if (!task) throw new Error(`Unknown task: ${taskId}`);
+    task.generationParams = { ...task.generationParams,
+      ...(input.userViewMode ? { userPromptViewMode: input.userViewMode } : {}),
+      ...(input.aiViewMode ? { aiPromptViewMode: input.aiViewMode } : {}),
+    };
+    return (await this.getTaskEditor(projectId, taskId)).editorPreference;
   }
 
   async createTask(projectId: string, input: SaveTaskInput) {

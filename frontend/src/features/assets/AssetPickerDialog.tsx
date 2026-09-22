@@ -67,7 +67,7 @@ export function AssetPickerDialog({ open, assets, initialBindings, onClose, onCo
   const preview = assets.find((asset) => asset.id === previewId) ?? filtered[0];
 
   return (
-    <Dialog open={open} size="wide" title="选择分镜素材" description="选择角色、场景、道具或参考素材；只有确认后才会应用到当前分镜。" onClose={onClose}>
+    <Dialog open={open} size="wide" icon="assets" title="选择分镜素材" description="选择角色、场景、道具或参考素材；只有确认后才会应用到当前分镜。" onClose={onClose}>
       <div className="asset-picker-dialog">
         <section className="asset-picker-browser">
           <header>

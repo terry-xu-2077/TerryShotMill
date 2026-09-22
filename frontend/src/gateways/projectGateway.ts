@@ -8,8 +8,13 @@ export type ProjectStatus = "idle" | "running" | "completed" | "failed";
 export type TaskStatus = ProjectStatus;
 
 export type ProjectSummary = {
+  createdAt?: string;
+  newResults?: { video?: string; prompt?: string }[];
+  generationWarnings?: string[];
   id: string;
   title: string;
+  description?: string;
+  completedTaskCount?: number;
   status: ProjectStatus;
   coverUrl?: string;
   taskCount: number;
@@ -18,13 +23,24 @@ export type ProjectSummary = {
 };
 
 export type ProjectSettings = {
+  automaticCoverUrl?: string;
   id: string;
   title: string;
   description: string;
   useDescriptionForAiPrompt: boolean;
+  coverAssetId?: string | null;
+  coverUrl?: string;
+  cover?: ProjectCoverSelection;
 };
 
+export type ProjectCoverSelection = { kind: "auto" | "asset" | "video"; assetId?: string; resultId?: string; seconds?: number };
+
 export type TaskSummary = {
+  generationStatusNote?: string | null;
+  generationWarnings?: string[];
+  latestVideoResultId?: string | null;
+  latestPromptRevisionId?: string | null;
+  timing?: TaskTiming;
   id: string;
   displayNumber: number;
   title: string;
@@ -48,6 +64,7 @@ export type TaskSummary = {
     id: string;
     previewUrl?: string;
     videoUrl: string;
+    durationSeconds?: number | null;
   };
 };
 
@@ -59,7 +76,36 @@ export type ProjectWorkspaceView = {
     activeTaskTitle?: string;
     state: "idle" | "queued" | "running" | "failed";
     progress?: number;
+    promptBatches?: PromptBatchRuntime[];
+    videoJobs?: RuntimeTaskItem[];
   };
+};
+
+export type ProjectRuntimeView = Pick<ProjectWorkspaceView, "project" | "runtime">;
+
+export type RuntimeTaskItem = {
+  statusNote?: string | null;
+  continuationFallback?: boolean;
+  paused?: boolean;
+  position?: number | null;
+  id: string;
+  taskId: string;
+  title: string;
+  state: "queued" | "running" | "completed" | "failed" | "cancelled" | "skipped";
+  elapsedSeconds?: number | null;
+  error?: string | null;
+};
+
+export type PromptBatchRuntime = {
+  id: string;
+  createdAt: string;
+  state: string;
+  completedCount: number;
+  failedCount: number;
+  cancelledCount: number;
+  queuedCount: number;
+  runningCount: number;
+  items: RuntimeTaskItem[];
 };
 
 export type TaskAssetRef = {
@@ -134,10 +180,10 @@ export type BatchPromptEnhancementRequest = {
 
 export type BatchPromptEnhancementResponse = {
   batchId: string;
-  state: "queued" | "running" | "completed" | "partial" | "failed";
+  state: "queued" | "running" | "completed" | "partial" | "failed" | "cancelled";
   items: Array<{
     taskId: string;
-    state: "completed" | "failed" | "skipped";
+    state: RuntimeTaskItem["state"];
     revisionId?: string;
     error?: string;
   }>;
@@ -154,6 +200,15 @@ export type LocalInferenceSettings = {
   saveStates: boolean;
 };
 
+export type WorkflowNumericBinding = {
+  portId: string;
+  source: "constant" | "durationSeconds" | "frameCount";
+  value?: number | null;
+  fps: number;
+  frameMultiple: number;
+  frameOffset: number;
+};
+
 export type ComfyUIWorkflowProfile = {
   id: string;
   name: string;
@@ -161,6 +216,8 @@ export type ComfyUIWorkflowProfile = {
   quality: string;
   workflowFile: string;
   enabled: boolean;
+  description?: string;
+  numericBindings?: WorkflowNumericBinding[];
 };
 
 export type ComfyUISettings = {
@@ -170,6 +227,15 @@ export type ComfyUISettings = {
   defaultProfileId: string;
   workflowProfiles: ComfyUIWorkflowProfile[];
 };
+
+export type TaskTiming = {
+  videoSeconds?: number | null; videoQueueSeconds?: number | null;
+  promptSeconds?: number | null; promptQueueSeconds?: number | null;
+  videoRunning: boolean; videoQueued?: boolean; promptRunning?: boolean; promptQueued?: boolean;
+  measuredAt?: string | null;
+};
+
+export type ComfyUIStatus = { connected: boolean; bridgeNodeAvailable: boolean; bridgeState?: "connected" | "disconnected" | "missing" | "error"; message: string; baseUrl: string };
 
 export type ComfyUIWorkflow = {
   id: string;
@@ -190,6 +256,7 @@ export type WorkflowInputSelection = {
 };
 
 export type ApplicationSettings = {
+  promptAiLabel?: string;
   providerMode: "local" | "api";
   systemPrompt: string;
   systemPromptPresets: Array<{
@@ -232,18 +299,21 @@ export type ProjectEvent = {
 };
 
 export interface ProjectGateway {
+  getComfyUIStatus(signal?: AbortSignal): Promise<ComfyUIStatus>;
   getApplicationSettings(): Promise<ApplicationSettings>;
   updateApplicationSettings(input: ApplicationSettings): Promise<ApplicationSettings>;
   listComfyUIWorkflows(): Promise<ComfyUIWorkflow[]>;
   listProjects(): Promise<ProjectSummary[]>;
+  getGlobalRuntime(): Promise<ProjectRuntimeView[]>;
   createProject(input: { title: string }): Promise<ProjectSummary>;
   updateProject(
     projectId: string,
-    input: Partial<Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt">>,
+    input: Partial<Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt" | "cover">>,
   ): Promise<ProjectSummary>;
   getProjectSettings(projectId: string): Promise<ProjectSettings>;
   getWorkspace(projectId: string): Promise<ProjectWorkspaceView>;
   getTaskEditor(projectId: string, taskId: string): Promise<TaskEditorView>;
+  updateEditorPreference(projectId: string, taskId: string, input: Partial<TaskEditorView["editorPreference"]>): Promise<TaskEditorView["editorPreference"]>;
   createTask(projectId: string, input: SaveTaskInput): Promise<TaskSummary>;
   updateTask(projectId: string, taskId: string, input: SaveTaskInput): Promise<TaskSummary>;
   listAssets(projectId: string): Promise<ProjectAsset[]>;
@@ -269,6 +339,7 @@ const errorMessages: Record<string, string> = {
   TASK_NOT_FOUND: "找不到这个任务，可能已被删除。",
   TASK_CONFLICT: "任务已在别处更新，请重新打开后再保存。",
   TASK_BUSY: "任务正在运行，暂时不能修改。",
+  TASK_PROMPT_BUSY: "任务正在增强，请等待当前增强完成。",
   ASSET_NOT_FOUND: "找不到引用的资产。",
   ASSET_IN_USE: "这个资产仍被任务使用，暂时不能删除。",
   GENERATION_SERVICE_OFFLINE: "生成服务当前不可用，请检查服务后重试。",
@@ -365,6 +436,24 @@ function mapAsset(projectId: string, asset: BackendAsset): ProjectAsset {
 }
 
 export class HttpProjectGateway implements ProjectGateway {
+  private preferenceWrites = new Map<string, Promise<unknown>>();
+
+  updateEditorPreference(projectId: string, taskId: string, input: Partial<TaskEditorView["editorPreference"]>) {
+    const key = `${projectId}/${taskId}`;
+    const pending = this.preferenceWrites.get(key) ?? Promise.resolve();
+    const write = pending.catch(() => undefined).then(() => request<TaskEditorView["editorPreference"]>(
+      `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/editor-preference`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), keepalive: true },
+    ));
+    this.preferenceWrites.set(key, write);
+    const cleanup = () => { if (this.preferenceWrites.get(key) === write) this.preferenceWrites.delete(key); };
+    void write.then(cleanup, cleanup);
+    return write;
+  }
+
+  getComfyUIStatus(signal?: AbortSignal) {
+    return request<ComfyUIStatus>("/comfyui/status", { signal });
+  }
   getApplicationSettings() {
     return request<ApplicationSettingsResponse>("/application/settings");
   }
@@ -381,6 +470,8 @@ export class HttpProjectGateway implements ProjectGateway {
     return request<ComfyUIWorkflow[]>("/comfyui/workflows");
   }
 
+  getGlobalRuntime() { return request<ProjectRuntimeView[]>("/projects/runtime"); }
+
   async listProjects() {
     return (await request<ProjectListResponse>("/projects")).items;
   }
@@ -395,7 +486,7 @@ export class HttpProjectGateway implements ProjectGateway {
 
   updateProject(
     projectId: string,
-    input: Partial<Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt">>,
+    input: Partial<Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt" | "cover">>,
   ) {
     return request<ProjectSummary>(`/projects/${encodeURIComponent(projectId)}`, {
       method: "PATCH",
@@ -412,7 +503,8 @@ export class HttpProjectGateway implements ProjectGateway {
     return request<ProjectWorkspaceView>(`/projects/${encodeURIComponent(projectId)}/workspace`);
   }
 
-  getTaskEditor(projectId: string, taskId: string) {
+  async getTaskEditor(projectId: string, taskId: string) {
+    await this.preferenceWrites.get(`${projectId}/${taskId}`)?.catch(() => undefined);
     return request<TaskEditorView>(
       `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/editor`,
     );
@@ -426,7 +518,8 @@ export class HttpProjectGateway implements ProjectGateway {
     });
   }
 
-  updateTask(projectId: string, taskId: string, input: SaveTaskInput) {
+  async updateTask(projectId: string, taskId: string, input: SaveTaskInput) {
+    await this.preferenceWrites.get(`${projectId}/${taskId}`)?.catch(() => undefined);
     return request<TaskSummary>(
       `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`,
       {

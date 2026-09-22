@@ -1,9 +1,9 @@
 from fastapi import APIRouter, status
 
 from shotmill.api.dependencies import ContainerDep
-from shotmill.api.schemas import TaskReorderRequest, TaskSaveRequest
+from shotmill.api.schemas import EditorPreferencePatch, TaskReorderRequest, TaskSaveRequest
 from shotmill.application.task_service import SaveTaskAsset, SaveTaskData
-from shotmill.frontend_adapter.models import TaskEditorView, TaskSummary
+from shotmill.frontend_adapter.models import EditorPreference, TaskEditorView, TaskSummary
 
 router = APIRouter(prefix="/projects/{project_id}/tasks", tags=["tasks"])
 
@@ -57,6 +57,19 @@ def update_task(
 ) -> TaskSummary:
     container.task_service.update(project_id, task_id, _command(payload))
     return container.workspace_query.task_summary(project_id, task_id)
+
+
+@router.patch("/{task_id}/editor-preference", response_model=EditorPreference)
+def update_editor_preference(
+    project_id: str,
+    task_id: str,
+    payload: EditorPreferencePatch,
+    container: ContainerDep,
+) -> EditorPreference:
+    preference = container.task_service.update_editor_preference(
+        project_id, task_id, **payload.model_dump(exclude_unset=True)
+    )
+    return EditorPreference(**preference)
 
 
 @router.post("/reorder", status_code=status.HTTP_204_NO_CONTENT)

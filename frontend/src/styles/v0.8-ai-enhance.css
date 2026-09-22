@@ -34,13 +34,7 @@
   font-size: 10px;
 }
 
-/* Button visual geometry belongs to Terry React UI Library; ShotMill only anchors it in the editor. */
-.simple-ai-enhance-button {
-  position: absolute;
-  z-index: 5;
-  right: 18px;
-  bottom: 18px;
-}
+.simple-ai-prompt-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 
 .simple-ai-enhance-error {
   position: absolute;
@@ -77,3 +71,4 @@
     max-width: none;
   }
 }
+.single-prompt-context-option { display: flex; align-items: center; gap: 8px; padding-block: 4px; color: var(--sm-text-muted); font-size: 13px; }

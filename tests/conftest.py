@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -15,6 +17,20 @@ from shotmill.domain.providers import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
+
+
+@pytest.fixture
+def bridge_snapshot():
+    def make(workflow_id="w.json", inputs=None, prompt=None):
+        prompt = prompt or {"1": {"class_type": "PrimitiveInt", "inputs": {"value": 17}}}
+        content = {
+            "version": 1, "workflowId": workflow_id, "raw": {"prompt": prompt},
+            "prompt": prompt, "inputs": inputs or [],
+        }
+        encoded = json.dumps(content, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        return {**content, "sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest()}
+
+    return make
 
 
 class FakePromptProvider:

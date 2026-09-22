@@ -154,7 +154,7 @@ export function ResultReviewWorkspace({
 
       <Dialog
         open={Boolean(previewRecord)}
-        title={previewRecord ? `${previewRecord.task.number} · Result Preview` : "Result Preview"}
+        icon="video" title={previewRecord ? `${previewRecord.task.number} · Result Preview` : "Result Preview"}
         description="预览的是完整 Task Result，不会按 Visual Beat 拆成多个结果。"
         onClose={() => setPreviewResultId(null)}
       >
@@ -169,7 +169,7 @@ export function ResultReviewWorkspace({
 
       <Dialog
         open={Boolean(historyTaskId)}
-        title={historyRecords[0] ? `${historyRecords[0].task.number} · Result History` : "Result History"}
+        icon="history" title={historyRecords[0] ? `${historyRecords[0].task.number} · Result History` : "Result History"}
         description="旧 Result 不覆盖；Primary、Latest 与审核状态分别记录。"
         onClose={() => setHistoryTaskId(null)}
       >

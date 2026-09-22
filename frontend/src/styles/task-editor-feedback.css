@@ -46,10 +46,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* Enhancement is a secondary editor action, not a primary orange CTA.
-   Keep it inside the prompt editing frame, above the editor hint line. */
-.simple-ai-enhance-button {
-  right: 22px;
-  bottom: 34px;
-}

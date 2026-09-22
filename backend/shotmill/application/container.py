@@ -124,7 +124,7 @@ def build_container(
             api_provider_factory=api_provider_factory,
         )
     if video_provider is None:
-        def workflow_path_getter(request):
+        def workflow_profile_getter(request):
             comfyui = application_settings.get_comfyui()
             requested_id = str(
                 request.params.get("workflowProfileId")
@@ -167,6 +167,11 @@ def build_container(
                     ),
                     None,
                 )
+            return profile
+
+        def workflow_path_getter(request):
+            profile = workflow_profile_getter(request)
+            comfyui = application_settings.get_comfyui()
             if profile is None or not profile.workflow_file:
                 return None
             workflow_file = Path(profile.workflow_file).expanduser()
@@ -186,12 +191,15 @@ def build_container(
             coordinator=comfyui_coordinator,
             base_url_getter=lambda: application_settings.get_comfyui().base_url,
             workflow_path_getter=workflow_path_getter,
+            numeric_bindings_getter=lambda request: (
+                profile.numeric_bindings if (profile := workflow_profile_getter(request)) else ()
+            ),
             use_bridge_assets=True,
         )
 
     project_service = ProjectService(uow_factory, storage)
     asset_service = AssetService(uow_factory, storage)
-    task_service = TaskService(uow_factory)
+    task_service = TaskService(uow_factory, storage)
     workspace_query = WorkspaceQuery(uow_factory, storage)
     prompt_enhancement_service = PromptEnhancementService(
         uow_factory,

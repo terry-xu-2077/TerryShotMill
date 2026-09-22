@@ -12,6 +12,7 @@ test("result playback stays inside the dialog on desktop and mobile", async ({ p
     await route.fulfill({ json: data });
   });
   await openProject(page, project.title);
+  await page.locator(".task-list-row:not(.is-create)").click();
   await page.getByRole("button", { name: "播放任务 播放测试 的生成结果" }).click();
   const dialog = page.getByRole("dialog", { name: "播放结果 · 播放测试" });
   for (const width of [1280, 390]) {

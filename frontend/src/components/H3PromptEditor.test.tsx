@@ -24,8 +24,8 @@ const assets: PromptAsset[] = [
   },
 ];
 
-function Harness() {
-  const [value, setValue] = useState("仓库门口 ");
+function Harness({ initialValue = "仓库门口 " }: { initialValue?: string }) {
+  const [value, setValue] = useState(initialValue);
   return (
     <OverlayProvider>
       <H3PromptEditor
@@ -41,6 +41,42 @@ function Harness() {
 }
 
 describe("H3PromptEditor visual asset mentions", () => {
+  it("keeps the asset menu closed after the Escape key is released", () => {
+    render(<Harness />);
+    const editor = screen.getByRole("textbox", { name: "用户提示词可视化" });
+    editor.textContent = "仓库门口 @";
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    fireEvent.input(editor);
+    expect(screen.getByRole("listbox", { name: "引用任务资产" })).toBeInTheDocument();
+    fireEvent.keyDown(editor, { key: "Escape" });
+    fireEvent.keyUp(editor, { key: "Escape" });
+    expect(screen.queryByRole("listbox", { name: "引用任务资产" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("prompt-value")).toHaveTextContent("仓库门口 @");
+  });
+
+  it("does not replace dialogue controls when focus moves within the editor", () => {
+    render(<Harness initialValue="(S1) <d>[Chinese] 再撑一段。</d>" />);
+    const editor = screen.getByRole("textbox", { name: "用户提示词可视化" });
+    const language = screen.getByRole("combobox", { name: "对白语言" });
+    const dialogue = editor.querySelector(".h3-dialogue-text")!;
+    fireEvent.blur(dialogue, { relatedTarget: language });
+    expect(screen.getByRole("combobox", { name: "对白语言" })).toBe(language);
+    expect(dialogue.isConnected).toBe(true);
+    fireEvent.change(language, { target: { value: "English" } });
+    expect(screen.getByTestId("prompt-value")).toHaveTextContent("(S1) <d>[English] 再撑一段。</d>");
+  });
+
+  it("can edit a dialogue again after focus has left the visual editor", () => {
+    render(<Harness initialValue="(S1) <d>[Chinese] 再撑一段。</d>" />);
+    fireEvent.blur(screen.getByRole("textbox", { name: "用户提示词可视化" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "对白语言" }), { target: { value: "English" } });
+    expect(screen.getByTestId("prompt-value")).toHaveTextContent("(S1) <d>[English] 再撑一段。</d>");
+  });
+
   it("typing @ opens the asset menu and inserts the selected reference", () => {
     render(<Harness />);
     const editor = screen.getByRole("textbox", { name: "用户提示词可视化" });

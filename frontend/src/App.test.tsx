@@ -18,6 +18,40 @@ async function openFirstProject(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("V0.6 Terry导演工作台", () => {
+  beforeEach(() => localStorage.clear());
+  it("selects tasks with Ctrl+A and keeps text selection native inside the editor", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await openFirstProject(user);
+    const shortcut = new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true, cancelable: true });
+    fireEvent(window, shortcut);
+    expect(shortcut.defaultPrevented).toBe(true);
+    const checks = screen.getAllByRole("checkbox", { name: /^选择任务/ });
+    checks.forEach(check => expect(check).toBeChecked());
+    const toolbar = screen.getByRole("region", { name: "任务操作" });
+    expect(within(toolbar).getByRole("button", { name: "增强提示词" })).toBeVisible();
+    await user.click(within(toolbar).getByRole("button", { name: "取消选择" }));
+    checks.forEach(check => expect(check).not.toBeChecked());
+    expect(screen.queryByRole("region", { name: "任务操作" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新建任务卡" }));
+    const input = screen.getAllByRole("textbox")[0];
+    const textShortcut = new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true, cancelable: true });
+    fireEvent(input, textShortcut);
+    expect(textShortcut.defaultPrevented).toBe(false);
+  });
+  it("opens video directly from task thumbnails in both collection views", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await openFirstProject(user);
+    for (const mode of ["list", "card"]) {
+      if (mode === "card") await user.click(screen.getByRole("button", { name: "切换为卡片视图" }));
+      await user.click(screen.getByRole("button", { name: "播放视频 · 特瑞在荒漠驰骋" }));
+      const dialog = screen.getByRole("dialog", { name: "播放结果 · 特瑞在荒漠驰骋" });
+      expect(dialog.querySelector("video")?.autoplay).toBe(true);
+      expect(screen.queryByTestId("simple-task-editor")).not.toBeInTheDocument();
+      await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    }
+  });
   it("默认打开项目首页，只负责选择或新建项目", async () => {
     renderApp();
 
@@ -66,6 +100,7 @@ describe("V0.6 Terry导演工作台", () => {
     const user = userEvent.setup();
     renderApp();
     await openFirstProject(user);
+    await user.click(screen.getByRole("button", { name: /^#1 特瑞在荒漠驰骋/ }));
 
     await user.click(await screen.findByRole("button", { name: "播放任务 特瑞在荒漠驰骋 的生成结果" }));
     const dialog = screen.getByRole("dialog", { name: /播放结果 · 特瑞在荒漠驰骋/ });
@@ -85,8 +120,10 @@ describe("V0.6 Terry导演工作台", () => {
 
     const secondRow = screen.getByText("#2 越过断层台地").closest("button")!;
     fireEvent.contextMenu(secondRow);
-    fireEvent.click(screen.getByRole("menuitem", { name: "编辑任务" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "查看任务" }));
     expect(await screen.findByRole("dialog", { name: /越过断层台地/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存" })).not.toBeInTheDocument();
+    expect(screen.getByText("排队或生成中 · 只读")).toBeInTheDocument();
   });
 
   it("任务名称可以在编辑窗顶部原位修改并保存", async () => {
@@ -192,7 +229,7 @@ describe("V0.6 Terry导演工作台", () => {
     expect(within(dialog).getByRole("region", { name: "提示词编辑" })).toBeInTheDocument();
     expect(within(dialog).getByRole("textbox", { name: "用户提示词可视化" }).textContent).toBe("");
     expect(within(dialog).queryByText("等待填写提示词。")).not.toBeInTheDocument();
-    expect(within(dialog).getByRole("tab", { name: "不承接" })).toHaveAttribute("aria-selected", "true");
+    expect(within(dialog).getByRole("tab", { name: "尾帧承接" })).toHaveAttribute("aria-selected", "true");
     expect(within(dialog).getByRole("button", { name: "取消" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "保存" })).toBeInTheDocument();
   });
@@ -203,7 +240,7 @@ describe("V0.6 Terry导演工作台", () => {
     await openFirstProject(user);
 
     expect(screen.getByRole("button", { name: /设置/ })).toBeInTheDocument();
-    expect(screen.getByText(/视频生成：越过断层台地/)).toBeInTheDocument();
+    expect(await screen.findByText(/执行中 \d+ 项 · 排队 \d+ 项/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "素材" })).not.toBeInTheDocument();
   });

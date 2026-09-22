@@ -116,6 +116,13 @@ class SqlAlchemyTaskRepository:
         self.session.flush()
         return task
 
+    def update_editor_preference(self, task_id: str, values: dict[str, str]) -> None:
+        if values:
+            self.session.execute(
+                update(models.TaskModel).where(models.TaskModel.id == task_id).values(**values)
+            )
+            self.session.flush()
+
     def delete(self, task_id: str) -> None:
         self.session.execute(delete(models.TaskModel).where(models.TaskModel.id == task_id))
         self.session.flush()

@@ -104,18 +104,20 @@ type PromptAssetEditorProps = {
   assets: PromptAsset[];
   ariaLabel: string;
   rows?: number;
+  readOnly?: boolean;
 };
 
-export function PromptAssetEditor({ value, onChange, assets, ariaLabel, rows = 10 }: PromptAssetEditorProps) {
+export function PromptAssetEditor({ value, onChange, assets, ariaLabel, rows = 10, readOnly = false }: PromptAssetEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const pendingCaret = useRef<number | null>(null);
+  const dismissedMention = useRef<{ value: string; caret: number } | null>(null);
   const [mention, setMention] = useState<AssetMention | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [menuPosition, setMenuPosition] = useState({ left: 8, top: 8 });
   const menuId = useId();
   const zIndex = useOverlayZIndex(30);
-  const open = mention !== null;
+  const open = !readOnly && mention !== null;
 
   const visibleAssets = useMemo(() => {
     if (!mention?.query) return assets;
@@ -128,6 +130,8 @@ export function PromptAssetEditor({ value, onChange, assets, ariaLabel, rows = 1
   }, [assets, mention]);
 
   const closeMenu = () => {
+    const textarea = textareaRef.current;
+    if (textarea) dismissedMention.current = { value: textarea.value, caret: textarea.selectionStart };
     setMention(null);
     setActiveIndex(0);
   };
@@ -185,13 +189,19 @@ export function PromptAssetEditor({ value, onChange, assets, ariaLabel, rows = 1
   }, [visibleAssets.length]);
 
   const updateMention = (nextValue: string, caret: number) => {
+    if (readOnly) return;
+    // A selection event from the same keypress must not reopen a dismissed menu.
+    if (dismissedMention.current?.value === nextValue && dismissedMention.current.caret === caret) return;
+    dismissedMention.current = null;
     const nextMention = findAssetMention(nextValue, caret);
     setMention(nextMention);
     if (!mention || nextMention?.query !== mention.query) setActiveIndex(0);
   };
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    if (readOnly) return;
     const nextValue = event.target.value;
+    dismissedMention.current = null;
     onChange(nextValue);
     updateMention(nextValue, event.target.selectionStart);
   };
@@ -230,6 +240,7 @@ export function PromptAssetEditor({ value, onChange, assets, ariaLabel, rows = 1
       <textarea
         ref={textareaRef}
         value={value}
+        readOnly={readOnly}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         onClick={(event) => updateMention(value, event.currentTarget.selectionStart)}
@@ -244,7 +255,7 @@ export function PromptAssetEditor({ value, onChange, assets, ariaLabel, rows = 1
         aria-activedescendant={open && visibleAssets[activeIndex] ? `${menuId}-${visibleAssets[activeIndex].id}` : undefined}
         rows={rows}
       />
-      <div className="prompt-asset-hint"><span>@</span> 输入 @ 引用当前任务资产</div>
+      {!readOnly && <div className="prompt-asset-hint"><span>@</span> 输入 @ 引用当前任务资产</div>}
       {open && (
         <OverlayPortal>
           <div

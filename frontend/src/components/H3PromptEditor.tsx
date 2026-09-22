@@ -17,6 +17,7 @@ type H3PromptEditorProps = {
   assets: PromptAsset[];
   ariaLabel: string;
   viewMode: H3PromptViewMode;
+  readOnly?: boolean;
 };
 
 const cameraLabels = new Map<string, string>([
@@ -124,7 +125,7 @@ function mediaGlyph(asset: PromptAsset) {
   return "图";
 }
 
-function createDialogueChip(raw: string, notifyChange: () => void) {
+function createDialogueChip(raw: string, notifyChange: () => void, readOnly: boolean) {
   const match = raw.match(/^<d>\[([^\]]+)\]\s*([\s\S]*?)<\/d>$/i);
   const chip = document.createElement("span");
   chip.className = "h3-visual-chip is-dialogue";
@@ -137,6 +138,7 @@ function createDialogueChip(raw: string, notifyChange: () => void) {
 
   const language = document.createElement("select");
   language.className = "h3-dialogue-language";
+  language.disabled = readOnly;
   language.setAttribute("aria-label", "对白语言");
   const languages = ["English", "Chinese", "Cantonese", "Japanese", "Korean", "Spanish", "French", "German", "Russian", "Other"];
   const current = match[1] || "English";
@@ -150,11 +152,12 @@ function createDialogueChip(raw: string, notifyChange: () => void) {
 
   const body = document.createElement("span");
   body.className = "h3-dialogue-text";
-  body.contentEditable = "true";
+  body.contentEditable = String(!readOnly);
   body.spellcheck = false;
   body.textContent = match[2] || "";
 
   const update = () => {
+    if (readOnly) return;
     const text = String(body.innerText || body.textContent || "").replace(/\r?\n/g, " ");
     chip.dataset.raw = `<d>[${language.value || "English"}] ${text}</d>`;
     notifyChange();
@@ -164,6 +167,8 @@ function createDialogueChip(raw: string, notifyChange: () => void) {
   body.addEventListener("input", update);
   body.addEventListener("pointerdown", (event) => event.stopPropagation());
   body.addEventListener("keydown", (event) => {
+    if ((event.altKey && ["ArrowLeft", "ArrowRight"].includes(event.key))
+      || ((event.ctrlKey || event.metaKey) && event.key === "Enter")) return;
     event.stopPropagation();
     if (event.key === "Enter") event.preventDefault();
   });
@@ -171,9 +176,9 @@ function createDialogueChip(raw: string, notifyChange: () => void) {
   return chip;
 }
 
-function createTokenChip(raw: string, assets: PromptAsset[], notifyChange: () => void) {
+function createTokenChip(raw: string, assets: PromptAsset[], notifyChange: () => void, readOnly: boolean) {
   const type = tokenType(raw);
-  if (type === "dialogue") return createDialogueChip(raw, notifyChange);
+  if (type === "dialogue") return createDialogueChip(raw, notifyChange, readOnly);
 
   const chip = document.createElement("span");
   chip.className = `h3-visual-chip is-${type}`;
@@ -338,22 +343,23 @@ function caretViewportPoint(root: HTMLElement) {
   return { left: rect.left + 14, top: rect.top + 44 };
 }
 
-function renderVisual(root: HTMLElement, value: string, assets: PromptAsset[], notifyChange: () => void) {
+function renderVisual(root: HTMLElement, value: string, assets: PromptAsset[], notifyChange: () => void, readOnly = false) {
   root.replaceChildren();
   H3_TOKEN_PATTERN.lastIndex = 0;
   let cursor = 0;
   for (const match of value.matchAll(H3_TOKEN_PATTERN)) {
     const index = match.index ?? 0;
     if (index > cursor) appendText(root, value.slice(cursor, index));
-    root.append(createTokenChip(match[0], assets, notifyChange));
+    root.append(createTokenChip(match[0], assets, notifyChange, readOnly));
     cursor = index + match[0].length;
   }
   if (cursor < value.length) appendText(root, value.slice(cursor));
   if (!value) root.append(document.createElement("br"));
 }
 
-export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }: H3PromptEditorProps) {
+export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, readOnly = false }: H3PromptEditorProps) {
   const visualRef = useRef<HTMLDivElement>(null);
+  const renderedReadOnly = useRef<boolean | undefined>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
   const pendingCaret = useRef<number | null>(null);
   const latestValue = useRef(value);
@@ -361,7 +367,7 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }:
   const [activeIndex, setActiveIndex] = useState(0);
   const [menuPosition, setMenuPosition] = useState({ left: 8, top: 8 });
   const menuId = useId();
-  const menuOpen = viewMode === "visual" && mention !== null;
+  const menuOpen = !readOnly && viewMode === "visual" && mention !== null;
   const zIndex = useOverlayZIndex(30);
   latestValue.current = value;
 
@@ -381,6 +387,7 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }:
   useOverlayRegistration(menuOpen, closeMenu);
 
   const updateMention = (root: HTMLElement, nextValue = serializeVisual(root)) => {
+    if (readOnly) return;
     const caret = serializedCaretOffset(root);
     const nextMention = caret == null ? null : findAssetMention(nextValue, caret);
     setMention((current) => {
@@ -394,19 +401,20 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }:
     const root = visualRef.current;
     if (!root) return;
     const current = serializeVisual(root);
-    if (current !== value || root.childNodes.length === 0) {
+    if (current !== value || root.childNodes.length === 0 || renderedReadOnly.current !== readOnly) {
+      renderedReadOnly.current = readOnly;
       renderVisual(root, value, assets, () => {
         const next = serializeVisual(root);
         latestValue.current = next;
         onChange(next);
-      });
+      }, readOnly);
     }
     if (pendingCaret.current != null) {
       const caret = pendingCaret.current;
       pendingCaret.current = null;
       placeSerializedCaret(root, caret);
     }
-  }, [assetKey, assets, onChange, value, viewMode]);
+  }, [assetKey, assets, onChange, value, viewMode, readOnly]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -460,7 +468,7 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }:
   };
 
   if (viewMode === "text") {
-    return <PromptAssetEditor value={value} onChange={onChange} assets={assets} ariaLabel={ariaLabel} rows={18} />;
+    return <PromptAssetEditor value={value} onChange={onChange} assets={assets} ariaLabel={ariaLabel} rows={18} readOnly={readOnly} />;
   }
 
   return (
@@ -468,7 +476,9 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }:
       <div
         ref={visualRef}
         className="h3-visual-editor"
-        contentEditable
+        contentEditable={!readOnly}
+        aria-readonly={readOnly}
+        tabIndex={readOnly ? 0 : undefined}
         suppressContentEditableWarning
         role="textbox"
         aria-label={`${ariaLabel}可视化`}
@@ -480,6 +490,7 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }:
         aria-activedescendant={menuOpen && visibleAssets[activeIndex] ? `${menuId}-${visibleAssets[activeIndex].id}` : undefined}
         data-placeholder="在这里编写 H3 提示词。标签、镜头、对白和素材引用会以可视化组件显示。"
         onInput={(event) => {
+          if (readOnly) return;
           const next = serializeVisual(event.currentTarget);
           latestValue.current = next;
           onChange(next);
@@ -487,6 +498,9 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }:
         }}
         onClick={(event) => updateMention(event.currentTarget)}
         onKeyUp={(event) => {
+          // Escape dismisses the mention without changing its text or caret.
+          // Re-reading that same caret on keyup would immediately reopen it.
+          if (event.key === "Escape") return;
           if (["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(event.key) && menuOpen) return;
           updateMention(event.currentTarget);
         }}
@@ -511,13 +525,17 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode }:
           }
         }}
         onBlur={(event) => {
-          const next = serializeVisual(event.currentTarget);
+          if (readOnly) return;
+          const root = event.currentTarget;
+          // Moving between the editor and its dialogue controls is not leaving it.
+          // Rebuilding here would remove the control that is about to receive focus.
+          if (event.relatedTarget instanceof Node && root.contains(event.relatedTarget)) return;
+          const next = serializeVisual(root);
           if (next !== latestValue.current) onChange(next);
-          renderVisual(event.currentTarget, next, assets, () => onChange(serializeVisual(event.currentTarget)));
+          renderVisual(root, next, assets, () => onChange(serializeVisual(root)));
           closeMenu();
         }}
       />
-      <div className="h3-visual-editor-hint">可视化模式会将 H3 标签、素材引用、镜头标记与对白格式化显示；切回“文本”可查看原始提示词。</div>
       {menuOpen && (
         <OverlayPortal>
           <div

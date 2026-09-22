@@ -86,7 +86,7 @@
 .prompt-asset-options { max-height: 320px; overflow: auto; padding: 5px; }
 .prompt-asset-options button { width: 100%; display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 7px; color: var(--sm-text-muted); border: 0; border-radius: 7px; background: transparent; cursor: pointer; text-align: left; }
 .prompt-asset-options button.is-active { color: var(--sm-text); background: rgba(255,255,255,.08); }
-.prompt-asset-menu-thumb { width: 42px; height: 38px; display: grid; place-items: center; color: rgba(255,255,255,.72); border-radius: 6px; background: linear-gradient(145deg,var(--sm-surface-2),var(--sm-surface-1)); }
+.prompt-asset-menu-thumb { width: 42px; height: 38px; display: grid; place-items: center; color: var(--sm-text-muted); border-radius: 6px; background: linear-gradient(145deg,var(--sm-surface-2),var(--sm-surface-1)); }
 .prompt-asset-menu-thumb.tone-amber { background: linear-gradient(145deg,var(--sm-surface-2),var(--sm-surface-1)); }
 .prompt-asset-menu-thumb.tone-green { background: linear-gradient(145deg,var(--sm-surface-2),var(--sm-surface-1)); }
 .prompt-asset-menu-thumb.tone-violet { background: linear-gradient(145deg,var(--sm-surface-2),var(--sm-surface-1)); }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { GenerationTask, ProjectAsset } from "./domain/storyboard";
 import {
@@ -23,12 +23,17 @@ import {
   ProjectWorkspace,
 } from "./features/projects/ProjectWorkspaceV2";
 import type { DirectorProject } from "./mock/projects";
+import { BridgeStatus } from "./features/projects/BridgeStatus";
+
+import { GlobalStatusbar } from "./features/projects/GlobalStatusbar";
 
 type AppProps = {
   gateway?: ProjectGateway;
 };
 
 export function App({ gateway = httpProjectGateway }: AppProps) {
+  const importedAssets = useRef(new WeakMap<File, ProjectAsset>());
+  const removedAssets = useRef(new Set<string>());
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [currentProject, setCurrentProject] = useState<DirectorProject | null>(null);
   const [promptReviewItems, setPromptReviewItems] = useState<PromptReviewItem[]>([]);
@@ -36,6 +41,8 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [applicationSettings, setApplicationSettings] = useState<ApplicationSettings>();
+  const loadBridgeStatus = useCallback((signal?: AbortSignal) => gateway.getComfyUIStatus(signal), [gateway]);
+  const bridgeStatus = <BridgeStatus load={loadBridgeStatus} address={applicationSettings?.comfyui.baseUrl} />;
 
   const refreshProjects = useCallback(async () => {
     setLoading(true);
@@ -107,7 +114,7 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
   }, [currentProject, loadProject, refreshProjects]);
 
   const saveProjectConfiguration = async (
-    settings: Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt">,
+    settings: Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt" | "cover">,
     assets: ProjectAsset[],
   ) => {
     if (!currentProject) return;
@@ -117,15 +124,26 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
     const retained = assets.filter((asset) => !asset.sourceFile);
     const added = assets.filter((asset) => asset.sourceFile);
 
-    await gateway.updateProject(currentProject.id, settings);
+    const importedIds = new Map<string, string>();
+    for (const asset of added) {
+      let uploaded = importedAssets.current.get(asset.sourceFile!);
+      if (!uploaded) {
+        uploaded = await gateway.importAsset(currentProject.id, asset.sourceFile!, {
+          name: asset.name, category: asset.category, tags: asset.tags,
+        });
+        importedAssets.current.set(asset.sourceFile!, uploaded);
+      }
+      importedIds.set(asset.id, uploaded.id);
+    }
+    const cover = settings.cover?.assetId ? { ...settings.cover, assetId: importedIds.get(settings.cover.assetId) ?? settings.cover.assetId } : settings.cover;
+    await gateway.updateProject(currentProject.id, { ...settings, ...(cover ? { cover } : {}) });
     await Promise.all([
-      ...removed.map((asset) => gateway.deleteAsset(currentProject.id, asset.id)),
+      ...removed.map(async (asset) => {
+        if (removedAssets.current.has(asset.id)) return;
+        await gateway.deleteAsset(currentProject.id, asset.id);
+        removedAssets.current.add(asset.id);
+      }),
       ...retained.map((asset) => gateway.updateAsset(currentProject.id, asset.id, {
-        name: asset.name,
-        category: asset.category,
-        tags: asset.tags,
-      })),
-      ...added.map((asset) => gateway.importAsset(currentProject.id, asset.sourceFile!, {
         name: asset.name,
         category: asset.category,
         tags: asset.tags,
@@ -134,10 +152,17 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
     await reloadCurrentProject();
   };
 
+  const shell = (content: ReactNode) => <div className="application-shell">
+    <div className="application-content">{content}</div>
+    <GlobalStatusbar gateway={gateway} settings={applicationSettings} refreshKey={currentProject ?? projects}
+      onSaveSettings={async next => { setApplicationSettings(await gateway.updateApplicationSettings(next)); }} />
+  </div>;
+
   if (!currentProject) {
-    return (
+    return shell(
       <>
-        <ProjectHome
+      <ProjectHome
+          bridgeStatus={bridgeStatus}
           projects={projects}
           loading={loading}
           error={loadError}
@@ -166,8 +191,9 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
     );
   }
 
-  return (
+  return shell(
     <ProjectWorkspace
+      bridgeStatus={bridgeStatus}
       project={currentProject}
       applicationSettings={applicationSettings}
       promptReviewItems={promptReviewItems}
@@ -202,10 +228,26 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
         await reloadCurrentProject();
         return response;
       }}
+      onCheckPromptBatchEligibility={(taskIds) => batchReviewGateway.checkPromptBatchEligibility(currentProject.id, taskIds)}
       onApprovePrompt={async (taskId) => {
         const result = await batchReviewGateway.approvePrompt(currentProject.id, taskId);
         await loadPromptReviewState(currentProject.id);
         return result;
+      }}
+      onCancelPromptBatch={async (batchId) => {
+        await batchReviewGateway.cancelPromptBatch(currentProject.id, batchId);
+        await reloadCurrentProject();
+      }}
+      onCancelQueuedVideos={async (jobIds) => {
+        await batchReviewGateway.cancelQueuedVideos(currentProject.id, jobIds);
+        await reloadCurrentProject();
+      }}
+      onUpdateEditorPreference={async (taskId, preference) => {
+        await gateway.updateEditorPreference(currentProject.id, taskId, preference);
+      }}
+      onRetryFailedPromptBatch={async (batchId) => {
+        await batchReviewGateway.retryFailedPromptBatch(currentProject.id, batchId);
+        await reloadCurrentProject();
       }}
       onCheckVideoBatchEligibility={(taskIds) => (
         batchReviewGateway.checkVideoBatchEligibility(currentProject.id, taskIds)

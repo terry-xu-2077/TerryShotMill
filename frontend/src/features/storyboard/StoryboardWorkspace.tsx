@@ -904,7 +904,7 @@ export function StoryboardWorkspace({
     </div>
     <Dialog
       open={deleteDialogOpen}
-      title={deletableTaskCount > 0 ? `删除 ${deletableTaskCount} 个 Task？` : "所选 Task 含历史记录，无法删除"}
+      icon="delete" title={deletableTaskCount > 0 ? `删除 ${deletableTaskCount} 个 Task？` : "所选 Task 含历史记录，无法删除"}
       description={protectedDeleteCount > 0
         ? `${protectedDeleteCount} 个 Task 已有 Job 或 Result 历史，将被保留。`
         : "删除会移除当前 Task Card 及其 Story Order placement。"}

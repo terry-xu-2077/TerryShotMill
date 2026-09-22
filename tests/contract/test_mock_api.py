@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 from fastapi.testclient import TestClient
 from shotmill.devtools.mock_api import create_mock_app
@@ -49,6 +50,11 @@ def test_mock_api_exercises_batch_review_product_flow(tmp_path) -> None:
         project_id = client.get("/api/v1/projects").json()["items"][0]["id"]
         tasks = client.get(f"/api/v1/projects/{project_id}/workspace").json()["tasks"]
         task_ids = [item["id"] for item in tasks[:2]]
+        # Isolate optional review from the fixture's missing previous-result context.
+        with application.state.container.generation_service.uow_factory() as uow:
+            second = uow.tasks.get(task_ids[1])
+            second.generation_params["contextMode"] = "不承接"
+            uow.tasks.update(second)
 
         batch = client.post(
             f"/api/v1/projects/{project_id}/prompt-enhancement-batches",
@@ -59,8 +65,20 @@ def test_mock_api_exercises_batch_review_product_flow(tmp_path) -> None:
             },
         )
         assert batch.status_code == 202
-        assert batch.json()["state"] == "completed"
-        assert [item["state"] for item in batch.json()["items"]] == ["completed", "completed"]
+        batch_id = batch.json()["batchId"]
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            state = client.get(
+                f"/api/v1/projects/{project_id}/prompt-enhancement-batches/{batch_id}"
+            ).json()
+            if state["state"] == "completed":
+                break
+            time.sleep(0.01)
+        assert state["state"] == "completed"
+        assert [item["state"] for item in state["items"]] == ["completed", "completed"]
+        persisted = client.get(f"/api/v1/projects/{project_id}/workspace").json()["runtime"]
+        assert persisted["promptBatches"][0]["id"] == batch_id
+        assert persisted["promptBatches"][0]["completedCount"] == 2
 
         review_state = client.get(
             f"/api/v1/projects/{project_id}/prompt-review-state"
@@ -78,15 +96,24 @@ def test_mock_api_exercises_batch_review_product_flow(tmp_path) -> None:
             f"/api/v1/projects/{project_id}/video-generation-batches/eligibility",
             json={"taskIds": task_ids},
         ).json()
-        assert eligibility["eligibleTaskIds"] == [task_ids[0]]
-        assert eligibility["skipped"] == [{"taskId": task_ids[1], "reason": "not-reviewed"}]
+        assert eligibility["eligibleTaskIds"] == task_ids
+        assert eligibility["skipped"] == []
 
         submitted = client.post(
             f"/api/v1/projects/{project_id}/video-generation-batches",
             json={"taskIds": task_ids},
         ).json()
-        assert submitted["eligibleTaskIds"] == [task_ids[0]]
+        assert submitted["eligibleTaskIds"] == task_ids
         assert submitted["batchId"].startswith("videobatch-")
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            generated = client.get(f"/api/v1/projects/{project_id}/workspace").json()
+            if generated["tasks"][0]["primaryResult"]:
+                break
+            time.sleep(0.01)
+        result = generated["tasks"][0]["primaryResult"]
+        assert result is not None
+        assert client.get(result["videoUrl"]).content[4:8] == b"ftyp"
 
 
 def test_mock_api_keeps_real_contract_and_may_lead_with_target_routes(tmp_path) -> None:

@@ -4,6 +4,8 @@ import asyncio
 import mimetypes
 import secrets
 import time
+from copy import deepcopy
+from dataclasses import asdict, replace
 from typing import Any
 from uuid import uuid4
 
@@ -89,10 +91,12 @@ def _build_workflow(
     uploaded: dict[str, str],
     seed: int,
     settings: LocalInferenceSettings | None = None,
+    model_inputs: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Build the API graph for ComfyUI-llama-cpp_vllm from adapter defaults."""
 
     settings = settings or LocalInferenceSettings()
+    model_inputs = model_inputs or LLAMA_CPP_VLLM_DEFAULTS
 
     slot_media: dict[int, Any] = {}
     unassigned: list[Any] = []
@@ -109,14 +113,14 @@ def _build_workflow(
     workflow: dict[str, dict[str, Any]] = {
         "3": {
             "inputs": {
-                "model": LLAMA_CPP_VLLM_DEFAULTS["model"],
-                "mmproj": LLAMA_CPP_VLLM_DEFAULTS["mmproj"],
-                "chat_handler": LLAMA_CPP_VLLM_DEFAULTS["chat_handler"],
-                "n_ctx": LLAMA_CPP_VLLM_DEFAULTS["n_ctx"],
-                "vram_limit": LLAMA_CPP_VLLM_DEFAULTS["vram_limit"],
-                "image_min_tokens": LLAMA_CPP_VLLM_DEFAULTS["image_min_tokens"],
-                "image_max_tokens": LLAMA_CPP_VLLM_DEFAULTS["image_max_tokens"],
-                "load_mtp": LLAMA_CPP_VLLM_DEFAULTS["load_mtp"],
+                "model": model_inputs["model"],
+                "mmproj": model_inputs["mmproj"],
+                "chat_handler": model_inputs["chat_handler"],
+                "n_ctx": model_inputs["n_ctx"],
+                "vram_limit": model_inputs["vram_limit"],
+                "image_min_tokens": model_inputs["image_min_tokens"],
+                "image_max_tokens": model_inputs["image_max_tokens"],
+                "load_mtp": model_inputs["load_mtp"],
             },
             "class_type": "llama_cpp_model_loader",
         },
@@ -211,6 +215,42 @@ class ComfyUIPromptAIProvider:
         self.base_url_getter = base_url_getter
         self.use_bridge_assets = use_bridge_assets
         self.coordinator = coordinator
+        self.model_inputs = dict(LLAMA_CPP_VLLM_DEFAULTS)
+
+    @property
+    def display_name(self) -> str:
+        model = str(self.model_inputs["model"]).replace("\\", "/").rsplit("/", 1)[-1]
+        return f"本地 · {model}"
+
+    def capture_profile(self) -> dict[str, Any]:
+        settings = self.settings_getter() if self.settings_getter else LocalInferenceSettings()
+        if settings.seed_mode != "fixed":
+            settings = replace(settings, seed_mode="fixed", seed=secrets.randbelow(2**63 - 1))
+        return {
+            "providerId": self.id, "version": 1,
+            "baseUrl": self.base_url_getter() if self.base_url_getter else self.base_url,
+            "localInference": asdict(settings), "modelInputs": deepcopy(self.model_inputs),
+            "systemPrompt": (
+                self.system_prompt_getter().system_prompt if self.system_prompt_getter else None
+            ),
+            "timeoutSeconds": self.timeout_seconds,
+        }
+
+    def bind_profile(self, profile: dict[str, Any]) -> ComfyUIPromptAIProvider:
+        settings = LocalInferenceSettings(**profile["localInference"])
+        provider = ComfyUIPromptAIProvider(
+            profile["baseUrl"], poll_interval_seconds=self.poll_interval_seconds,
+            timeout_seconds=profile["timeoutSeconds"], transport=self.transport,
+            settings_getter=lambda: settings, use_bridge_assets=self.use_bridge_assets,
+            coordinator=self.coordinator,
+        )
+        provider.model_inputs = deepcopy(profile["modelInputs"])
+        # Bind the previously selected rules; do not consult settings after queue admission.
+        if profile.get("systemPrompt") is not None:
+            from shotmill.domain.application_settings import PromptSystemSettings
+            frozen_system = PromptSystemSettings(system_prompt=profile["systemPrompt"])
+            provider.system_prompt_getter = lambda: frozen_system
+        return provider
 
     async def _upload_assets(
         self,
@@ -295,6 +335,7 @@ class ComfyUIPromptAIProvider:
                     uploaded,
                     seed,
                     local_settings,
+                    self.model_inputs,
                 )
                 workflow["1"]["inputs"]["system_prompt"] = system_prompt
                 submit = await client.post(
@@ -363,7 +404,7 @@ class ComfyUIPromptAIProvider:
                 return PromptAIResponse(
                     text=text,
                     provider_id=self.id,
-                    model_id=str(LLAMA_CPP_VLLM_DEFAULTS["model"]),
+                    model_id=str(self.model_inputs["model"]),
                 )
         except ShotMillError:
             raise

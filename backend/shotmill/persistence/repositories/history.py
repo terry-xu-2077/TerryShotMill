@@ -45,6 +45,7 @@ class SqlAlchemyJobRepository:
                 provider_profile_snapshot=job.provider_profile_snapshot,
                 params_snapshot=job.params_snapshot,
                 context_snapshot=job.context_snapshot,
+                execution_context=job.execution_context,
                 seed=job.seed,
                 provider_job_id=job.provider_job_id,
                 submitted_at=job.submitted_at,
@@ -70,11 +71,28 @@ class SqlAlchemyJobRepository:
         self.session.flush()
         return job
 
+    def bind_execution_context(self, job_id: str, context: dict) -> dict:
+        row = self.session.get(models.JobModel, job_id)
+        if row is None:
+            raise KeyError(job_id)
+        if row.execution_context is None:
+            row.execution_context = context
+            self.session.flush()
+        return dict(row.execution_context)
+
     def list_by_task(self, task_id: str) -> list[Job]:
         rows = self.session.scalars(
             select(models.JobModel)
             .where(models.JobModel.task_id == task_id)
             .order_by(models.JobModel.submitted_at.desc())
+        ).all()
+        return [job_from_model(row) for row in rows]
+
+    def list_active(self) -> list[Job]:
+        rows = self.session.scalars(
+            select(models.JobModel).where(models.JobModel.status.in_([
+                JobStatus.QUEUED.value, JobStatus.RUNNING.value,
+            ])).order_by(models.JobModel.submitted_at, models.JobModel.id)
         ).all()
         return [job_from_model(row) for row in rows]
 
@@ -171,6 +189,7 @@ class SqlAlchemyPromptRevisionRepository:
                 skill_version=revision.skill_version,
                 provider_profile_id=revision.provider_profile_id,
                 model=revision.model,
+                elapsed_seconds=revision.elapsed_seconds,
                 previous_task_summary_snapshot=revision.previous_task_summary_snapshot,
                 created_at=revision.created_at,
             )
@@ -194,6 +213,14 @@ class SqlAlchemyPromptEnhancementBatchRepository:
     def get(self, batch_id: str) -> PromptEnhancementBatch | None:
         row = self.session.get(models.PromptEnhancementBatchModel, batch_id)
         return prompt_batch_from_model(row) if row else None
+
+    def list_by_project(self, project_id: str) -> list[PromptEnhancementBatch]:
+        rows = self.session.scalars(
+            select(models.PromptEnhancementBatchModel)
+            .where(models.PromptEnhancementBatchModel.project_id == project_id)
+            .order_by(models.PromptEnhancementBatchModel.created_at.desc())
+        ).all()
+        return [prompt_batch_from_model(row) for row in rows]
 
     def add(self, batch: PromptEnhancementBatch) -> PromptEnhancementBatch:
         self.session.add(
@@ -239,6 +266,14 @@ class SqlAlchemyPromptEnhancementJobRepository:
     def get(self, job_id: str) -> PromptEnhancementJob | None:
         row = self.session.get(models.PromptEnhancementJobModel, job_id)
         return prompt_job_from_model(row) if row else None
+
+    def list_by_task(self, task_id: str) -> list[PromptEnhancementJob]:
+        rows = self.session.scalars(
+            select(models.PromptEnhancementJobModel)
+            .where(models.PromptEnhancementJobModel.task_id == task_id)
+            .order_by(models.PromptEnhancementJobModel.created_at)
+        ).all()
+        return [prompt_job_from_model(row) for row in rows]
 
     def add(self, job: PromptEnhancementJob) -> PromptEnhancementJob:
         self.session.add(

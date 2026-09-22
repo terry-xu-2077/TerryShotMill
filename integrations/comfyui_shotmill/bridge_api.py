@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import time
 import uuid
@@ -17,7 +18,7 @@ from .canvas_compiler import compile_canvas, prune_to_outputs
 
 
 PREFIX = "/shotmill/v1"
-PACKAGE_VERSION = "0.1.0"
+PACKAGE_VERSION = "0.4.0"
 ASSET_INDEX = Path(folder_paths.get_input_directory()) / "shotmill" / "assets.json"
 RESULT_ROOT = Path(folder_paths.get_output_directory()) / "shotmill" / "results"
 WORKFLOW_ROOT = Path(folder_paths.base_path) / "user" / "default" / "workflows"
@@ -39,6 +40,9 @@ INPUT_LOADERS = {
     "LoadAudio": ("AUDIO", "audio"),
     "PrimitiveString": ("STRING", "value"),
     "PrimitiveStringMultiline": ("TEXT", "value"),
+    "PrimitiveInt": ("INT", "value"),
+    "PrimitiveFloat": ("FLOAT", "value"),
+    "PrimitiveBoolean": ("BOOLEAN", "value"),
 }
 BUS_PACK_TYPES = {"TerryXuWireBusPack", "TerryXuWirelessBusPack"}
 BUS_UNPACK_TYPES = {"TerryXuWireBusUnpack", "TerryXuWirelessBusUnpack"}
@@ -92,6 +96,56 @@ def _load_prompt(workflow_id: str) -> tuple[dict[str, dict[str, Any]], dict[str,
     if isinstance(raw, dict) and isinstance(raw.get("nodes"), list):
         return _canvas_prompt(raw), raw
     raise ValueError("workflow is neither a ComfyUI canvas workflow nor an API prompt")
+
+
+def _snapshot_digest(content: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        content, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _capture_workflow(workflow_id: str) -> dict[str, Any]:
+    prompt, raw = _load_prompt(workflow_id)
+    if not _bridge_markers(raw):
+        raise ValueError("workflow has no ShotMill Bridge markers")
+    if not prompt:
+        raise ValueError("workflow compiled to an empty prompt")
+    inputs, _ = _bridge_ports(raw)
+    content = {
+        "version": 1, "workflowId": workflow_id, "raw": raw,
+        "prompt": prompt, "inputs": inputs,
+    }
+    return {**content, "sha256": _snapshot_digest(content)}
+
+
+def _restore_workflow(snapshot: Any, workflow_id: str) -> tuple[dict, dict]:
+    if (
+        not isinstance(snapshot, dict)
+        or snapshot.get("version") != 1
+        or snapshot.get("workflowId") != workflow_id
+        or not isinstance(snapshot.get("raw"), dict)
+        or not isinstance(snapshot.get("prompt"), dict)
+        or not snapshot["prompt"]
+        or not isinstance(snapshot.get("inputs"), list)
+    ):
+        raise ValueError("invalid workflow snapshot")
+    content = {key: item for key, item in snapshot.items() if key != "sha256"}
+    if _snapshot_digest(content) != snapshot.get("sha256"):
+        raise ValueError("workflow snapshot digest mismatch")
+    # Binding and output rewriting must never mutate the saved execution copy.
+    copy = json.loads(json.dumps(content, ensure_ascii=False, allow_nan=False))
+    return copy["prompt"], copy["raw"]
+
+
+async def _workflow_snapshot(request: web.Request) -> web.Response:
+    try:
+        workflow_id = str(request.query.get("workflowId") or "").replace("\\", "/")
+        return web.json_response({"ok": True, "snapshot": _capture_workflow(workflow_id)})
+    except FileNotFoundError:
+        return web.json_response({"ok": False, "error": "workflow_not_found"}, status=404)
+    except (ValueError, TypeError, KeyError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
 
 def _replace_values(value: Any, payload: dict[str, Any]) -> Any:
@@ -244,10 +298,11 @@ def _rewrite_custom_saves(
 
 def _bind_input_markers(
     prompt: dict[str, dict[str, Any]], payload: dict[str, Any], raw: dict[str, Any] | None = None
-) -> None:
+) -> dict[str, str]:
     """Replace the file value of existing loader nodes behind Bridge In markers."""
     assets = payload.get("assets") if isinstance(payload.get("assets"), list) else []
     asset_values = payload.get("assetValues") if isinstance(payload.get("assetValues"), dict) else {}
+    bound_media = {}
     markers: list[tuple[str, dict[str, Any], dict[str, Any], tuple[str, str], tuple[Any, ...], dict[str, Any]]] = []
     if isinstance(raw, dict):
         if isinstance(raw.get("prompt"), dict):
@@ -306,8 +361,11 @@ def _bind_input_markers(
                     markers.append((str(node_id), node, loader, spec, (9, len(markers)), {}))
     markers.sort(key=lambda item: item[4])
     if not markers:
-        return
-    media_markers = [item for item in markers if item[3][0] not in {"STRING", "TEXT"}]
+        if payload.get("numericInputs"):
+            raise ValueError("Workflow has no numeric input ports")
+        return bound_media
+    scalar_types = {"STRING", "TEXT", "INT", "FLOAT", "BOOLEAN"}
+    media_markers = [item for item in markers if item[3][0] not in scalar_types]
     slots = payload.get("inputSlots")
     if slots is None:
         slots = assets + [None] * (len(media_markers) - len(assets))
@@ -318,6 +376,10 @@ def _bind_input_markers(
     media_index = 0
     assigned_records = []
     params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    numeric = payload.get("numericInputs", {})
+    if not isinstance(numeric, dict):
+        raise ValueError("numericInputs must be an object")
+    remaining_numeric = set(numeric)
     for _, _marker, loader, loader_spec, _order, record in markers:
         expected_type, input_name = loader_spec
         targets = record.get("targets", [])
@@ -334,6 +396,30 @@ def _bind_input_markers(
                     inputs[name] = [loader_id, 0]
                 else:
                     inputs.pop(name, None)
+                    if receiver.get("class_type") == "GetVideoComponents" and name == "video":
+                        decoder_id = str(target.get("targetNodeId"))
+                        for consumer in prompt.values():
+                            if consumer.get("class_type") != "MiniMaxH3ReferenceToVideo":
+                                continue
+                            consumer_inputs = consumer.get("inputs", {})
+                            for port, value in list(consumer_inputs.items()):
+                                if (port.startswith(("ref_videos.", "ref_video_audios."))
+                                    and isinstance(value, list) and len(value) == 2
+                                    and str(value[0]) == decoder_id):
+                                    consumer_inputs.pop(port)
+        if expected_type in {"INT", "FLOAT", "BOOLEAN"}:
+            target = targets[0] if targets else {}
+            port_id = f"{target.get('targetNodeId', '')}:{target.get('name', '')}:{loader_id}"
+            if port_id in numeric:
+                value = numeric[port_id]
+                if type(value) not in {int, float} or not math.isfinite(value):
+                    raise ValueError(f"Numeric input {port_id} must be a finite number")
+                if expected_type == "BOOLEAN" or expected_type == "INT" and value != int(value):
+                    raise ValueError(f"Numeric input {port_id} does not match {expected_type}")
+                loader.setdefault("inputs", {})[input_name] = int(value) if expected_type == "INT" else value
+                remaining_numeric.remove(port_id)
+            connect_targets(True)
+            continue
         if expected_type in {"STRING", "TEXT"}:
             targets = record.get("targets") if isinstance(record, dict) else []
             target_name = str(targets[0].get("name") or "") if targets and isinstance(targets[0], dict) else ""
@@ -368,8 +454,12 @@ def _bind_input_markers(
                 f"Bridge media input {media_index} uses {expected_type} loader but received {actual_type} asset"
             )
         loader.setdefault("inputs", {})[input_name] = path
+        bound_media[loader_id] = input_name
         connect_targets(True)
+    if remaining_numeric:
+        raise ValueError(f"Unknown numeric input ports: {sorted(remaining_numeric)}")
     _adapt_h3_reference_labels(prompt, assigned_records)
+    return bound_media
 
 
 def _adapt_h3_reference_labels(
@@ -381,7 +471,15 @@ def _adapt_h3_reference_labels(
     by_node: dict[str, dict[str, dict[int, str]]] = {}
     pattern = re.compile(r"(?:^|\.)(ref_image|ref_video_audio|ref_video|ref_audio)_(\d+)$")
     for record, asset in assigned_records:
-        for target in record.get("targets", []):
+        targets = list(record.get("targets", []))
+        for target in list(targets):
+            decoder_id = str(target.get("targetNodeId"))
+            if prompt.get(decoder_id, {}).get("class_type") == "GetVideoComponents":
+                for consumer_id, consumer in prompt.items():
+                    for name, value in consumer.get("inputs", {}).items():
+                        if value == [decoder_id, 0]:
+                            targets.append({"targetNodeId": consumer_id, "name": name})
+        for target in targets:
             node_id = str(target.get("targetNodeId"))
             if prompt.get(node_id, {}).get("class_type") != "MiniMaxH3ReferenceToVideo":
                 continue
@@ -561,9 +659,9 @@ def _all_consumers(raw: dict[str, Any], nodes: list[dict[str, Any]]) -> dict[tup
     if isinstance(raw.get("prompt"), dict):
         for node in nodes:
             inputs = node.get("inputs") if isinstance(node.get("inputs"), dict) else {}
-            for name, value in inputs.items():
+            for slot, (name, value) in enumerate(inputs.items()):
                 if isinstance(value, list) and len(value) == 2:
-                    add(value[0], value[1], node.get("id"), 0, str(name), "*")
+                    add(value[0], value[1], node.get("id"), slot, str(name), "*")
         return consumers
 
     for link in raw.get("links", []) if isinstance(raw.get("links"), list) else []:
@@ -786,6 +884,9 @@ def _official_loader_spec(media_type: str) -> tuple[str, str, str] | None:
         "AUDIO": ("AUDIO", "audio", "LoadAudio"),
         "STRING": ("STRING", "value", "PrimitiveString"),
         "TEXT": ("TEXT", "value", "PrimitiveStringMultiline"),
+        "INT": ("INT", "value", "PrimitiveInt"),
+        "FLOAT": ("FLOAT", "value", "PrimitiveFloat"),
+        "BOOLEAN": ("BOOLEAN", "value", "PrimitiveBoolean"),
     }.get(normalized)
 
 
@@ -1012,6 +1113,10 @@ def _bridge_ports(raw: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[
                 targets = [item for item in record.get("targets", []) if isinstance(item, dict)]
                 target = targets[0] if targets else {}
                 input_type = str(target.get("type") or loader_type)
+                # API prompts omit socket types. Loader declarations are authoritative;
+                # names such as frames or image_count may describe numbers, not media.
+                if isinstance(raw.get("prompt"), dict) and loader_type != "*":
+                    input_type = loader_type
                 if input_type in {"", "*"}:
                     input_type = loader_type
                 display_prefix = {
@@ -1020,6 +1125,9 @@ def _bridge_ports(raw: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[
                     "AUDIO": "音频",
                     "STRING": "字符串",
                     "TEXT": "文本",
+                    "INT": "整数",
+                    "FLOAT": "数值",
+                    "BOOLEAN": "开关",
                 }.get(input_type, "输入")
                 display_counts[display_prefix] = display_counts.get(display_prefix, 0) + 1
                 name = f"{display_prefix}{display_counts[display_prefix]}"
@@ -1186,6 +1294,8 @@ def _history_results(entry: dict[str, Any]) -> list[dict[str, Any]]:
             for item in items:
                 if not isinstance(item, dict) or not item.get("filename"):
                     continue
+                if str(item.get("type") or "output") != "output":
+                    continue
                 result = dict(item)
                 result["nodeId"] = str(node_id)
                 result["nodeOutputType"] = output_type
@@ -1207,7 +1317,10 @@ def _job_state(job_id: str) -> dict[str, Any]:
         return {"ok": False, "jobId": job_id, "status": "not_found", "results": []}
     cached = item.get("terminalState")
     if isinstance(cached, dict) and cached.get("status") in {"completed", "failed"}:
-        return cached
+        return {**cached, "results": [
+            result for result in cached.get("results", [])
+            if isinstance(result, dict) and str(result.get("type") or result.get("folder") or "output") == "output"
+        ]}
     prompt_id = str(item.get("promptId") or "")
     queue = PromptServer.instance.prompt_queue
     # Snapshot live work first; history then catches a completion between the reads.
@@ -1250,31 +1363,155 @@ def _job_state(job_id: str) -> dict[str, Any]:
     return state
 
 
+def _check_dynamic_choices(node_id: str, schema: dict, values: dict, prefix: str = "") -> None:
+    for category in ("required", "optional"):
+        for field, spec in schema.get(category, {}).items():
+            name = f"{prefix}{field}"
+            if name not in values:
+                continue
+            kind = str(spec[0])
+            if kind == "COMFY_DYNAMICCOMBO_V3":
+                selected = next((item for item in spec[1]["options"] if item["key"] == values[name]), None)
+                if selected is None:
+                    raise ValueError(f"Node {node_id} input {name}: value_not_in_list ({values[name]!r})")
+                _check_dynamic_choices(node_id, selected.get("inputs", {}), values, name + ".")
+            elif kind == "COMFY_DYNAMICSLOT_V3":
+                _check_dynamic_choices(node_id, spec[1].get("inputs", {}), values, name + ".")
+
+
+def _bind_parameter_selectors(prompt: dict, params: Any) -> None:
+    if not isinstance(params, dict):
+        raise ValueError("params must be an object")
+    for node in prompt.values():
+        kind = node.get("class_type")
+        inputs = node.setdefault("inputs", {})
+        if kind == "ShotMillResolutionSelector" and "resolution" in params:
+            value = params["resolution"]
+            if value not in {"480p", "720p", "1080p"}:
+                raise ValueError("Unsupported resolution")
+            inputs["resolution"] = value
+        elif kind == "ShotMillDurationSelector" and "durationSeconds" in params:
+            value = params["durationSeconds"]
+            if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not 0 < value <= 60:
+                raise ValueError("Invalid durationSeconds")
+            inputs["seconds"] = value
+
+
+def _execution_graph(payload: dict[str, Any], job_id: str) -> tuple[dict, dict, dict]:
+    workflow_id = str(payload.get("workflowId") or "").replace("\\", "/").strip("/")
+    bound_media = {}
+    if isinstance(payload.get("prompt"), dict):
+        prompt = payload["prompt"]
+        raw = {"prompt": prompt}
+    else:
+        if not workflow_id:
+            raise ValueError("workflowId or prompt is required")
+        if "workflowSnapshot" in payload:
+            prompt, raw = _restore_workflow(payload["workflowSnapshot"], workflow_id)
+        else:
+            prompt, raw = _load_prompt(workflow_id)
+        prompt = _replace_values(prompt, payload)
+        bound_media = _bind_input_markers(prompt, payload, raw)
+        _bind_parameter_selectors(prompt, payload.get("params", {}))
+        _rewrite_custom_saves(prompt, raw, job_id)
+        _rewrite_native_saves(prompt, job_id)
+    PromptServer.instance.node_replace_manager.apply_replacements(prompt)
+    import nodes
+    prompt = prune_to_outputs(prompt, {
+        name for name, cls in nodes.NODE_CLASS_MAPPINGS.items() if getattr(cls, "OUTPUT_NODE", False)
+    })
+    if not isinstance(payload.get("prompt"), dict):
+        for node_id, node in prompt.items():
+            cls = nodes.NODE_CLASS_MAPPINGS.get(node.get("class_type"))
+            if cls is not None:
+                _check_dynamic_choices(node_id, cls.INPUT_TYPES(), node.get("inputs", {}))
+    return prompt, raw, {key: field for key, field in bound_media.items() if key in prompt}
+
+
+async def _validate_preflight(prompt: dict, bound_media: dict[str, str]) -> tuple:
+    prompt_id = str(uuid.uuid4())
+    if not bound_media:
+        return await execution.validate_prompt(prompt_id, prompt, None)
+    import nodes
+    outputs, starts, ends = set(), set(), set()
+    validated = {}
+    for node_id, node in prompt.items():
+        cls = nodes.NODE_CLASS_MAPPINGS.get(node.get("class_type"))
+        if cls is None:
+            return False, {"message": "工作流节点未安装", "details": node.get("class_type"), "nodeId": node_id}, [], {}
+        if getattr(cls, "OUTPUT_NODE", False):
+            outputs.add(node_id)
+        if issubclass(cls, execution._ComfyNodeInternal):
+            boundary = cls.GET_SCHEMA().loop_boundary
+            if boundary == "start":
+                starts.add(node_id)
+            elif boundary == "end":
+                ends.add(node_id)
+        if node_id in bound_media:
+            field = bound_media[node_id]
+            schema = cls.INPUT_TYPES()
+            fields = set(schema.get("required", {})) | set(schema.get("optional", {}))
+            # Only native, single-file loaders are deferred. Any future loader
+            # parameters must be validated rather than hidden by this cache.
+            if (node.get("class_type") not in {"LoadImage", "LoadVideo", "LoadAudio"}
+                or fields != {field} or not isinstance(node.get("inputs", {}).get(field), str)):
+                raise ValueError(f"Cannot defer media validation for node {node_id}")
+            validated[node_id] = (True, [], node_id)
+    if not outputs:
+        return False, {"message": "工作流没有可执行输出"}, [], {}
+    for output_id in outputs:
+        try:
+            await execution.validate_inputs(prompt_id, prompt, output_id, validated)
+        except Exception as exc:
+            validated[output_id] = (False, [{"type": "exception_during_validation", "message": str(exc)}], output_id)
+    if not any(reason.get("type") == "dependency_cycle" for _, reasons, _ in validated.values() for reason in reasons):
+        try:
+            execution.validate_loops(prompt, outputs, validated, starts, ends)
+        except execution.LoopValidationError as exc:
+            for node_id in exc.error["extra_info"]["node_ids"]:
+                validated[node_id] = (False, [exc.error], node_id)
+    errors = {
+        node_id: {"class_type": prompt[node_id]["class_type"], "errors": reasons}
+        for node_id, (valid, reasons, _) in validated.items() if not valid and reasons
+    }
+    valid = all(validated.get(node_id, (False,))[0] for node_id in outputs) and not errors
+    return valid, None if valid else {"message": "工作流输入校验失败"}, list(outputs), errors
+
+
+async def _validate_workflow(request: web.Request) -> web.Response:
+    try:
+        payload = await request.json()
+        if not isinstance(payload.get("workflowSnapshot"), dict) or "prompt" in payload:
+            raise ValueError("workflowSnapshot is required for preflight")
+        # Derive deferred loaders from actual Bridge binding, never from a
+        # client-supplied skip list. No file is written or uploaded here.
+        payload["assetValues"] = {
+            asset["reference"]: f"shotmill-preflight/{index}"
+            for index, asset in enumerate(payload.get("assets", []))
+        }
+        prompt, _, media = _execution_graph(payload, "preflight")
+        valid = await _validate_preflight(prompt, media)
+        ok = valid[0] and not valid[3]
+        return web.json_response({
+            "ok": ok, "error": valid[1], "nodeErrors": valid[3],
+            "deferredMediaNodeIds": sorted(media),
+        }, status=200 if ok else 400)
+    except (ValueError, TypeError, KeyError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+
 async def _create_job(request: web.Request) -> web.Response:
     try:
         payload = await request.json()
         job_id = _safe_name(str(payload.get("jobId") or ""), "job")
         workflow_id = str(payload.get("workflowId") or "").replace("\\", "/").strip("/")
-        if isinstance(payload.get("prompt"), dict):
-            prompt = payload["prompt"]
-            raw = {"prompt": prompt}
-        else:
-            if not workflow_id:
-                raise ValueError("workflowId or prompt is required")
-            prompt, raw = _load_prompt(workflow_id)
-            prompt = _replace_values(prompt, payload)
-            _bind_input_markers(prompt, payload, raw)
-            _rewrite_custom_saves(prompt, raw, job_id)
-            _rewrite_native_saves(prompt, job_id)
+        prompt, raw, _ = _execution_graph(payload, job_id)
         server = PromptServer.instance
         prompt_id = str(uuid.uuid4())
-        server.node_replace_manager.apply_replacements(prompt)
-        import nodes
-        prompt = prune_to_outputs(prompt, {
-            name for name, cls in nodes.NODE_CLASS_MAPPINGS.items() if getattr(cls, "OUTPUT_NODE", False)
-        })
         valid = await execution.validate_prompt(prompt_id, prompt, None)
-        if not valid[0]:
+        if not valid[0] or (valid[3] and not isinstance(payload.get("prompt"), dict)):
             return web.json_response(
                 {"ok": False, "error": valid[1], "nodeErrors": valid[3]}, status=400
             )
@@ -1340,6 +1577,8 @@ def register_routes() -> None:
     routes = PromptServer.instance.routes
     routes.get(f"{PREFIX}/health")(_health)
     routes.get(f"{PREFIX}/workflows")(_workflows)
+    routes.get(f"{PREFIX}/workflows/snapshot")(_workflow_snapshot)
+    routes.post(f"{PREFIX}/workflows/validate")(_validate_workflow)
     routes.post(f"{PREFIX}/assets")(_upload_asset)
     routes.get(f"{PREFIX}/assets")(_assets)
     routes.post(f"{PREFIX}/runtime/prepare")(_prepare_runtime)

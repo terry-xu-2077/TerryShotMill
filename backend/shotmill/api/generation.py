@@ -1,11 +1,25 @@
 from fastapi import APIRouter
 
 from shotmill.api.dependencies import ContainerDep
-from shotmill.api.schemas import GenerationSubmitRequest
+from shotmill.api.schemas import CancelVideoJobsRequest, GenerationSubmitRequest
 from shotmill.frontend_adapter.mapper import map_job
-from shotmill.frontend_adapter.models import JobView
+from shotmill.frontend_adapter.models import CancelledVideoJobsView, JobView
 
 router = APIRouter(tags=["generation"])
+
+
+@router.post(
+    "/projects/{project_id}/video-generation-queue/cancel",
+    response_model=CancelledVideoJobsView,
+)
+async def cancel_queued_videos(
+    project_id: str, payload: CancelVideoJobsRequest, container: ContainerDep,
+) -> CancelledVideoJobsView:
+    return CancelledVideoJobsView(
+        cancelled_job_ids=await container.generation_service.cancel_queued(
+            project_id, payload.job_ids,
+        ),
+    )
 
 
 @router.post(

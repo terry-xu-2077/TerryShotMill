@@ -101,7 +101,7 @@ def test_launcher_contains_managed_visible_backend_lifecycle() -> None:
     assert "Wait-BackendReady" in launcher
     assert "Stop-ShotMillBackend" in launcher
     assert "WindowStyle Normal" in launcher
-    assert "VITE_SHOTMILL_API_BASE_URL" in launcher
+    assert '$env:VITE_SHOTMILL_API_BASE_URL = "$BackendBaseUrl/api/v1"' in launcher
     assert "backend-lifecycle.log" in launcher
 
     assert "ShotMill Backend" in runner

@@ -57,6 +57,19 @@
 .application-settings-profile-header strong { font-size: 12px; }
 .application-settings-profile-row { display: grid; grid-template-columns: minmax(120px, 1.1fr) minmax(88px, .7fr) minmax(88px, .7fr) minmax(180px, 1.8fr) auto; gap: 8px; align-items: center; }
 .application-settings-profile-row > * { min-width: 0; }
+.workflow-preset-editor, .workflow-preset-form { display: grid; gap: 12px; min-width: 0; }
+.workflow-preset-list { display: grid; gap: 6px; }
+.workflow-preset-row { display: flex; align-items: center; gap: 8px; }
+.workflow-preset-choice { display: grid; gap: 4px; flex: 1; min-width: 0; text-align: left; padding: 10px; border: 1px solid var(--sm-border); border-radius: var(--sm-radius-sm); background: var(--sm-surface-2); cursor: pointer; }
+.workflow-preset-choice[aria-pressed="true"] { border-color: var(--sm-accent); }
+.workflow-preset-choice > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sm-text-muted); font-size: 13px; }
+.workflow-preset-description { width: 100%; resize: vertical; min-height: 70px; padding: 10px; border: 1px solid var(--sm-border); border-radius: var(--sm-radius-sm); color: var(--sm-text); background: var(--sm-surface-2); font: inherit; }
+.workflow-preset-save { display: flex; justify-content: flex-end; }
+.workflow-numeric-settings, .workflow-numeric-row { display: grid; gap: 10px; min-width: 0; }
+.workflow-numeric-settings { border-top: 1px solid var(--sm-border); padding-top: 12px; }
+.workflow-frame-rule { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.workflow-numeric-note { margin: 0; color: var(--sm-text-muted); font-size: 12px; line-height: 1.6; }
+.workflow-frame-rule > .workflow-numeric-note { grid-column: 1 / -1; }
 .application-settings-empty { margin: 0; color: var(--sm-text-muted); font-size: 11px; line-height: 1.5; }
 .application-settings-workflow-list { display: grid; gap: 5px; padding-top: 2px; }
 .application-settings-workflow-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--sm-text-dim); font-size: 11px; }

@@ -50,19 +50,19 @@ ShotMill 是面向 AI 视频生产流程的素材生成平台，不是剪辑器�
 
 ## V0.4 批量生产不变量
 
-- V0.4 主生产路径固定为 **批量 AI 增强 → 人工逐任务审核 → 批量视频生成**。
+- 用户界面与 Agent、单任务与批量生成统一支持直接使用当前提示词；AI 增强和提示词审核均为可选操作。
 - 现有单任务“增强”行为必须完整保留；批量增强与单任务增强调用同一 Prompt Enhancement Application / Skill / Provider 能力。
 - Qwen3.8 是默认 Prompt AI Provider Profile，不得进入 Task Domain 或 Core 条件分支。
 - Prompt Enhancement Batch / Job 必须由后端持久化和调度，React 不得通过 `for` 循环充当真实队列。
 - Prompt Enhancement Job 提交时冻结输入 / context / provider profile 快照；排队后修改 Task 不得静默改变已有 Job。
 - 默认本地 Prompt AI 并发为 1，但并发度属于配置，不写死到 Domain。
 - Prompt Enhancement Queue 与 Video Generation Queue 必须独立；两类后台工作可以同时运行。
-- AI 增强完成后默认进入人工 `pending_review`，不得自动视为可批量生成。
+- AI 增强完成后保留 `pending_review` 状态，不伪造审核；此状态不阻断生成。
 - Prompt 审核针对当前真正会用于生成的 Prompt Source + 内容；确认必须保存稳定 hash / source / 时间。
 - 编辑当前有效 Prompt、切换 Prompt Source、切换 AI Revision 或再次增强后，已有审核必须自动失效。
 - 仅切换可视化 / 文本模式不得使审核失效。
-- 批量视频生成默认只接受 **已审核 + 当前 Prompt hash 未变化 + generation validation 通过 + 无 active video job** 的 Task。
-- 未审核 Task 默认跳过，不提供显眼的“忽略审核全部生成”主路径。
+- 批量视频生成接受 **有效当前 Prompt + generation validation 通过 + 无 active video job** 的 Task；审核是否完成或过期不构成门禁。
+- 未增强、未审核 Task 可直接生成，不需要“强制跳过”开关或额外确认。
 - Batch 只是汇总 / 调度边界，现有 immutable Video Job / Result 模型不得被复制或改写。
 - 单项 Prompt / Video Job 失败不得阻断整批后续合法任务。
 - Runtime Read Model 可以统一聚合两类 Queue，但内部领域对象不能强行合并成一个笼统 QueueItem。
@@ -81,6 +81,8 @@ ShotMill 是面向 AI 视频生产流程的素材生成平台，不是剪辑器�
 - Provider 执行层可以未来拆远程服务，但 Domain 不因部署方式变化而拆散。
 
 ## 当前 UI 不变量
+
+- **项目封面、任务卡片、列表等缩略图统一等比例居中铺满（cover），允许裁切边缘，不得因 contain 适配留下黑边或白边，也不得拉伸变形。完整图片查看与视频播放器按原始比例展示。**
 
 - **所有界面必须优先使用弹性布局（Flex / Grid / minmax / clamp 等）。窗口尺寸变化时，先让现有区域自适应收缩、扩展或重新分配空间，不得用新增滚动条代替布局适配。**
 - **除非需求明确指定某区域需要滚动，否则不得新增滚动条。允许滚动的区域必须有明确业务理由，例如左侧长参数列表、超长文本编辑内容或长资产列表；不得让 Dialog、页面根容器或主内容区通过整体滚动掩盖布局溢出问题。**
@@ -105,7 +107,7 @@ ShotMill 是面向 AI 视频生产流程的素材生成平台，不是剪辑器�
 - 项目配置负责项目标题、简介、AI 项目背景开关与项目资产管理；不得把这些塞进任务编辑器。
 - 不再恢复“故事板 / 生成 / 素材”三个一级导航。
 - 任务编辑弹窗保持“左侧少量配置 + 右侧大提示词区 + 底部取消/保存”。
-- V0.9 在任务标题区增加上一个 / 下一个任务导航，并增加“确认并下一个”的连续审核动作；Overlay 本身不要反复关闭重开。
+- 任务标题区保留上一个 / 下一个任务导航；2026-09-22 用户要求移除编辑窗“确认并下一个 / 确认提示词”，底部保留取消、保存；Overlay 不反复关闭重开。
 - 用户提示词与 AI 增强提示词都必须支持 **可视化 / 文本** 两种模式。
 - 用户 / AI 标签决定真正使用哪份提示词；可视化 / 文本只决定同一份 H3 字符串的编辑表现。
 - **AI 增强历史下拉只在 AI 标签出现。** 每次点击“增强”创建新版本，不覆盖旧版本。
@@ -169,6 +171,7 @@ ShotMill 是面向 AI 视频生产流程的素材生成平台，不是剪辑器�
 ## Windows 本地规则
 
 - 本地命令使用 PowerShell 7，并在中文或文本读写前设置 UTF-8。
+- 生成 Git 补丁不要使用 PowerShell 文本管道交给 Set-Content；该路径可能把 LF 改成 CRLF，破坏无末尾换行文件的补丁。已验证的方式是 Python subprocess 捕获 git diff 的 stdout 字节，按 UTF-8 解码后以 encoding='utf-8'、newline='\n' 写入，并实际运行 git apply --check 验证。
 - 文本文件读写显式使用 UTF-8。
 - 通过 `python -c` 传递含 SQL 或嵌套引号的脚本时，先用 PowerShell 单引号 here-string 保存到变量，再将变量作为参数；不要用反斜杠转义双引号，PowerShell 不采用该转义规则。
 - 当前 ComfyUI 开发环境：`G:\AIGC\ComfyUI_Codex`。它是 Video Generation Provider 的执行端，不是 Core 依赖。

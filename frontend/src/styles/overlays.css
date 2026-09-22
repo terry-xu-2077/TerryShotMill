@@ -5,7 +5,8 @@
   pointer-events: none;
 }
 
-#shotmill-overlay-root > * { pointer-events: auto; }
+/* Interactive by default; passive portal hosts own their hit-testing policy. */
+:where(#shotmill-overlay-root) > * { pointer-events: auto; }
 
 .sm-overlay-surface {
   overflow: auto;
@@ -69,10 +70,10 @@
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 16px;
   background: rgba(24, 30, 40, .28);
   backdrop-filter: blur(9px) saturate(.85);
-  animation: overlay-fade-in 130ms ease both;
+  animation: overlay-fade-in 160ms var(--sm-ease) both;
 }
 
 .sm-dialog {
@@ -91,13 +92,14 @@
 }
 
 .sm-dialog.size-wide { width: min(900px, calc(100vw - 32px)); }
-.sm-dialog-backdrop[data-state="closing"] { animation: overlay-fade-out 180ms ease both; }
-.sm-dialog-backdrop[data-state="closing"] .sm-dialog { animation: overlay-rise-out 180ms ease both; }
+.sm-dialog-backdrop[data-state="closing"] { animation: overlay-fade-out 180ms var(--sm-ease) both; }
+.sm-dialog-backdrop[data-state="closing"] .sm-dialog { animation: overlay-rise-out 180ms var(--sm-ease) both; }
 @keyframes overlay-fade-out { to { opacity: 0; } }
 @keyframes overlay-rise-out { to { opacity: 0; transform: translateY(10px) scale(.98); } }
 
 .sm-dialog > header {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
   padding: 18px 20px 16px;
@@ -105,10 +107,15 @@
   background: var(--sm-surface-2);
 }
 
+.sm-dialog > header > div { flex: 1; min-width: 0; }
 .sm-dialog > header h2 { margin: 0; font-size: 18px; }
+.sm-dialog-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sm-dialog-title-icon { flex: 0 0 auto; color: var(--sm-text-muted); }
+.sm-dialog-title-content { flex: 1; min-width: 0; }
 .sm-dialog > header p { margin: 5px 0 0; color: var(--sm-text-muted); font-size: 10px; }
 .sm-dialog > header > button,
 .sm-fullscreen-preview > button {
+  flex: 0 0 auto;
   width: 31px;
   height: 31px;
   display: grid;
@@ -159,7 +166,7 @@
   gap: 8px;
   pointer-events: none !important;
 }
-.sm-toast { padding: 10px 12px; border: 1px solid var(--sm-border-strong); border-radius: 9px; background: var(--sm-surface-2); box-shadow: var(--sm-shadow); font-size: 11px; animation: overlay-rise-in 150ms ease both; }
+.sm-toast { padding: 10px 12px; border: 1px solid var(--sm-border-strong); border-radius: 9px; background: var(--sm-surface-2); box-shadow: var(--sm-shadow); font-size: 11px; animation: overlay-rise-in 180ms var(--sm-ease) both; }
 .sm-toast.tone-success { border-color: rgba(97, 181, 143, .45); }
 .sm-toast.tone-danger { border-color: rgba(221, 114, 107, .5); }
 
@@ -208,10 +215,4 @@
   .sm-fullscreen-preview { padding: 54px 12px 78px; }
   .sm-fullscreen-preview footer { display: grid; }
   .sm-toast-viewport { bottom: 72px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sm-dialog-backdrop,
-  .sm-dialog,
-  .sm-toast { animation: none; }
 }

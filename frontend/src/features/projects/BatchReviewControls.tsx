@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle2, Sparkles, Video, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, Checkbox } from "terry-react-ui-library";
 
-import type { VideoBatchEligibility } from "../../gateways/batchReviewGateway";
+import type { PromptBatchEligibility, VideoBatchEligibility } from "../../gateways/batchReviewGateway";
 import { Dialog } from "../../ui/overlay";
 
 export type PromptBatchOptions = {
@@ -42,6 +42,10 @@ export function BatchActionBar({
 export function BatchPromptDialog({
   open,
   taskCount,
+  eligibility,
+  loading = false,
+  onRetry,
+  aiLabel = "正在读取增强配置…",
   projectBackgroundAvailable,
   busy = false,
   error = "",
@@ -50,6 +54,10 @@ export function BatchPromptDialog({
 }: {
   open: boolean;
   taskCount: number;
+  eligibility?: PromptBatchEligibility;
+  loading?: boolean;
+  onRetry?: () => void;
+  aiLabel?: string;
   projectBackgroundAvailable: boolean;
   busy?: boolean;
   error?: string;
@@ -58,6 +66,9 @@ export function BatchPromptDialog({
 }) {
   const [includeProjectBackground, setIncludeProjectBackground] = useState(projectBackgroundAvailable);
   const [includePreviousTaskSummary, setIncludePreviousTaskSummary] = useState(false);
+  const eligibleCount = eligibility?.eligibleTaskIds.length ?? 0;
+  const skippedCounts = new Map<string, number>();
+  eligibility?.skipped.forEach(item => skippedCounts.set(item.message, (skippedCounts.get(item.message) ?? 0) + 1));
 
   useEffect(() => {
     if (!open) return;
@@ -66,12 +77,19 @@ export function BatchPromptDialog({
   }, [open, projectBackgroundAvailable]);
 
   return (
-    <Dialog open={open} title="批量 AI 增强" onClose={onClose}>
+    <Dialog open={open} icon="enhance" title="批量 AI 增强" onClose={onClose}>
       <div className="batch-prompt-dialog">
         {error && <p className="batch-prompt-error" role="alert">{error}</p>}
         <div className="batch-prompt-summary">
-          <strong>将处理 {taskCount} 个任务</strong>
-          <span>AI：Qwen3.8</span>
+          <strong>已选择 {taskCount} 个任务</strong>
+          <span>AI：{aiLabel}</span>
+        </div>
+
+        <div className="batch-prompt-eligibility" aria-label="增强资格" aria-live="polite">
+          {loading ? <span>正在检查任务状态…</span> : eligibility ? <>
+            <div className="is-ready"><CheckCircle2 size={14} /><span>{eligibleCount} 个任务可增强</span></div>
+            {[...skippedCounts.entries()].map(([message, count]) => <div key={message} className="is-skipped"><AlertTriangle size={14} /><span>{count} 个任务{message}，不会提交</span></div>)}
+          </> : <Button onClick={onRetry} disabled={!onRetry || busy}>重试检查</Button>}
         </div>
 
         <div className="batch-prompt-options" aria-label="增强上下文">
@@ -102,9 +120,10 @@ export function BatchPromptDialog({
 
         <footer>
           <Button disabled={busy} onClick={onClose}>取消</Button>
+          {eligibility && onRetry && <Button disabled={busy || loading} onClick={onRetry}>重新检查</Button>}
           <Button
             variant="accent"
-            disabled={!onConfirm || taskCount < 1 || busy}
+            disabled={!onConfirm || eligibleCount < 1 || loading || busy}
             onClick={() => onConfirm?.({ includeProjectBackground, includePreviousTaskSummary })}
           >
             {busy ? "提交中…" : "开始增强"}
@@ -116,7 +135,6 @@ export function BatchPromptDialog({
 }
 
 function reasonLabel(reason: string) {
-  if (reason === "not-reviewed") return "待检查";
   if (reason === "busy") return "正在运行";
   if (reason === "invalid-params") return "参数无效";
   return reason;
@@ -150,7 +168,7 @@ export function BatchVideoDialog({
   const eligibleCount = eligibility?.eligibleTaskIds.length ?? 0;
 
   return (
-    <Dialog open={open} title={title} onClose={onClose}>
+    <Dialog open={open} icon="video" title={title} onClose={onClose}>
       <div className="batch-video-dialog">
         {error && <p className="batch-video-error" role="alert">{error}</p>}
         <div className="batch-video-summary-grid">
@@ -164,8 +182,15 @@ export function BatchVideoDialog({
           ) : (
             <>
               <div className="is-ready"><CheckCircle2 size={14} /><span>{eligibleCount} 个任务将进入视频生成队列</span></div>
+              {!!eligibility?.warnings?.length && <section className="generation-risk-notice" aria-label="生成前风险提醒">
+                <strong>以下风险不阻止生成，请确认后继续</strong>
+                <ul>{eligibility.warnings.map(item => <li key={`${item.taskId}:${item.message}`}><b>{item.title}</b>：{item.message}</li>)}</ul>
+              </section>}
               {[...skippedByReason.entries()].map(([reason, count]) => (
                 <div key={reason} className="is-skipped"><AlertTriangle size={14} /><span>{count} 个{reasonLabel(reason)}，不会提交</span></div>
+              ))}
+              {[...new Set(eligibility?.skipped.map((item) => item.message).filter(Boolean))].map((message) => (
+                <div key={message} className="is-skipped"><span>{message}</span></div>
               ))}
             </>
           )}

@@ -48,7 +48,7 @@ Windows 真实联调直接双击根目录的 `启动 ShotMill（前端+后端）
 
 - 后端 API：`http://127.0.0.1:8765`
 - 健康检查：`http://127.0.0.1:8765/health`
-- 前端开发服务：`http://127.0.0.1:1420/dev/ui`
+- 前端开发服务：`http://127.0.0.1:1420/dev/ui`；默认监听 `0.0.0.0`，同一局域网手机可用 `http://<电脑局域网 IP>:1420/dev/ui` 访问。
 - 后端生命周期日志：`.shotmill/logs/backend-lifecycle.log`
 
 首次启动可能需要下载 Python、前端与 Rust 依赖；之后会通过依赖指纹跳过不必要的重复安装。
@@ -88,6 +88,8 @@ python -m uvicorn shotmill.app:app --app-dir backend --host 127.0.0.1 --port 876
 ```powershell
 pnpm --dir frontend dev
 ```
+
+前端开发服务默认只把浏览器入口暴露到局域网，后端仍监听本机 `127.0.0.1:8765`，由 Vite 代理 `/api` 与 `/media`。后续接入登录或访问令牌前，不要把后端直接改为公网或全网段监听。
 
 桌面壳：
 

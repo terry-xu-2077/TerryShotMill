@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from uuid import uuid4
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI
 
-from shotmill.api.schemas import BatchPromptEnhancementRequest, VideoBatchRequest
 from shotmill.app import create_app
 from shotmill.application.prompt_enhancement_service import (
     EnhancementContextOptions,
@@ -14,27 +12,39 @@ from shotmill.application.prompt_enhancement_service import (
 from shotmill.application.task_service import SaveTaskAsset, SaveTaskData
 from shotmill.config import Settings
 from shotmill.domain.providers import (
+    GeneratedOutput,
     PromptAIProviderCapability,
     PromptAIRequest,
     PromptAIResponse,
-)
-from shotmill.frontend_adapter.models import (
-    ApiModel,
-    BatchPromptEnhancementItemView,
-    BatchPromptEnhancementResponse,
-    PromptReviewItemView,
-    PromptReviewStateView,
-    VideoBatchEligibilityView,
-    VideoBatchResponse,
-    VideoBatchSkippedItem,
+    VideoGenerationCapability,
+    VideoGenerationRequest,
+    VideoGenerationResponse,
 )
 from shotmill.persistence.migrations import upgrade_database
+
+
+class MockVideoGenerationProvider:
+    """Local playable fixture, using the same persisted execution path as production."""
+
+    id = "shotmill-mock-video"
+    capability = VideoGenerationCapability()
+
+    async def generate(self, request: VideoGenerationRequest) -> VideoGenerationResponse:
+        return VideoGenerationResponse(
+            provider_job_id=f"mock-{request.job_id}",
+            outputs=(GeneratedOutput(
+                filename="preview.mp4",
+                content=(Path(__file__).parent / "fixtures" / "preview.mp4").read_bytes(),
+                content_type="video/mp4", metadata={"mock": True, "durationSeconds": 2},
+            ),),
+        )
 
 
 class MockPromptAIProvider:
     """Deterministic prompt provider for UI and contract development."""
 
     id = "shotmill-mock-prompt"
+    display_name = "演示增强服务"
     capability = PromptAIProviderCapability(
         image_input=True,
         native_video_input=True,
@@ -55,244 +65,6 @@ class MockPromptAIProvider:
             ).strip(),
             provider_id=self.id,
             model_id="qwen3.8-mock-contract-v1",
-        )
-
-
-class MockBatchPromptRequest(ApiModel):
-    task_ids: list[str]
-    include_project_background: bool = True
-    include_previous_task_summary: bool = True
-
-
-class MockBatchPromptItem(ApiModel):
-    task_id: str
-    state: str
-    revision_id: str | None = None
-    error: str | None = None
-
-
-class MockBatchPromptResponse(ApiModel):
-    batch_id: str
-    state: str
-    items: list[MockBatchPromptItem]
-
-
-class MockPromptReviewRequest(ApiModel):
-    action: str = "approve"
-
-
-class MockPromptReviewItem(ApiModel):
-    task_id: str
-    prompt_review_status: str
-    approved_revision: int | None = None
-
-
-class MockPromptReviewList(ApiModel):
-    items: list[MockPromptReviewItem]
-
-
-class MockVideoBatchRequest(ApiModel):
-    task_ids: list[str]
-
-
-class MockVideoBatchSkip(ApiModel):
-    task_id: str
-    reason: str
-
-
-class MockVideoBatchEligibility(ApiModel):
-    eligible_task_ids: list[str]
-    skipped: list[MockVideoBatchSkip]
-
-
-class MockVideoBatchResponse(MockVideoBatchEligibility):
-    batch_id: str
-
-
-def _install_mock_batch_routes(application: FastAPI) -> None:
-    batch_prefixes = (
-        "/prompt-review",
-        "/prompt-enhancement-batches",
-        "/video-generation-batches",
-    )
-
-    def is_batch_router(route) -> bool:
-        original_router = getattr(route, "original_router", None)
-        if original_router is not None:
-            return any(is_batch_router(child) for child in original_router.routes)
-        path = getattr(route, "path", "")
-        return any(prefix in path for prefix in batch_prefixes)
-
-    application.router.routes[:] = [
-        route for route in application.router.routes if not is_batch_router(route)
-    ]
-    application.state.mock_prompt_reviews = {}
-    application.state.mock_prompt_batches = {}
-
-    @application.post(
-        "/api/v1/projects/{project_id}/prompt-enhancement-batches",
-        response_model=BatchPromptEnhancementResponse,
-        status_code=status.HTTP_202_ACCEPTED,
-        tags=["batch-review"],
-    )
-    async def create_prompt_enhancement_batch(
-        project_id: str,
-        payload: BatchPromptEnhancementRequest,
-    ) -> BatchPromptEnhancementResponse:
-        container = application.state.container
-        items: list[BatchPromptEnhancementItemView] = []
-        for task_id in payload.task_ids:
-            try:
-                editor = container.workspace_query.task_editor(project_id, task_id)
-                revision = await container.prompt_enhancement_service.enhance(
-                    project_id,
-                    task_id,
-                    target="minimax-h3",
-                    user_prompt=editor.user_prompt,
-                    media=tuple(
-                        EnhancementMedia(binding.asset_id, binding.reference, binding.role)
-                        for binding in editor.asset_bindings
-                    ),
-                    context=EnhancementContextOptions(
-                        include_project_background=payload.include_project_background,
-                        include_previous_task_summary=payload.include_previous_task_summary,
-                    ),
-                    duration_seconds=editor.duration_seconds,
-                    mode=editor.generation.mode,
-                    context_mode=editor.generation.context_mode,
-                )
-                application.state.mock_prompt_reviews.pop(task_id, None)
-                items.append(
-                    BatchPromptEnhancementItemView(
-                        task_id=task_id,
-                        state="completed",
-                        revision_id=revision.id,
-                    )
-                )
-            except Exception as exc:
-                items.append(
-                    BatchPromptEnhancementItemView(
-                        task_id=task_id,
-                        state="failed",
-                        error=str(exc),
-                    )
-                )
-
-        completed = sum(item.state == "completed" for item in items)
-        state = (
-            "completed"
-            if completed == len(items)
-            else "failed"
-            if completed == 0
-            else "partial"
-        )
-        response = BatchPromptEnhancementResponse(
-            batch_id=f"promptbatch-{uuid4().hex[:12]}",
-            state=state,
-            items=items,
-        )
-        application.state.mock_prompt_batches[response.batch_id] = response
-        return response
-
-    @application.get(
-        "/api/v1/projects/{project_id}/prompt-enhancement-batches/{batch_id}",
-        response_model=BatchPromptEnhancementResponse,
-        tags=["batch-review"],
-    )
-    async def get_prompt_enhancement_batch(
-        project_id: str,
-        batch_id: str,
-    ) -> BatchPromptEnhancementResponse:
-        return application.state.mock_prompt_batches[batch_id]
-
-    @application.get(
-        "/api/v1/projects/{project_id}/prompt-review-state",
-        response_model=PromptReviewStateView,
-        tags=["batch-review"],
-    )
-    async def get_prompt_review_state(project_id: str) -> PromptReviewStateView:
-        container = application.state.container
-        reviews: dict[str, int] = application.state.mock_prompt_reviews
-        workspace = container.workspace_query.workspace(project_id)
-        items: list[PromptReviewItemView] = []
-        for task in workspace.tasks:
-            editor = container.workspace_query.task_editor(project_id, task.id)
-            approved_revision = reviews.get(task.id)
-            approved = approved_revision == editor.revision
-            items.append(
-                PromptReviewItemView(
-                    task_id=task.id,
-                    prompt_review_status="approved" if approved else "pending_review",
-                    approved_revision=approved_revision if approved else None,
-                )
-            )
-        return PromptReviewStateView(items=items)
-
-    @application.post(
-        "/api/v1/projects/{project_id}/tasks/{task_id}/prompt-review/approve",
-        response_model=PromptReviewItemView,
-        tags=["batch-review"],
-    )
-    @application.post(
-        "/api/v1/projects/{project_id}/tasks/{task_id}/prompt-review",
-        response_model=PromptReviewItemView,
-        tags=["batch-review"],
-    )
-    async def approve_prompt(
-        project_id: str,
-        task_id: str,
-    ) -> PromptReviewItemView:
-        editor = application.state.container.workspace_query.task_editor(project_id, task_id)
-        application.state.mock_prompt_reviews[task_id] = editor.revision
-        return PromptReviewItemView(
-            task_id=task_id,
-            prompt_review_status="approved",
-            approved_revision=editor.revision,
-        )
-
-    def evaluate_video_batch(project_id: str, task_ids: list[str]) -> VideoBatchEligibilityView:
-        container = application.state.container
-        reviews: dict[str, int] = application.state.mock_prompt_reviews
-        eligible: list[str] = []
-        skipped: list[VideoBatchSkippedItem] = []
-        for task_id in task_ids:
-            try:
-                editor = container.workspace_query.task_editor(project_id, task_id)
-            except Exception:
-                skipped.append(VideoBatchSkippedItem(task_id=task_id, reason="invalid-params"))
-                continue
-            if reviews.get(task_id) != editor.revision:
-                skipped.append(VideoBatchSkippedItem(task_id=task_id, reason="not-reviewed"))
-                continue
-            eligible.append(task_id)
-        return VideoBatchEligibilityView(eligible_task_ids=eligible, skipped=skipped)
-
-    @application.post(
-        "/api/v1/projects/{project_id}/video-generation-batches/eligibility",
-        response_model=VideoBatchEligibilityView,
-        tags=["batch-review"],
-    )
-    async def check_video_batch_eligibility(
-        project_id: str,
-        payload: VideoBatchRequest,
-    ) -> VideoBatchEligibilityView:
-        return evaluate_video_batch(project_id, payload.task_ids)
-
-    @application.post(
-        "/api/v1/projects/{project_id}/video-generation-batches",
-        response_model=VideoBatchResponse,
-        status_code=status.HTTP_202_ACCEPTED,
-        tags=["batch-review"],
-    )
-    async def create_video_generation_batch(
-        project_id: str,
-        payload: VideoBatchRequest,
-    ) -> VideoBatchResponse:
-        eligibility = evaluate_video_batch(project_id, payload.task_ids)
-        return VideoBatchResponse(
-            batch_id=f"videobatch-{uuid4().hex[:12]}",
-            eligible_task_ids=eligibility.eligible_task_ids,
-            skipped=eligibility.skipped,
         )
 
 
@@ -427,7 +199,7 @@ async def create_mock_app(data_root: Path) -> FastAPI:
     application = create_app(
         selected_settings,
         prompt_provider=MockPromptAIProvider(),
+        video_provider=MockVideoGenerationProvider(),
     )
-    _install_mock_batch_routes(application)
     await seed_mock_scenario(application)
     return application
