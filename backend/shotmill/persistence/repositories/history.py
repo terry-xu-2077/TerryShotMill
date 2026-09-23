@@ -62,6 +62,7 @@ class SqlAlchemyJobRepository:
         row = self.session.get(models.JobModel, job.id)
         if row is None:
             raise KeyError(job.id)
+        row.runtime_progress = job.runtime_progress
         row.status = job.status.value
         row.provider_job_id = job.provider_job_id
         row.started_at = job.started_at

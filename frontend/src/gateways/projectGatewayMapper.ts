@@ -6,7 +6,7 @@ import type {
   StoryboardDomainSnapshot,
   TaskAssetBinding,
 } from "../domain/storyboard";
-import type { DirectorProject } from "../mock/projects";
+import type { DirectorProject } from "../features/projects/projectTypes";
 import type {
   ProjectSettings,
   ProjectWorkspaceView,
@@ -64,7 +64,7 @@ function summaryTask(summary: TaskSummary): GenerationTask {
       quality: summary.generationSummary.quality,
       generationMode: "全能参考",
       contextMode: "不承接",
-      promptSource: "user",
+      promptSource: summary.promptSource ?? "unknown",
       resultCount: summary.resultCount,
     },
     contextLinkIds: [],
@@ -241,6 +241,7 @@ export function mapTaskEditor(
       contextDurationSeconds: view.generation.contextDurationSeconds,
       promptSource: view.promptSource,
       userPrompt: view.userPrompt,
+      userPromptHistory: view.userPromptHistory ?? [],
       userPromptViewMode: view.editorPreference.userViewMode,
       aiPromptViewMode: view.editorPreference.aiViewMode,
       revision: view.revision,
@@ -264,6 +265,7 @@ export function taskSaveInput(task: GenerationTask): SaveTaskInput {
     summary: task.summary,
     scriptSource: task.scriptSource,
     userIntent: task.userIntent,
+    saveUserPromptVersion: params.saveUserPromptVersion === true,
     userPrompt: typeof params.userPrompt === "string" ? params.userPrompt : task.userIntent,
     aiEnhancedPrompt: task.aiPrompt,
     promptSource,

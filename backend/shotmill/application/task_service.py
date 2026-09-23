@@ -34,6 +34,7 @@ class SaveTaskData:
     user_view_mode: str = "visual"
     ai_view_mode: str = "visual"
     revision: int | None = None
+    save_user_prompt_version: bool = False
 
 
 class TaskService:
@@ -202,6 +203,14 @@ class TaskService:
                 created_at=now,
                 updated_at=now,
             )
+            if data.save_user_prompt_version:
+                task.user_prompt_history = [
+                    {
+                        "id": new_id("userprompt"),
+                        "prompt": task.user_prompt,
+                        "createdAt": now.isoformat(),
+                    }
+                ]
             task.select_final_prompt()
             task.state = TaskState.READY if task.final_prompt.strip() else TaskState.DRAFT
             uow.tasks.add(task)
@@ -211,13 +220,22 @@ class TaskService:
             return task
 
     def update_editor_preference(
-        self, project_id: str, task_id: str, *,
-        user_view_mode: str | None = None, ai_view_mode: str | None = None,
+        self,
+        project_id: str,
+        task_id: str,
+        *,
+        user_view_mode: str | None = None,
+        ai_view_mode: str | None = None,
     ) -> dict[str, str]:
         # Presentation preferences must not save drafts or change production/review state.
-        values = {key: value for key, value in {
-            "user_view_mode": user_view_mode, "ai_view_mode": ai_view_mode,
-        }.items() if value is not None}
+        values = {
+            key: value
+            for key, value in {
+                "user_view_mode": user_view_mode,
+                "ai_view_mode": ai_view_mode,
+            }.items()
+            if value is not None
+        }
         if any(value not in {"visual", "text"} for value in values.values()):
             raise ShotMillError("INVALID_VIEW_MODE", "Invalid prompt view mode", 422)
         with self.uow_factory() as uow:
@@ -251,6 +269,15 @@ class TaskService:
             task.summary = data.summary.strip()
             task.script_source = data.script_source
             task.user_intent = data.user_intent
+            if data.save_user_prompt_version:
+                task.user_prompt_history = [
+                    *task.user_prompt_history,
+                    {
+                        "id": new_id("userprompt"),
+                        "prompt": data.user_prompt,
+                        "createdAt": utcnow().isoformat(),
+                    },
+                ]
             task.user_prompt = data.user_prompt
             task.ai_prompt = data.ai_prompt
             task.prompt_source = PromptSource(data.prompt_source)

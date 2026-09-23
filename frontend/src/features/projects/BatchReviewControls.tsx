@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, Sparkles, Video, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button, Checkbox } from "terry-react-ui-library";
+import { Button, Checkbox } from "../../ui/primitives";
 
 import type { PromptBatchEligibility, VideoBatchEligibility } from "../../gateways/batchReviewGateway";
 import { Dialog } from "../../ui/overlay";

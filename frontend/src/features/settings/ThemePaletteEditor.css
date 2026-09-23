@@ -1,0 +1,9 @@
+.theme-palette-editor { display: grid; gap: 16px; min-width: 0; }
+.theme-palette-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+.theme-palette-field { display: grid; grid-template-columns: 4em 32px 86px; align-items: center; gap: 8px; padding: 12px 14px; border: 1px solid var(--sm-border); border-radius: 16px; background: var(--tc-panel); }
+.theme-palette-field input[type="color"] { width: 32px; height: 32px; padding: 2px; border: 1px solid var(--sm-border); border-radius: 999px; background: var(--sm-surface-1); cursor: pointer; }
+.theme-palette-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+.theme-palette-field input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 999px; }
+.theme-palette-hex { min-width: 0; width: 100%; padding: 6px 8px; border-radius: 999px; border: 1px solid var(--sm-border); background: var(--sm-surface-1); color: var(--sm-text); text-align: center; }
+.theme-palette-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+.theme-palette-footer > span { color: var(--sm-text-muted); font-size: 12px; }

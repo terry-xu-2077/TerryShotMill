@@ -1,0 +1,11 @@
+.sm-switch-wrap { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.sm-switch-wrap.is-fluid { width: 100%; }
+.sm-switch { box-sizing: border-box; position: relative; width: 76px; height: 28px; padding: 2px; border: 1px solid var(--sm-border); border-radius: 999px; background: color-mix(in srgb, var(--tc-panel) 85%, var(--sm-text) 15%); cursor: pointer; transition: background 160ms, border-color 160ms; }
+.sm-switch-wrap.is-fluid .sm-switch { width: 100%; }
+.sm-switch.is-on { background: color-mix(in srgb, var(--sm-accent) 45%, var(--tc-panel) 55%); border-color: var(--sm-accent); }
+.sm-switch-knob { display: grid; place-items: center; width: 50%; height: 100%; border-radius: 999px; background: var(--tc-panel); color: var(--sm-text); font: 600 10px/1 system-ui, sans-serif; transition: transform 160ms, background 160ms; }
+.sm-switch.is-on .sm-switch-knob { transform: translateX(100%); background: var(--sm-accent); color: white; }
+.sm-switch:focus-visible { outline: 2px solid var(--tc-effect); outline-offset: 2px; }
+.sm-switch:hover:not(:disabled) { border-color: var(--sm-accent); }
+.sm-switch:disabled { opacity: .45; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .sm-switch, .sm-switch-knob { transition: none; } }

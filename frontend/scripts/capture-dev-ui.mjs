@@ -2,50 +2,47 @@ import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
 
-const outputDirectory = resolve(".artifacts", "ui-previews");
-const baseUrl = process.env.SHOTMILL_UI_URL ?? "http://127.0.0.1:1420/dev/ui";
-
-await mkdir(outputDirectory, { recursive: true });
-const browser = await chromium.launch({ channel: "chrome", headless: true });
-
+const baseURL = process.env.SHOTMILL_UI_URL ?? "http://127.0.0.1:1420";
+const output = resolve("../.artifacts/ui-current");
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ channel: "chrome" });
 try {
-  const desktop = await browser.newPage({ viewport: { width: 1366, height: 768 } });
-  await desktop.goto(baseUrl);
-  await desktop.screenshot({ path: resolve(outputDirectory, "dev-ui-desktop.png") });
-  await desktop.getByRole("button", { name: /浮层实验室/ }).click();
-  await desktop.getByRole("dialog", { name: "浮层边界实验室" }).waitFor();
-  await desktop.waitForTimeout(200);
-  await desktop.screenshot({ path: resolve(outputDirectory, "dev-ui-overlay-lab.png") });
-
-  const composerDesktop = await browser.newPage({ viewport: { width: 1366, height: 768 } });
-  await composerDesktop.goto(baseUrl);
-  await composerDesktop.getByRole("button", { name: "收起场景" }).click();
-  await composerDesktop.getByRole("button", { name: "生产", exact: true }).click();
-  await composerDesktop.getByTestId("task-card-task-002").dblclick();
-  await composerDesktop.getByTestId("task-composer").waitFor();
-  await composerDesktop.waitForTimeout(700);
-  await composerDesktop.screenshot({ path: resolve(outputDirectory, "dev-ui-composer-desktop.png") });
-  const desktopFinalPrompt = composerDesktop.getByRole("textbox", { name: "Final Prompt" });
-  await desktopFinalPrompt.fill("");
-  await desktopFinalPrompt.pressSequentially("@仓库");
-  await composerDesktop.getByTestId("prompt-asset-menu").waitFor();
-  await composerDesktop.screenshot({ path: resolve(outputDirectory, "dev-ui-asset-menu-desktop.png") });
-
-  const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await mobile.goto(baseUrl);
-  await mobile.evaluate(() => window.scrollTo(0, 0));
-  await mobile.screenshot({ path: resolve(outputDirectory, "dev-ui-mobile.png") });
-  await mobile.getByRole("button", { name: "生产", exact: true }).click();
-  await mobile.getByTestId("task-card-task-002").dblclick();
-  await mobile.getByTestId("task-composer").waitFor();
-  await mobile.waitForTimeout(700);
-  await mobile.screenshot({ path: resolve(outputDirectory, "dev-ui-composer-mobile.png") });
-  const mobileFinalPrompt = mobile.getByRole("textbox", { name: "Final Prompt" });
-  await mobileFinalPrompt.scrollIntoViewIfNeeded();
-  await mobileFinalPrompt.fill("");
-  await mobileFinalPrompt.pressSequentially("@");
-  await mobile.getByTestId("prompt-asset-menu").waitFor();
-  await mobile.screenshot({ path: resolve(outputDirectory, "dev-ui-asset-menu-mobile.png") });
+  for (const mode of ["light", "dark"]) {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+    await page.addInitScript(theme => localStorage.setItem("shotmill.color-theme", theme), mode);
+    const capture = async name => {
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await Promise.all(document.getAnimations().filter(animation =>
+          Number.isFinite(animation.effect?.getComputedTiming().endTime)
+        ).map(animation => animation.finished.catch(() => {})));
+      });
+      await page.screenshot({ path: resolve(output, `${mode}-${name}.png`), animations: "disabled" });
+    };
+    await page.goto(baseURL);
+    await page.getByRole("main", { name: "项目首页" }).waitFor();
+    await page.getByText("正在加载项目…", { exact: true }).waitFor({ state: "hidden" });
+    await capture("home");
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("tab", { name: "外观", exact: true }).click();
+    await capture("appearance");
+    await page.getByRole("button", { name: "关闭对话框", exact: true }).click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    const project = page.getByRole("button", { name: /^打开项目 / }).first();
+    if (await project.count()) {
+      await project.click();
+      await page.getByRole("main", { name: "项目工作台" }).waitFor();
+      await capture("workspace");
+      const row = page.locator(".task-list-row:not(.is-create), .task-card-item").first();
+      if (await row.count()) {
+        await row.dblclick();
+        await page.getByTestId("simple-task-editor").waitFor();
+        await capture("task-editor");
+      }
+    }
+    await page.close();
+  }
+  console.log(`Screenshots: ${output}`);
 } finally {
   await browser.close();
 }

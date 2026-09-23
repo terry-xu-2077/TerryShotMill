@@ -415,7 +415,7 @@ describe("TaskEditorDialog", () => {
 
     renderEditor(onSave, vi.fn(), task, onEnhancePrompt);
 
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "用户提示词历史版本" })).toBeDisabled();
     await user.click(screen.getByRole("tab", { name: /AI 增强/ }));
 
     let history = screen.getByRole("combobox");

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Button, Select, TextField } from "terry-react-ui-library";
+import { Button, TextField } from "../../ui/primitives";
+import { Select } from "../../ui/Select";
 import type { ComfyUIWorkflow, ComfyUIWorkflowProfile } from "../../gateways/projectGateway";
 import { numericDraft, serializeNumericBindings, WorkflowNumericBindingsEditor, type NumericBindingDraft } from "./WorkflowNumericBindingsEditor";
 

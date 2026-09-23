@@ -52,6 +52,7 @@ def task_timing(
     timing.video_queue_seconds, timing.video_seconds = _durations(
         latest.submitted_at, latest.started_at, latest.completed_at, latest.status, now
     )
+    timing.generation_progress = latest.runtime_progress
     timing.video_running = latest.status == JobStatus.RUNNING
     timing.video_queued = latest.status == JobStatus.QUEUED
     return timing

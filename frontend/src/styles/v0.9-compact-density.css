@@ -18,15 +18,9 @@
 .sm-dialog > header p { margin-top: 2px; }
 .sm-dialog-content { padding: 10px 12px 12px; }
 
-.sm-dialog > header > button,
-.sm-fullscreen-preview > button {
+.sm-dialog > header > button {
   width: 28px;
   height: 28px;
-}
-
-.sm-select-trigger {
-  min-height: var(--sm-dense-control-h);
-  padding: 4px 7px;
 }
 
 /* Main project workspace */
@@ -80,10 +74,3 @@
 /* Asset manager: denser list and less empty chrome. */
 
 /* Generic composer / legacy dense panels still present in the app. */
-.composer-header { min-height: 62px; padding: 8px 12px; }
-.composer-beat-strip { gap: 5px; padding: 6px 12px; }
-.composer-column { padding: 10px; }
-.composer-column > header { margin-bottom: 9px; }
-.composer-field { gap: 4px; margin-bottom: 9px; }
-.prompt-block { margin-bottom: 8px; }
-.prompt-block-head { min-height: 36px; padding: 5px 7px; }

@@ -101,6 +101,7 @@ class AssetPatchRequest(ApiModel):
 
 
 class TaskSaveRequest(ApiModel):
+    save_user_prompt_version: bool = False
     title: str
     summary: str = ""
     script_source: str = ""

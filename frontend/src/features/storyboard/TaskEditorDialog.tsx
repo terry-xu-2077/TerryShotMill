@@ -1,6 +1,9 @@
+import { RangeSlider } from "../../ui/RangeSlider";
+import { Slider } from "../../ui/Slider";
 import { ChevronDown, ChevronLeft, ChevronRight, Code2, Eye, Pencil, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Button, Checkbox, RangeSlider, SegmentedControl, Select, Slider } from "terry-react-ui-library";
+import { Button, Checkbox, SegmentedControl } from "../../ui/primitives";
+import { Select } from "../../ui/Select";
 
 import { H3PromptEditor, type H3PromptViewMode } from "../../components/H3PromptEditor";
 import type { PromptAsset } from "../../components/PromptAssetEditor";
@@ -161,20 +164,22 @@ function formatHistoryLabel(item: AiPromptHistoryItem, index: number, total: num
   return `${index === total - 1 ? "最新版本" : `增强记录 ${index + 1}`}${time ? ` · ${time}` : ""}`;
 }
 
+const formatSeconds = (value: number) => `${Number(value.toFixed(2))}s`;
+
 function ContinuationRange({ maxSeconds, start, end, onChange, readOnly = false }: { maxSeconds: number; start: number; end: number; onChange: (start: number, end: number) => void; readOnly?: boolean }) {
   const max = Math.max(0, maxSeconds);
   if (max === 0) return <div className="simple-context-range-empty">当前任务前没有可承接的片段。</div>;
   const duration = Number((end - start).toFixed(10));
-  if (readOnly) return <p className="simple-context-note">{start}s – {end}s · {duration}s</p>;
+  if (readOnly) return <p className="simple-context-note">{formatSeconds(start)} – {formatSeconds(end)} · {formatSeconds(duration)}</p>;
   return (
     <Popover label="承接时间轴" triggerLabel="调整承接区间" className="context-timeline-popover" triggerClassName="context-timeline-trigger"
-      trigger={<><span>{start}s – {end}s · {duration}s</span><SlidersHorizontal size={15} /></>}>
+      trigger={<><span>{formatSeconds(start)} – {formatSeconds(end)} · {formatSeconds(duration)}</span><SlidersHorizontal size={15} /></>}>
       {close => <div className="context-timeline-editor">
-      <header>承接区间 · 来源 {max}s</header>
+      <header>承接区间 · 来源 {formatSeconds(max)}</header>
       <div className="simple-context-range-control">
       <RangeSlider variant="timeline" selectionLabel="承接片段" min={0} max={max} step={0.1} minDistance={Math.min(0.1, max)}
         value={[start, end]} startLabel="承接起点" endLabel="承接终点"
-        formatValue={(value) => `${value}s`} onChange={([nextStart, nextEnd]) => onChange(nextStart, nextEnd)} />
+        formatValue={formatSeconds} onChange={([nextStart, nextEnd]) => onChange(nextStart, nextEnd)} />
       </div>
       <footer><span>拖动片段平移，拖动两端裁剪</span><Button onClick={close}>完成</Button></footer>
       </div>}
@@ -202,6 +207,7 @@ export function TaskEditorDialog({
   const [taskTitle, setTaskTitle] = useState("");
   const [editingTitle, setEditingTitle] = useState(false);
   const [userPrompt, setUserPrompt] = useState("");
+  const [userHistory, setUserHistory] = useState<{ id: string; prompt: string; createdAt: string }[]>([]);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiHistory, setAiHistory] = useState<AiPromptHistoryItem[]>([]);
   const [selectedAiHistoryId, setSelectedAiHistoryId] = useState("");
@@ -260,6 +266,7 @@ export function TaskEditorDialog({
     setTaskTitle(task.title);
     setEditingTitle(false);
     setUserPrompt(initialUserPrompt);
+    setUserHistory(Array.isArray(params.userPromptHistory) ? params.userPromptHistory as { id: string; prompt: string; createdAt: string }[] : []);
     setAiHistory(history);
     setSelectedAiHistoryId(selectedHistory?.id ?? "");
     setAiPrompt(selectedHistory?.prompt ?? task.aiPrompt ?? "");
@@ -358,7 +365,7 @@ export function TaskEditorDialog({
     } finally { setIsEnhancing(false); }
   };
 
-  const buildPatch = (): TaskEditorPatch => {
+  const buildPatch = (saveUserPromptVersion = false): TaskEditorPatch => {
     return {
       title: taskTitle.trim() || task.title,
       finalPrompt: activePrompt,
@@ -367,17 +374,17 @@ export function TaskEditorDialog({
       assetBindings: inputBindings,
       generationParams: {
         ...task.generationParams, workflowProfileId: selectedWorkflowId || undefined, workflowInputs, resolution: selectedResolution, quality: selectedQuality, generationMode, contextMode, contextDurationSeconds, contextStartSeconds, contextEndSeconds,
-        promptSource: promptMode, userPrompt, userPromptViewMode: userViewMode, aiPromptViewMode: aiViewMode,
+        saveUserPromptVersion, promptSource: promptMode, userPrompt, userPromptViewMode: userViewMode, aiPromptViewMode: aiViewMode,
         aiPromptHistory: aiHistory, selectedAiPromptHistoryId: selectedAiHistoryId || undefined, revision: taskRevision,
       },
     };
   };
-  const save = async () => {
+  const save = async (saveUserPromptVersion = false) => {
     if (readOnly || isSaving || isEnhancing || (promptMode === "ai" && !aiPrompt.trim())) return;
     setIsSaving(true);
     setSaveError("");
     try {
-      await onSave(buildPatch());
+      await onSave(buildPatch(saveUserPromptVersion));
       onClose();
     } catch {
       setSaveError("保存失败，编辑内容已保留。请检查服务连接后重试。");
@@ -484,6 +491,8 @@ export function TaskEditorDialog({
         <section className="simple-prompt-editor" aria-label={readOnly ? "提示词查看" : "提示词编辑"}>
           <header className="simple-prompt-head">
             <div className="simple-prompt-title-group"><h2>{readOnly ? "提示词查看" : "提示词编辑"}</h2><SegmentedControl<H3PromptViewMode> value={activeViewMode} onChange={setActiveViewMode} ariaLabel={`${promptMode === "ai" ? "AI增强" : "用户"}提示词显示模式`} presentation="tabs" compact className="simple-prompt-view-tabs" options={[{ value: "visual", label: "可视化", icon: <Eye size={13} /> }, { value: "text", label: "文本", icon: <Code2 size={13} /> }]} /></div>
+            {promptMode === "user" && <div className="simple-ai-history-select"><Select ariaLabel="用户提示词历史版本" value={[...userHistory].reverse().find(item => item.prompt === userPrompt)?.id ?? ""} disabled={readOnly || !userHistory.length} onChange={id => { const item = userHistory.find(entry => entry.id === id); if (item) setUserPrompt(item.prompt); }} options={[{ value: "", label: userHistory.length ? "当前编辑内容" : "暂无保存记录" }, ...userHistory.map((item, index) => ({ value: item.id, label: `版本 ${index + 1} · ${new Date(item.createdAt).toLocaleString()}` }))]} /></div>}
+            {promptMode === "user" && <Button disabled={readOnly || isSaving || isEnhancing || !userPrompt.trim()} title="保存任务并将当前用户提示词存为历史版本" onClick={() => void save(true)}>保存版本</Button>}
             {promptMode === "ai" && <div className="simple-ai-history-select"><Select value={selectedAiHistoryId} disabled={readOnly || !aiHistory.length} onChange={selectAiHistory} options={aiHistory.length ? aiHistory.map((item, index) => ({ value: item.id, label: formatHistoryLabel(item, index, aiHistory.length) })) : [{ value: "", label: "暂无增强记录" }]} /></div>}
             <SegmentedControl<PromptMode> value={promptMode} onChange={setPromptMode} ariaLabel="提示词版本" presentation="tabs" compact className="simple-prompt-tabs" options={[{ value: "user", label: "用户" }, { value: "ai", label: "AI 增强", icon: <Sparkles size={13} /> }]} />
           </header>

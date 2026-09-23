@@ -1,7 +1,10 @@
+import { ThemePaletteEditor } from "./ThemePaletteEditor";
+import { Slider } from "../../ui/Slider";
 import defaultSystemPromptPresets from "./systemPromptPresets.json";
 import { Network, Palette, RefreshCw, Save, Sparkles, Trash2, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button, Checkbox, SegmentedControl, Select, Slider, TextField } from "terry-react-ui-library";
+import { Button, Checkbox, SegmentedControl, TextField } from "../../ui/primitives";
+import { Select } from "../../ui/Select";
 import { WorkflowPresetEditor } from "./WorkflowPresetEditor";
 import { ThemeSwitch } from "../../ui/ThemeSwitch";
 
@@ -188,6 +191,7 @@ export function ApplicationSettingsPanel({
       {section === "appearance" && <section className="application-settings-section" aria-label="外观设置">
         <header><strong>外观</strong></header>
         <div className="application-settings-appearance"><span>界面主题</span><ThemeSwitch /></div>
+        <ThemePaletteEditor />
       </section>}
       {section === "ai" && <section className="application-settings-section" aria-labelledby="ai-enhancement-settings-title">
         <header>

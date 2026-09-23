@@ -13,9 +13,11 @@ from shotmill.application.managed_queue import ManagedQueue
 from shotmill.domain.entities import ContextLink, Job, Result, new_id, utcnow
 from shotmill.domain.enums import JobStatus, TaskState
 from shotmill.domain.providers import (
+    ProgressReportingVideoProvider,
     ResolvedMedia,
     ResumableVideoGenerationProvider,
     SnapshotVideoGenerationProvider,
+    StoppableVideoProvider,
     ValidatingVideoGenerationProvider,
     VideoGenerationProvider,
     VideoGenerationRequest,
@@ -51,6 +53,42 @@ class GenerationService:
             if job is None:
                 raise NotFoundError("JOB_NOT_FOUND", "Job not found")
             return job
+
+    async def stop_job(self, project_id: str, job_id: str) -> None:
+        with self.uow_factory() as uow:
+            job = uow.jobs.get(job_id)
+            if job is None or job.project_id != project_id:
+                raise NotFoundError("JOB_NOT_FOUND", "Video job not found")
+        if job.status == JobStatus.QUEUED:
+            await self.cancel_queued(project_id, [job_id])
+            return
+        if job.status != JobStatus.RUNNING:
+            return
+        provider = self._execution_provider(job)
+        if not isinstance(provider, StoppableVideoProvider):
+            raise ShotMillError("STOP_UNSUPPORTED", "当前生成服务不支持停止任务。", 409)
+        with self.uow_factory() as uow:
+            current = uow.jobs.get(job.id)
+            if current.status == JobStatus.RUNNING:
+                current.runtime_progress = {
+                    **(current.runtime_progress or {}),
+                    "stopRequested": True,
+                }
+                uow.jobs.update_runtime(current)
+        await self.events.publish(project_id, "task.progress_changed", taskId=job.task_id)
+        try:
+            await provider.stop(job.id)
+        except Exception:
+            with self.uow_factory() as uow:
+                current = uow.jobs.get(job.id)
+                if current.status == JobStatus.RUNNING:
+                    current.runtime_progress = {
+                        **(current.runtime_progress or {}),
+                        "stopRequested": False,
+                    }
+                    uow.jobs.update_runtime(current)
+            await self.events.publish(project_id, "task.progress_changed", taskId=job.task_id)
+            raise
 
     async def cancel_queued(self, project_id: str, job_ids: list[str]) -> list[str]:
         # Queue claims and cancellation commit before yielding in the local scheduler.
@@ -161,7 +199,7 @@ class GenerationService:
                 context_links = []
             if (
                 not dependency
-                and mode == "尾帧承接"
+                and mode in {"尾帧承接", "片段承接"}
                 and (
                     not context_links
                     or (len(context_links) == 1 and not context_links[0].source_result_id)
@@ -209,9 +247,20 @@ class GenerationService:
                 ):
                     raise ShotMillError("CONTEXT_RESULT_REQUIRED", "上下文来源结果无效。", 409)
                 if link.stale or source.primary_result_id != result.id:
-                    raise ShotMillError(
-                        "CONTEXT_STALE", "上一任务结果已变化，请重新确认并保存承接设置。", 409
+                    latest = (
+                        uow.results.get(source.primary_result_id)
+                        if source.primary_result_id
+                        else None
                     )
+                    if (
+                        latest is None
+                        or latest.project_id != project_id
+                        or latest.task_id != source.id
+                    ):
+                        raise ShotMillError("CONTEXT_RESULT_REQUIRED", "上下文来源结果无效。", 409)
+                    result = latest
+                    link.source_result_id = latest.id
+                    link.stale = False
                 prefix = f"/media/{project_id}/"
                 if not result.video_url.startswith(prefix):
                     raise ShotMillError(
@@ -575,6 +624,22 @@ class GenerationService:
             )
 
             provider = self._execution_provider(job)
+            if isinstance(provider, ProgressReportingVideoProvider):
+
+                async def report_progress(update):
+                    with self.uow_factory() as progress_uow:
+                        running = progress_uow.jobs.get(job.id)
+                        if running is None or running.status != JobStatus.RUNNING:
+                            return
+                        running.runtime_progress = {**(running.runtime_progress or {}), **update}
+                        progress_uow.jobs.update_runtime(running)
+                    await self.events.publish(
+                        project_id,
+                        "task.progress_changed",
+                        taskId=task_id,
+                    )
+
+                provider.set_progress_callback(report_progress)
             if resuming:
                 if not provider.capability.job_resumption or not isinstance(
                     provider, ResumableVideoGenerationProvider
@@ -665,14 +730,34 @@ class GenerationService:
                 with self.uow_factory() as uow:
                     failed_job = uow.jobs.get(job_id)
                     failed_task = uow.tasks.get(task_id)
+                    stopped = bool(
+                        failed_job
+                        and (failed_job.runtime_progress or {}).get("stopRequested")
+                        and (
+                            "execution_interrupted" in str(exc)
+                            or getattr(exc, "code", "") == "SHOTMILL_BRIDGE_JOB_NOT_FOUND"
+                        )
+                    )
                     if failed_job is not None:
-                        failed_job.status = JobStatus.FAILED
+                        failed_job.status = JobStatus.CANCELLED if stopped else JobStatus.FAILED
                         failed_job.completed_at = utcnow()
-                        failed_job.error_code = getattr(exc, "code", type(exc).__name__.upper())
-                        failed_job.error_message = str(exc)
+                        failed_job.error_code = (
+                            "USER_STOPPED"
+                            if stopped
+                            else getattr(exc, "code", type(exc).__name__.upper())
+                        )
+                        failed_job.error_message = "用户停止" if stopped else str(exc)
                         uow.jobs.update_runtime(failed_job)
                     if failed_task is not None:
-                        failed_task.state = TaskState.FAILED
+                        failed_task.state = (
+                            (
+                                TaskState.COMPLETED
+                                if failed_task.primary_result_id
+                                else TaskState.READY
+                            )
+                            if stopped
+                            else TaskState.FAILED
+                        )
                         failed_task.progress = None
                         failed_task.updated_at = utcnow()
                         uow.tasks.update(failed_task)
@@ -680,11 +765,14 @@ class GenerationService:
                     project_id,
                     "task.status_changed",
                     taskId=task_id,
-                    status="failed",
+                    status="cancelled" if stopped else "failed",
                     progress=None,
                 )
                 await self.events.publish(
-                    project_id, "project.runtime_changed", taskId=None, state="failed"
+                    project_id,
+                    "project.runtime_changed",
+                    taskId=None,
+                    state="idle" if stopped else "failed",
                 )
             # The failure is persisted; worker stays alive for later jobs.
 

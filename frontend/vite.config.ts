@@ -25,10 +25,5 @@ export default defineConfig({
     setupFiles: "./src/test/setup.ts",
     css: true,
     exclude: ["e2e/**", "node_modules/**"],
-    server: {
-      deps: {
-        inline: ["terry-react-ui-library"],
-      },
-    },
   },
 });

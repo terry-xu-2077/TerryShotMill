@@ -1,0 +1,63 @@
+/* Shared action-button geometry. Product pages may place the button, but not redefine its internals. */
+.tc-button{
+  min-width:88px;
+  height:32px;
+  padding:0 12px;
+  border-radius:var(--tc-button-radius,7px);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  white-space:nowrap;
+  line-height:1;
+  text-shadow:none;
+  box-shadow:none;
+}
+.tc-button>svg{flex:none;transform:none}
+.tc-button.size-icon{width:32px;min-width:32px;padding:0;flex:none}
+.tc-button:focus-visible{outline:2px solid var(--tc-effect);outline-offset:3px}
+.tc-button.variant-default{
+  background:color-mix(in srgb,var(--tc-panel) 88%,var(--tc-surface-2) 12%);
+}
+.tc-button.variant-default:hover:not(:disabled){
+  background:color-mix(in srgb,var(--tc-panel) 76%,var(--tc-accent) 24%);
+  filter:none;
+  box-shadow:0 3px 10px color-mix(in srgb,var(--tc-shadow) 34%,transparent);
+}
+.tc-button.variant-accent{
+  /* Accent supplies the hue; the filled action needs its own darker luminance
+   * so its white label remains readable in both theme modes and on hover. */
+  --_tc-action-fill:oklch(from var(--tc-accent) min(l,.48) c h);
+  color:#fff;
+  border-color:color-mix(in srgb,var(--tc-accent) 76%,white 24%);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--_tc-action-fill) 92%,white 8%),color-mix(in srgb,var(--_tc-action-fill) 86%,black 14%));
+  box-shadow:0 2px 7px color-mix(in srgb,var(--tc-accent) 24%,transparent);
+}
+.tc-button.variant-accent:hover:not(:disabled){
+  border-color:color-mix(in srgb,var(--tc-effect) 64%,white 36%);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--_tc-action-fill) 88%,white 12%),color-mix(in srgb,var(--_tc-action-fill) 92%,black 8%));
+  filter:none;
+  box-shadow:0 3px 10px color-mix(in srgb,var(--tc-accent) 34%,transparent),0 0 7px color-mix(in srgb,var(--tc-effect) 18%,transparent);
+}
+.tc-button:active:not(:disabled){transform:translateY(1px)}
+
+.tc-theme[data-mode="light"] .tc-button.variant-default{
+  color:var(--tc-text);
+  background:color-mix(in srgb,var(--tc-panel-2) 46%,white 54%);
+}
+/* The light theme has a generic `.tc-theme[data-mode=light] .tc-button` rule. Keep the
+ * explicit accent role at equal/higher specificity so primary actions never fall back
+ * to the pale default button treatment. */
+.tc-theme[data-mode="light"] .tc-button.variant-accent{
+  color:#fff;
+  border-color:color-mix(in srgb,var(--tc-accent) 72%,white 28%);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--_tc-action-fill) 92%,white 8%),color-mix(in srgb,var(--_tc-action-fill) 86%,black 14%));
+  box-shadow:0 2px 7px color-mix(in srgb,var(--tc-accent) 22%,transparent);
+}
+.tc-theme[data-mode="light"] .tc-button.variant-accent:hover:not(:disabled){
+  color:#fff;
+  border-color:color-mix(in srgb,var(--tc-effect) 54%,var(--tc-accent) 46%);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--_tc-action-fill) 88%,white 12%),color-mix(in srgb,var(--_tc-action-fill) 92%,black 8%));
+  filter:none;
+  box-shadow:0 3px 9px color-mix(in srgb,var(--tc-accent) 25%,transparent);
+}

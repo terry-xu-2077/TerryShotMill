@@ -17,12 +17,9 @@ import {
   mapWorkspaceProject,
   taskSaveInput,
 } from "./gateways/projectGatewayMapper";
-import {
-  CreateProjectDialog,
-  ProjectHome,
-  ProjectWorkspace,
-} from "./features/projects/ProjectWorkspaceV2";
-import type { DirectorProject } from "./mock/projects";
+import { ProjectWorkspace } from "./features/projects/ProjectWorkspace";
+import { CreateProjectDialog, ProjectHome } from "./features/projects/ProjectHome";
+import type { DirectorProject } from "./features/projects/projectTypes";
 import { BridgeStatus } from "./features/projects/BridgeStatus";
 
 import { GlobalStatusbar } from "./features/projects/GlobalStatusbar";
@@ -236,6 +233,11 @@ export function App({ gateway = httpProjectGateway }: AppProps) {
       }}
       onCancelPromptBatch={async (batchId) => {
         await batchReviewGateway.cancelPromptBatch(currentProject.id, batchId);
+        await reloadCurrentProject();
+      }}
+      onVideoVersionChanged={reloadCurrentProject}
+      onStopVideoJob={async (jobId) => {
+        await batchReviewGateway.stopVideoJob(currentProject.id, jobId);
         await reloadCurrentProject();
       }}
       onCancelQueuedVideos={async (jobIds) => {

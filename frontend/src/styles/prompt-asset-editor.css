@@ -1,0 +1,23 @@
+.prompt-asset-editor { position: relative; }
+.prompt-asset-editor textarea { display: block; }
+.prompt-asset-hint { min-height: 28px; display: flex; align-items: center; gap: 6px; padding: 5px 10px; color: var(--sm-text-dim); border-top: 1px solid var(--sm-border); background: rgba(12,18,16,.82); font-size: 8px; }
+.prompt-asset-hint span { width: 16px; height: 16px; display: grid; place-items: center; color: var(--sm-success); border: 1px solid rgba(97,181,143,.34); border-radius: 4px; background: rgba(97,181,143,.08); font-size: 9px; font-weight: 800; }
+.prompt-asset-menu { width: min(330px, calc(100vw - 16px)); max-height: min(430px, calc(100vh - 16px)); overflow: hidden; color: var(--sm-text); border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: var(--sm-surface-1); box-shadow: 0 20px 54px rgba(0,0,0,.58); }
+.prompt-asset-menu > header { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.prompt-asset-menu > header strong { font-size: 10px; }
+.prompt-asset-menu > header span { overflow: hidden; color: var(--sm-text-dim); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-asset-options { max-height: 320px; overflow: auto; padding: 5px; }
+.prompt-asset-options button { width: 100%; display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 7px; color: var(--sm-text-muted); border: 0; border-radius: 7px; background: transparent; cursor: pointer; text-align: left; }
+.prompt-asset-options button.is-active { color: var(--sm-text); background: rgba(255,255,255,.08); }
+.prompt-asset-menu-thumb { width: 42px; height: 38px; display: grid; place-items: center; color: var(--sm-text-muted); border-radius: 6px; background: linear-gradient(145deg,var(--sm-surface-2),var(--sm-surface-1)); }
+.prompt-asset-menu-thumb.tone-amber { background: linear-gradient(145deg,var(--sm-surface-2),var(--sm-surface-1)); }
+.prompt-asset-menu-thumb.tone-green { background: linear-gradient(145deg,var(--sm-surface-2),var(--sm-surface-1)); }
+.prompt-asset-menu-thumb.tone-violet { background: linear-gradient(145deg,var(--sm-surface-2),var(--sm-surface-1)); }
+.prompt-asset-menu-copy { min-width: 0; display: grid; gap: 3px; }
+.prompt-asset-menu-copy strong, .prompt-asset-menu-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-asset-menu-copy strong { font-size: 9px; }
+.prompt-asset-menu-copy small { color: var(--sm-text-dim); font-size: 7px; }
+.prompt-asset-options kbd { visibility: hidden; color: var(--sm-text-dim); font: 8px/1 "Segoe UI",sans-serif; }
+.prompt-asset-options button.is-active kbd { visibility: visible; }
+.prompt-asset-empty { margin: 0; padding: 20px 8px; color: var(--sm-text-dim); font-size: 9px; text-align: center; }
+.prompt-asset-menu > footer { display: flex; align-items: center; gap: 12px; padding: 7px 10px; color: var(--sm-text-dim); border-top: 1px solid rgba(255,255,255,.08); font-size: 7px; }

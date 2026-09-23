@@ -151,6 +151,7 @@ class GenerationSummary(ApiModel):
 
 
 class TaskTiming(ApiModel):
+    generation_progress: dict[str, Any] | None = None
     video_seconds: float | None = None
     video_queue_seconds: float | None = None
     prompt_seconds: float | None = None
@@ -163,6 +164,7 @@ class TaskTiming(ApiModel):
 
 
 class TaskSummary(ApiModel):
+    prompt_source: Literal["user", "ai"] = "user"
     generation_status_note: str | None = None
     generation_warnings: list[str] = Field(default_factory=list)
     latest_video_result_id: str | None = None
@@ -271,7 +273,14 @@ class EditorPreference(ApiModel):
     ai_view_mode: Literal["visual", "text"] = "visual"
 
 
+class UserPromptRevisionView(ApiModel):
+    id: str
+    prompt: str
+    created_at: str
+
+
 class TaskEditorView(ApiModel):
+    user_prompt_history: list[UserPromptRevisionView] = []
     id: str
     display_number: int
     title: str

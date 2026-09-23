@@ -64,7 +64,11 @@ def video_job_runtime(job: Job, title: str) -> RuntimeTaskItem:
         title=title,
         state=job.status.value,
         status_note=(
-            "等待上一任务结果"
+            "用户停止"
+            if job.error_code == "USER_STOPPED"
+            else "正在停止"
+            if job.status.value == "running" and (job.runtime_progress or {}).get("stopRequested")
+            else "等待上一任务结果"
             if job.status.value == "queued"
             and job.context_snapshot.get("dependency")
             and job.execution_context is None
@@ -73,5 +77,5 @@ def video_job_runtime(job: Job, title: str) -> RuntimeTaskItem:
         continuation_fallback=job.error_code == "CONTEXT_DEPENDENCY_UNAVAILABLE"
         and job.execution_context is None,
         elapsed_seconds=elapsed(job.started_at, job.completed_at),
-        error=job.error_message or job.error_code,
+        error=None if job.error_code == "USER_STOPPED" else job.error_message or job.error_code,
     )

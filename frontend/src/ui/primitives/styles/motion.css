@@ -1,0 +1,75 @@
+
+
+/* Motion belongs to the shared UI library so every consumer gets the same behavior. */
+
+/* Popovers must sit above sticky headers and subsequent business rows. */
+.tc-pop{
+  z-index:5000!important;
+}
+
+/* Dialogs can opt into a workspace-sized shell. The default remains compact.
+   Wide dialogs own the outer viewport and let their internal panes decide scrolling. */
+.tc-dialog.size-wide{
+  width:min(1180px,calc(100vw - 56px));
+  max-width:none;
+  height:min(820px,calc(100vh - 56px));
+  max-height:none;
+  display:grid;
+  grid-template-rows:38px minmax(0,1fr);
+}
+.tc-dialog.size-wide>.tc-dialog-body{
+  min-width:0;
+  min-height:0;
+  max-height:none;
+  padding:0;
+  overflow:hidden;
+}
+
+/* Only animate controls that actually benefit from motion. Avoid transition:all. */
+.tc-control{
+  transition:outline-color .1s ease,box-shadow .1s ease!important;
+}
+.tc-pop-in{
+  animation:tcPopInCompact .18s cubic-bezier(.22,1,.36,1) both!important;
+  transform-origin:top center;
+  will-change:transform,opacity;
+}
+.tc-dialog-in{
+  animation:tcDialogInCompact .22s cubic-bezier(.22,1,.36,1) both!important;
+  will-change:transform,opacity;
+}
+
+.tc-bool-knob{
+  transition:transform .22s cubic-bezier(.22,1,.36,1),background .12s ease,color .12s ease,border-color .12s ease!important;
+  will-change:transform;
+}
+
+.tc-reset{
+  transition:opacity .1s ease,background .1s ease,color .1s ease!important;
+}
+.tc-tooltip{
+  transition:opacity .08s ease,transform .08s ease!important;
+}
+
+@keyframes tcPopInCompact{
+  from{opacity:0;transform:translateY(-3px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes tcDialogInCompact{
+  from{opacity:0;transform:translateY(5px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+@media(max-width:900px){
+  .tc-dialog.size-wide{
+    width:calc(100vw - 24px);
+    height:calc(100vh - 24px);
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  .tc-pop-in,.tc-dialog-in,.tc-bool-knob,.tc-reset,.tc-tooltip{
+    animation:none!important;
+    transition:none!important;
+  }
+}

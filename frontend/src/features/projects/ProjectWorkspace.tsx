@@ -1,68 +1,83 @@
-import { BrandLogo } from "../../components/BrandLogo";
-import { TaskNewResults, useViewedResults } from "./TaskNewResults";
+import { VideoVersionSelect } from "./VideoVersionSelect";
+import { GenerationProgress, TaskProgressLight } from "./GenerationProgress";
 import { TaskRiskSticker } from "./TaskRiskSticker";
+import { TaskNewResults, useViewedResults } from "./TaskNewResults";
+import { TaskPreview } from "./TaskPreview";
 import {
-  Check,
-  FileImage,
-  Film,
-  Folder,
+  LoaderCircle,
+  Square,
   Grid2X2,
   Home,
   List,
-  Music2,
-  Pencil,
   Play,
+  Pencil,
   Plus,
-  Settings,
+  Sparkles,
   SlidersHorizontal,
-  Trash2,
-  Upload,
-  X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "terry-react-ui-library";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Button, Checkbox } from "../../ui/primitives";
 
 import {
   listTasksInStoryOrder,
   type GenerationTask,
-  type ProjectAsset,
   type Result,
   type StoryboardDomainSnapshot,
 } from "../../domain/storyboard";
-import type { DirectorProject } from "../../mock/projects";
-import type { ProjectSummary } from "../../gateways/projectGateway";
-import { ContextMenu, Dialog } from "../../ui/overlay";
-import { ThemeSwitch } from "../../ui/ThemeSwitch";
+import type {
+  PromptReviewItem,
+  PromptBatchEligibility,
+  VideoBatchEligibility,
+  VideoBatchResponse,
+} from "../../gateways/batchReviewGateway";
+import type { ApplicationSettings } from "../../gateways/projectGateway";
+import { taskSaveInput } from "../../gateways/projectGatewayMapper";
+import type { DirectorProject } from "../../features/projects/projectTypes";
+import type {
+  PromptEnhancementRequest,
+  PromptEnhancementResponse,
+} from "../../services/promptEnhancement";
+import { ContextMenu, Dialog, OverlayPortal, useOverlayZIndex } from "../../ui/overlay";
 import { TaskEditorDialog } from "../storyboard/TaskEditorDialog";
-import { insertTaskAfter, updateTaskComposerFields } from "../storyboard/storyboardMutations";
+import { updateTaskComposerFields } from "../storyboard/storyboardMutations";
+import {
+  BatchPromptDialog,
+  BatchVideoDialog,
+  type PromptBatchOptions,
+} from "./BatchReviewControls";
+import { ProjectConfigPanel } from "./ProjectConfigPanel";
+import { useTaskViewMode } from "./useTaskViewMode";
+import { ThemeSwitch } from "../../ui/ThemeSwitch";
+import { TaskResultPlayer } from "./TaskResultPlayer";
+import { formatElapsed, taskTimeSummary, useLiveTaskTimings } from "./taskTiming";
 
-type TaskViewMode = "list" | "card";
-type DisplayStatus = "idle" | "running" | "completed" | "failed";
-type ProjectConfigTab = "info" | "assets";
 
+
+
+type DisplayStatus = "idle" | "enhancing" | "queued" | "running" | "completed" | "failed";
 type TaskEditorPatch = Partial<Pick<GenerationTask,
-  "title" | "aiPrompt" | "finalPrompt" | "generationParams" | "plannedDurationSeconds"
+  "title" | "aiPrompt" | "finalPrompt" | "generationParams" | "plannedDurationSeconds" | "assetBindings"
 >>;
-
 type ProjectSettingsPatch = Pick<DirectorProject, "title" | "description" | "useDescriptionForAiPrompt">;
+type BatchPromptSubmit = (request: {
+  taskIds: string[];
+  includeProjectBackground: boolean;
+  includePreviousTaskSummary: boolean;
+}) => Promise<unknown>;
 
 const taskStatusLabel: Record<DisplayStatus, string> = {
   idle: "未开始",
-  running: "进行中",
+  enhancing: "增强中",
+  queued: "排队中",
+  running: "生成中",
   completed: "已完成",
   failed: "失败",
 };
 
-const assetCategoryLabel: Record<ProjectAsset["category"], string> = {
-  character: "角色",
-  scene: "场景",
-  prop: "道具",
-  reference: "参考",
-};
-
 function displayTaskStatus(task: GenerationTask): DisplayStatus {
+  if (task.state === "prompt-generating") return "enhancing";
   if (task.state === "completed") return "completed";
-  if (task.state === "running" || task.state === "queued") return "running";
+  if (task.state === "running" || task.state === "queued") return task.state;
   if (task.state === "failed") return "failed";
   return "idle";
 }
@@ -79,17 +94,25 @@ function taskResult(snapshot: StoryboardDomainSnapshot, task: GenerationTask) {
     ? snapshot.results.find((result) => result.id === task.primaryResultId)
     : undefined;
   if (primary) return primary;
-  const taskJobIds = new Set(snapshot.jobs.filter((job) => job.taskId === task.id).map((job) => job.id));
-  return snapshot.results.slice().reverse().find((result) => taskJobIds.has(result.jobId));
+  const jobIds = new Set(snapshot.jobs.filter((job) => job.taskId === task.id).map((job) => job.id));
+  return snapshot.results.slice().reverse().find((result) => result.videoUrl && jobIds.has(result.jobId));
 }
 
 function taskPreview(snapshot: StoryboardDomainSnapshot, task: GenerationTask) {
-  return taskResult(snapshot, task)?.previewUrl ?? task.storyboardFrame.previewUrl;
+  return taskResult(snapshot, task)?.previewUrl;
 }
 
 function resultCount(snapshot: StoryboardDomainSnapshot, taskId: string) {
   const jobIds = new Set(snapshot.jobs.filter((job) => job.taskId === taskId).map((job) => job.id));
   return snapshot.results.filter((result) => jobIds.has(result.jobId)).length;
+}
+
+function generationSummary(task: GenerationTask) {
+  const params = task.generationParams ?? {};
+  return [params.resolution ? `分辨率：${String(params.resolution).toUpperCase()}` : null,
+    task.plannedDurationSeconds ? `时长：${task.plannedDurationSeconds} 秒` : null,
+    params.quality ? `质量：${String(params.quality)}` : null,
+    `提示词：${params.promptSource === "ai" ? "AI" : params.promptSource === "user" ? "用户" : "读取中"}`].filter(Boolean).join(" · ") || "未设置生成参数";
 }
 
 function promptSummary(task: GenerationTask) {
@@ -102,7 +125,7 @@ function makeDraftTask(snapshot: StoryboardDomainSnapshot): GenerationTask {
     id: `task-local-${Date.now()}`,
     number: `T01-${String(serial).padStart(3, "0")}`,
     title: `新任务 ${serial}`,
-    summary: "等待填写提示词。",
+    summary: "",
     scriptSource: "",
     userIntent: "",
     storyboardFrame: { sourceType: "placeholder", updatedAt: new Date().toISOString() },
@@ -130,99 +153,44 @@ function makeDraftTask(snapshot: StoryboardDomainSnapshot): GenerationTask {
   };
 }
 
-export function ProjectHome({ bridgeStatus, projects, loading = false, error = "", onRetry, onOpenProject, onCreateProject }: {
-  bridgeStatus?: import("react").ReactNode;
-  projects: ProjectSummary[]; loading?: boolean; error?: string; onRetry?: () => void;
-  onOpenProject: (projectId: string) => void; onCreateProject: () => void;
-}) {
-  const { unread } = useViewedResults();
-  return <main className="project-home" aria-label="项目首页">
-    <header className="project-home-title"><h1><BrandLogo />Terry导演工作台</h1>{bridgeStatus}<ThemeSwitch /></header>
-    <div className="project-home-collection">
-      <header className="project-collection-heading"><h2>项目</h2><span className="project-home-count">{projects.length} 个项目</span></header>
-      <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}><defs>
-        <clipPath id="project-folder-outline" clipPathUnits="objectBoundingBox"><path d="M0 .15 Q0 0 .06 0 H.32 C.36 0 .36 .13 .42 .13 H.94 Q1 .13 1 .27 V.87 Q1 1 .94 1 H.06 Q0 1 0 .87 Z" /></clipPath>
-      </defs></svg>
-      <section className="project-folder-grid" aria-label="项目列表">
-        <button type="button" className="project-folder-card project-create-card" onClick={onCreateProject}><div><Plus className="creation-motion-icon" size={30} /><span>新建项目</span></div></button>
-        {loading && projects.length === 0 && <div className="project-folder-card project-create-card" role="status">正在加载项目…</div>}
-        {!loading && error && projects.length === 0 && <button type="button" className="project-folder-card project-create-card" onClick={onRetry}><div><span>项目加载失败，点击重试</span></div></button>}
-        {projects.map(project => {
-          const kinds = [...new Set((project.newResults ?? []).flatMap(unread))];
-          return <div key={project.id} className="project-folder-item">
-            <button type="button" className={`project-folder-card is-${project.status} ${project.coverUrl ? "has-cover" : "is-empty"}`} onClick={() => onOpenProject(project.id)} aria-label={`打开项目 ${project.title}`}>
-              {project.coverUrl && <><div className="project-folder-sheet project-folder-paper" aria-hidden="true" /><div className="project-folder-sheet project-folder-paper-middle" aria-hidden="true" /></>}
-              <div className="project-folder-sheet project-folder-cover" style={project.coverUrl ? { backgroundImage: `url("${project.coverUrl}")` } : undefined} />
-              <div className="project-folder-front">
-                <div className="project-folder-tab"><time className="project-folder-date" dateTime={project.createdAt}>{project.createdAt ? new Date(project.createdAt).toLocaleDateString("zh-CN") : ""}</time></div>
-                <h2>{project.title}</h2><p className="project-folder-description">{project.description || "暂无项目简介"}</p>
-                <footer><span>{project.taskCount} 个任务</span><span>{project.assetCount} 个资产</span><span>已生成 {project.completedTaskCount ?? 0}/{project.taskCount}</span></footer>
-              </div>
-            </button><div className="project-folder-notices"><TaskNewResults kinds={kinds} /><TaskRiskSticker warnings={project.generationWarnings ?? []} /></div>
-          </div>;
-        })}
-      </section>
-    </div>
-  </main>;
-}
-
-function TaskPreview({ previewUrl, compact = false }: { previewUrl?: string; compact?: boolean }) {
-  return (
-    <div
-      className={`task-preview ${compact ? "is-compact" : ""}`}
-      style={previewUrl ? { backgroundImage: `url("${previewUrl}")` } : undefined}
-    >
-      {!previewUrl && <Play size={compact ? 22 : 44} />}
-    </div>
-  );
-}
-
-function TaskInfoPanel({
-  snapshot,
-  task,
-  onPlayResult,
-}: {
+function TaskInfoPanel({ history, snapshot, task, review, onPlayResult, timing, actions, newKinds, warnings, statusNote }: {
+  statusNote?: string | null;
+  newKinds: ("video" | "prompt")[];
+  warnings: string[];
+  actions?: ReactNode;
+  timing?: import("../../gateways/projectGateway").TaskTiming;
+  history?: ReactNode;
   snapshot: StoryboardDomainSnapshot;
   task?: GenerationTask;
+  review?: PromptReviewItem;
   onPlayResult: (result: Result, task: GenerationTask) => void;
 }) {
-  if (!task) {
-    return (
-      <aside className="project-task-info" aria-label="任务信息">
-        <div className="project-task-info-empty">选择一个任务查看信息</div>
-      </aside>
-    );
-  }
-
+  if (!task) return <aside className="project-task-info" aria-label="任务信息"><div className="project-task-info-empty">选择一个任务查看信息</div></aside>;
   const params = task.generationParams ?? {};
   const status = displayTaskStatus(task);
-  const prompt = promptSummary(task);
   const result = taskResult(snapshot, task);
   const preview = taskPreview(snapshot, task);
-
   return (
     <aside className="project-task-info" aria-label="任务信息">
-      {result ? (
-        <button type="button" className="task-result-preview-button" onClick={() => onPlayResult(result, task)} aria-label={`播放任务 ${task.title} 的生成结果`}>
-          <TaskPreview previewUrl={preview} />
-          <span className="task-result-play"><Play size={25} fill="currentColor" /></span>
-        </button>
-      ) : (
-        <TaskPreview previewUrl={preview} />
-      )}
+      <div className="task-info-preview">
+      {result ? <button type="button" className="task-result-preview-button" onClick={() => onPlayResult(result, task)} aria-label={`播放任务 ${task.title} 的生成结果`}><TaskPreview previewUrl={preview} /><span className="task-result-play"><Play size={25} fill="currentColor" /></span></button> : <TaskPreview previewUrl={preview} />}
+        <div className="task-info-notices"><TaskNewResults kinds={newKinds} /><TaskRiskSticker key={task.id} warnings={warnings} /></div>
+      </div>
+      {actions}
+      {history}
       <h2>任务名：{task.title}</h2>
-
-      <section className="project-info-block">
-        <h3>提示词</h3>
-        <p>{prompt}</p>
-      </section>
-
+      <section className="project-info-block"><h3>提示词</h3><p>{promptSummary(task)}</p></section>
+      <GenerationProgress timing={timing} status={statusNote ?? taskStatusLabel[status]} />
       <section className="project-info-block">
         <h3>生成参数</h3>
         <dl>
-          <div><dt>状态</dt><dd><span className={`workspace-status-dot is-${status}`} />{taskStatusLabel[status]}</dd></div>
-          <div><dt>时长</dt><dd>{task.plannedDurationSeconds || 0} 秒</dd></div>
-          <div><dt>分辨率</dt><dd>{String(params.resolution ?? "1080P").toUpperCase()}</dd></div>
+          <div><dt>提示词</dt><dd className={`task-review-inline is-${review?.promptReviewStatus ?? "pending_review"}`}>{review?.promptReviewStatus === "approved" ? "已检查" : "待检查"}</dd></div>
+          <div><dt>计划时长</dt><dd>{task.plannedDurationSeconds || 0} 秒</dd></div>
+          <div><dt>{timing?.promptRunning ? "增强已用时" : "最近增强耗时"}</dt><dd>{formatElapsed(timing?.promptSeconds)}</dd></div>
+          {timing?.promptQueueSeconds != null && <div><dt>增强排队耗时</dt><dd>{formatElapsed(timing.promptQueueSeconds)}</dd></div>}
+          <div><dt>{timing?.videoRunning ? "生成已用时" : "最近生成耗时"}</dt><dd>{formatElapsed(timing?.videoSeconds)}</dd></div>
+          <div><dt>视频排队耗时</dt><dd>{formatElapsed(timing?.videoQueueSeconds)}</dd></div>
+          <div><dt>目标分辨率</dt><dd>{String(params.resolution ?? "1080P").toUpperCase()}</dd></div>
           <div><dt>质量</dt><dd>{String(params.quality ?? "标准")}</dd></div>
         </dl>
       </section>
@@ -230,424 +198,413 @@ function TaskInfoPanel({
   );
 }
 
-function assetMediaIcon(asset: ProjectAsset) {
-  if (asset.mediaType === "video") return <Film size={16} />;
-  if (asset.mediaType === "audio") return <Music2 size={16} />;
-  return <FileImage size={16} />;
-}
-
-function ProjectConfigDialog({
-  open,
-  project,
-  onClose,
-  onSave,
-}: {
-  open: boolean;
-  project: DirectorProject;
-  onClose: () => void;
-  onSave: (settings: ProjectSettingsPatch, assets: ProjectAsset[]) => void;
-}) {
-  const [tab, setTab] = useState<ProjectConfigTab>("info");
-  const [title, setTitle] = useState(project.title);
-  const [description, setDescription] = useState(project.description);
-  const [useDescriptionForAiPrompt, setUseDescriptionForAiPrompt] = useState(project.useDescriptionForAiPrompt);
-  const [assets, setAssets] = useState<ProjectAsset[]>(project.snapshot.assets);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setTab("info");
-    setTitle(project.title);
-    setDescription(project.description);
-    setUseDescriptionForAiPrompt(project.useDescriptionForAiPrompt);
-    setAssets(project.snapshot.assets.map((asset) => ({ ...asset, tags: [...asset.tags] })));
-  }, [open, project]);
-
-  const importFiles = (files: FileList | null) => {
-    if (!files?.length) return;
-    const nextAssets = Array.from(files).map((file, index): ProjectAsset => {
-      const mediaType: ProjectAsset["mediaType"] = file.type.startsWith("video/")
-        ? "video"
-        : file.type.startsWith("audio/")
-          ? "audio"
-          : "image";
-      return {
-        id: `asset-local-${Date.now()}-${index}`,
-        name: file.name.replace(/\.[^.]+$/, "") || file.name,
-        mediaType,
-        category: "reference",
-        projectRelativePath: file.name,
-        previewUrl: mediaType === "audio" ? undefined : URL.createObjectURL(file),
-        tags: [],
-        checksum: `local-${file.size}-${file.lastModified}`,
-      };
-    });
-    setAssets((current) => [...current, ...nextAssets]);
-  };
-
-  return (
-    <Dialog open={open} size="wide" icon="configure" title="项目配置" description="管理项目级信息与资产。" onClose={onClose}>
-      <div className="project-config-dialog">
-        <nav className="project-config-tabs" aria-label="项目配置分类">
-          <button type="button" className={tab === "info" ? "is-active" : ""} onClick={() => setTab("info")}>项目信息</button>
-          <button type="button" className={tab === "assets" ? "is-active" : ""} onClick={() => setTab("assets")}>资产管理 <span>{assets.length}</span></button>
-        </nav>
-
-        <section className="project-config-content">
-          {tab === "info" ? (
-            <div className="project-config-info">
-              <label>
-                <span>项目标题</span>
-                <input value={title} onChange={(event) => setTitle(event.target.value)} />
-              </label>
-              <label>
-                <span>项目简介</span>
-                <textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  rows={8}
-                  placeholder="用几句话说明项目的世界观、题材、角色关系或视觉基调。"
-                />
-              </label>
-              <label className="project-context-checkbox">
-                <input
-                  type="checkbox"
-                  checked={useDescriptionForAiPrompt}
-                  onChange={(event) => setUseDescriptionForAiPrompt(event.target.checked)}
-                />
-                <span>
-                  <strong>AI 增强时使用项目简介作为背景</strong>
-                  <small>启用后，项目简介会作为项目级背景信息提供给提示词增强服务，不直接写入用户提示词。</small>
-                </span>
-              </label>
-            </div>
-          ) : (
-            <div className="project-asset-manager">
-              <header>
-                <div><strong>项目资产</strong><span>{assets.length} 项</span></div>
-                <Button onClick={() => inputRef.current?.click()}><Upload size={14} /> 添加资产</Button>
-                <input
-                  ref={inputRef}
-                  hidden
-                  type="file"
-                  multiple
-                  accept="image/*,video/*,audio/*"
-                  onChange={(event) => {
-                    importFiles(event.target.files);
-                    event.currentTarget.value = "";
-                  }}
-                />
-              </header>
-              <div className="project-asset-list">
-                {assets.map((asset) => (
-                  <article key={asset.id} className="project-asset-row">
-                    <div className="project-asset-thumb" style={asset.previewUrl ? { backgroundImage: `url("${asset.previewUrl}")` } : undefined}>
-                      {!asset.previewUrl && assetMediaIcon(asset)}
-                    </div>
-                    <div className="project-asset-copy">
-                      <strong>{asset.name}</strong>
-                      <span>{assetCategoryLabel[asset.category]} · {asset.mediaType === "image" ? "图片" : asset.mediaType === "video" ? "视频" : "音频"}</span>
-                    </div>
-                    <button type="button" className="project-asset-remove" aria-label={`移除资产 ${asset.name}`} onClick={() => setAssets((current) => current.filter((item) => item.id !== asset.id))}><Trash2 size={15} /></button>
-                  </article>
-                ))}
-                {!assets.length && <div className="project-asset-empty">项目还没有资产。添加后可在任务提示词中使用 @ 引用。</div>}
-              </div>
-            </div>
-          )}
-        </section>
-
-        <footer className="project-config-actions">
-          <Button onClick={onClose}>取消</Button>
-          <Button variant="accent" disabled={!title.trim()} onClick={() => {
-            onSave({
-              title: title.trim(),
-              description: description.trim(),
-              useDescriptionForAiPrompt,
-            }, assets);
-            onClose();
-          }}>保存</Button>
-        </footer>
-      </div>
-    </Dialog>
-  );
-}
-
 export function ProjectWorkspace({
+  bridgeStatus,
   project,
+  promptReviewItems,
+  onStopVideoJob,
+  onVideoVersionChanged,
   onBack,
-  onRenameProject,
-  onUpdateProjectSettings,
-  onSnapshotChange,
+  onLoadTaskEditor,
+  onCreateTask,
+  onUpdateTask,
+  onUpdateEditorPreference,
+  onSaveProjectConfiguration,
+  onEnhancePrompt,
+  onBatchEnhancePrompts,
+  onCheckPromptBatchEligibility,
+  onCheckVideoBatchEligibility,
+  onCreateVideoBatch,
+  applicationSettings,
+  onRefreshComfyUIWorkflows,
 }: {
+  bridgeStatus?: ReactNode;
   project: DirectorProject;
+  promptReviewItems: PromptReviewItem[];
+  onVideoVersionChanged?: () => Promise<void>;
+  onStopVideoJob?: (jobId: string) => Promise<void>;
   onBack: () => void;
-  onRenameProject: (title: string) => void;
-  onUpdateProjectSettings: (settings: ProjectSettingsPatch) => void;
-  onSnapshotChange: (snapshot: StoryboardDomainSnapshot) => void;
+  onLoadTaskEditor: (taskId: string) => Promise<GenerationTask>;
+  onCreateTask: (task: GenerationTask) => Promise<string>;
+  onUpdateTask: (task: GenerationTask) => Promise<void>;
+  onUpdateEditorPreference?: (taskId: string, preference: Partial<import("../../gateways/projectGateway").TaskEditorView["editorPreference"]>) => Promise<void>;
+  onSaveProjectConfiguration: (settings: ProjectSettingsPatch, assets: DirectorProject["snapshot"]["assets"]) => Promise<void>;
+  onEnhancePrompt: (request: PromptEnhancementRequest) => Promise<PromptEnhancementResponse>;
+  onBatchEnhancePrompts: BatchPromptSubmit;
+  onCheckPromptBatchEligibility: (taskIds: string[]) => Promise<PromptBatchEligibility>;
+  onCancelPromptBatch: (batchId: string) => Promise<void>;
+  onCancelQueuedVideos?: (jobIds: string[]) => Promise<void>;
+  onRetryFailedPromptBatch: (batchId: string) => Promise<void>;
+  onApprovePrompt: (taskId: string) => Promise<PromptReviewItem>;
+  onCheckVideoBatchEligibility: (taskIds: string[]) => Promise<VideoBatchEligibility>;
+  onCreateVideoBatch: (taskIds: string[]) => Promise<VideoBatchResponse>;
+  applicationSettings?: ApplicationSettings;
+  onSaveApplicationSettings: (settings: ApplicationSettings) => Promise<void>;
+  onRefreshComfyUIWorkflows: () => Promise<import("../../gateways/projectGateway").ComfyUIWorkflow[]>;
 }) {
-  const [viewMode, setViewMode] = useState<TaskViewMode>("list");
+  const [viewMode, setViewMode] = useTaskViewMode(project.id);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [batchSelectedTaskIds, setBatchSelectedTaskIds] = useState<Set<string>>(() => new Set());
+  const [managingTasks, setManagingTasks] = useState(false);
+  const [batchAnchorIndex, setBatchAnchorIndex] = useState<number | null>(null);
+  const [batchPromptOpen, setBatchPromptOpen] = useState(false);
+  const [batchPromptBusy, setBatchPromptBusy] = useState(false);
+  const [batchPromptError, setBatchPromptError] = useState("");
+  const [promptEligibility, setPromptEligibility] = useState<PromptBatchEligibility>();
+  const [promptEligibilityLoading, setPromptEligibilityLoading] = useState(false);
+  const promptRequestVersion = useRef(0);
+  const [promptRequestIds, setPromptRequestIds] = useState<string[]>([]);
+  const [batchVideoOpen, setBatchVideoOpen] = useState(false);
+  const [batchVideoLoading, setBatchVideoLoading] = useState(false);
+  const [batchVideoSubmitting, setBatchVideoSubmitting] = useState(false);
+  const [batchVideoEligibility, setBatchVideoEligibility] = useState<VideoBatchEligibility>();
+  const [videoRequestIds, setVideoRequestIds] = useState<string[]>([]);
+  const [videoRequestMode, setVideoRequestMode] = useState<"single" | "queue">("queue");
+  const [videoError, setVideoError] = useState("");
+  const videoRequestVersion = useRef(0);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [loadedEditingTask, setLoadedEditingTask] = useState<GenerationTask | null>(null);
   const [draftTask, setDraftTask] = useState<GenerationTask | null>(null);
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameValue, setRenameValue] = useState(project.title);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [projectConfigOpen, setProjectConfigOpen] = useState(false);
   const [playing, setPlaying] = useState<{ result: Result; task: GenerationTask } | null>(null);
 
+  const { unread, markViewed } = useViewedResults();
+  useEffect(() => { if (playing) markViewed("video", playing.result.id); }, [playing, markViewed]);
   const tasks = useMemo(() => orderedTasks(project.snapshot), [project.snapshot]);
+  const timings = useLiveTaskTimings(project.taskTimings);
+  const reviews = useMemo(() => new Map(promptReviewItems.map((item) => [item.taskId, item])), [promptReviewItems]);
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
-  const editingTask = draftTask ?? tasks.find((task) => task.id === editingTaskId);
-  const runningTask = tasks.find((task) => ["running", "queued"].includes(task.state));
+  const editingTask = draftTask ?? loadedEditingTask;
+  const editingTaskIndex = editingTask && !draftTask ? tasks.findIndex((task) => task.id === editingTask.id) : -1;
+  const editingTaskState = tasks[editingTaskIndex]?.state ?? editingTask?.state;
+  const previousEditingTask = draftTask ? tasks.at(-1) : editingTaskIndex > 0 ? tasks[editingTaskIndex - 1] : undefined;
+  const savedPreviousDuration = editingTask?.generationParams.previousTaskDurationSeconds;
+  const previousResultDuration = project.snapshot.results.find(
+    (result) => result.id === previousEditingTask?.primaryResultId,
+  )?.metadata.durationSeconds;
+  const previousTaskDurationSeconds = typeof previousResultDuration === "number"
+    ? previousResultDuration : typeof savedPreviousDuration === "number"
+      ? savedPreviousDuration : previousEditingTask?.plannedDurationSeconds ?? 0;
+  const previousTaskSummary = previousEditingTask ? previousEditingTask.summary.trim() || previousEditingTask.userIntent.trim() || previousEditingTask.title : "";
+  const selectedIdsInOrder = tasks.filter((task) => batchSelectedTaskIds.has(task.id)).map((task) => task.id);
+
+  const actionIds = managingTasks ? selectedIdsInOrder : selectedTask ? [selectedTask.id] : [];
+
+
+  const actionLayer = useOverlayZIndex(10);
 
   useEffect(() => {
     if (selectedTaskId && tasks.some((task) => task.id === selectedTaskId)) return;
-    setSelectedTaskId(tasks[0]?.id ?? null);
+    setSelectedTaskId(null);
   }, [selectedTaskId, tasks]);
+  useEffect(() => {
+    const validIds = new Set(tasks.map((task) => task.id));
+    setBatchSelectedTaskIds((current) => new Set([...current].filter((id) => validIds.has(id))));
+  }, [tasks]);
 
-  useEffect(() => setRenameValue(project.title), [project.title]);
+  useEffect(() => {
+    const selectAll = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "a") return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return;
+      const openOverlay = [...document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"]')]
+        .some(element => !element.closest('[inert], [aria-hidden="true"], dialog:not([open])'));
+      if (openOverlay) return;
+      event.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      setManagingTasks(true);
+      setBatchSelectedTaskIds(new Set(tasks.map(task => task.id)));
+    };
+    window.addEventListener("keydown", selectAll);
+  return () => window.removeEventListener("keydown", selectAll);
+  }, [tasks]);
 
-  const openExistingEditor = (taskId: string) => {
+  const openExistingEditor = async (taskId: string) => {
     setSelectedTaskId(taskId);
     setDraftTask(null);
-    setEditingTaskId(taskId);
+    try {
+      const task = await onLoadTaskEditor(taskId);
+      setEditingTaskId(taskId);
+      setLoadedEditingTask(task);
+    } catch (error) { console.error("Failed to load task editor", error); }
   };
+  const openNewTask = () => { setDraftTask(makeDraftTask(project.snapshot)); setEditingTaskId(null); setLoadedEditingTask(null); };
+  const closeEditor = () => { setDraftTask(null); setEditingTaskId(null); setLoadedEditingTask(null); };
 
-  const openNewTask = () => {
-    const task = makeDraftTask(project.snapshot);
-    setDraftTask(task);
-    setEditingTaskId(null);
-  };
-
-  const closeEditor = () => {
-    setDraftTask(null);
-    setEditingTaskId(null);
-  };
-
-  const saveTask = (patch: TaskEditorPatch) => {
-    if (draftTask) {
-      const firstSceneId = project.snapshot.scenes.slice().sort((a, b) => a.orderKey.localeCompare(b.orderKey))[0]?.id;
-      if (!firstSceneId) return;
-      const finalPrompt = patch.finalPrompt ?? draftTask.finalPrompt;
-      const savedTask: GenerationTask = {
-        ...draftTask,
-        ...patch,
-        summary: finalPrompt.trim() || draftTask.summary,
-        generationParams: { ...draftTask.generationParams, ...(patch.generationParams ?? {}) },
-      };
-      const next = insertTaskAfter(project.snapshot, savedTask, firstSceneId);
-      onSnapshotChange(next);
-      setSelectedTaskId(savedTask.id);
-      closeEditor();
+  const handleTaskSelection = (event: ReactMouseEvent<HTMLButtonElement>, taskId: string, index: number) => {
+    setSelectedTaskId(taskId);
+    if (event.shiftKey && batchAnchorIndex !== null) {
+      setManagingTasks(true);
+      const start = Math.min(batchAnchorIndex, index);
+      const end = Math.max(batchAnchorIndex, index);
+      setBatchSelectedTaskIds(new Set(tasks.slice(start, end + 1).map((task) => task.id)));
       return;
     }
+    if (managingTasks || event.ctrlKey || event.metaKey) {
+      setManagingTasks(true);
+      setBatchAnchorIndex(index);
+      setBatchSelectedTaskIds((current) => { const next = new Set(current); if (next.has(taskId)) next.delete(taskId); else next.add(taskId); return next; });
+      return;
+    }
+    setBatchAnchorIndex(index);
+    setBatchSelectedTaskIds(new Set());
+  };
+  const playTask = (task: GenerationTask) => {
+    const result = taskResult(project.snapshot, task);
+    if (result?.videoUrl) { setSelectedTaskId(task.id); setPlaying({ result, task }); }
+  };
+  const clearBatchSelection = () => { setBatchSelectedTaskIds(new Set()); setBatchAnchorIndex(null); setSelectedTaskId(null); };
 
-    if (!editingTaskId) return;
-    const { title, plannedDurationSeconds, ...composerPatch } = patch;
-    let next = updateTaskComposerFields(project.snapshot, editingTaskId, composerPatch);
-    next = {
-      ...next,
-      tasks: next.tasks.map((task) => task.id === editingTaskId
-        ? {
-            ...task,
-            ...(typeof title === "string" && title.trim() ? { title: title.trim() } : {}),
-            ...(typeof plannedDurationSeconds === "number" ? { plannedDurationSeconds } : {}),
-          }
-        : task),
-    };
-    onSnapshotChange(next);
-    closeEditor();
+  const toggleBatchTask = (taskId: string, index: number, checked: boolean) => {
+    setSelectedTaskId(taskId);
+    setBatchAnchorIndex(index);
+    setBatchSelectedTaskIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(taskId); else next.delete(taskId);
+      return next;
+    });
+  };
+  const loadPromptEligibility = async (ids: string[]) => {
+    const version = ++promptRequestVersion.current;
+    setPromptEligibility(undefined);
+    setPromptEligibilityLoading(true);
+    setBatchPromptError("");
+    try {
+      const result = await onCheckPromptBatchEligibility(ids);
+      if (version === promptRequestVersion.current) setPromptEligibility(result);
+    } catch {
+      if (version === promptRequestVersion.current) setBatchPromptError("任务状态检查失败，请重试。");
+    } finally {
+      if (version === promptRequestVersion.current) setPromptEligibilityLoading(false);
+    }
+  };
+  const closePromptBatch = () => {
+    if (batchPromptBusy) return;
+    promptRequestVersion.current += 1;
+    setBatchPromptOpen(false);
+  };
+  const openPromptBatch = () => {
+    const ids = selectedIdsInOrder.length ? [...selectedIdsInOrder] : tasks.map((task) => task.id);
+    setPromptRequestIds(ids);
+    setBatchPromptOpen(true);
+    void loadPromptEligibility(ids);
   };
 
+  const submitBatchPromptEnhancement = async (options: PromptBatchOptions) => {
+    if (!promptEligibility?.eligibleTaskIds.length || batchPromptBusy || promptEligibilityLoading) return;
+    setBatchPromptBusy(true);
+    setBatchPromptError("");
+    let submissionStarted = false;
+    try {
+      const current = await onCheckPromptBatchEligibility(promptRequestIds);
+      setPromptEligibility(current);
+      if (JSON.stringify(current.eligibleTaskIds) !== JSON.stringify(promptEligibility.eligibleTaskIds)) {
+        setBatchPromptError("任务状态已变化，已更新可增强数量，请重新确认。");
+        return;
+      }
+      submissionStarted = true;
+      await onBatchEnhancePrompts({ taskIds: current.eligibleTaskIds, includeProjectBackground: options.includeProjectBackground, includePreviousTaskSummary: options.includePreviousTaskSummary });
+      setBatchPromptOpen(false);
+    } catch { setBatchPromptError(submissionStarted ? "增强提交未确认，请取消并检查任务状态后重试。" : "任务状态检查失败，请重新检查后重试。"); }
+    finally { setBatchPromptBusy(false); }
+  };
+
+  const updatedTaskFromPatch = (patch: TaskEditorPatch) => {
+    if (!editingTaskId || !editingTask) return undefined;
+    const { title, plannedDurationSeconds, ...composerPatch } = patch;
+    const next = updateTaskComposerFields(
+      { ...project.snapshot, tasks: project.snapshot.tasks.map((task) => task.id === editingTaskId ? editingTask : task) },
+      editingTaskId,
+      composerPatch,
+    );
+    const updated = next.tasks.find((task) => task.id === editingTaskId);
+    return updated ? { ...updated, ...(typeof title === "string" && title.trim() ? { title: title.trim() } : {}), ...(typeof plannedDurationSeconds === "number" ? { plannedDurationSeconds } : {}) } : undefined;
+  };
+
+  const saveTask = async (patch: TaskEditorPatch) => {
+    if (draftTask) {
+      const finalPrompt = patch.finalPrompt ?? draftTask.finalPrompt;
+      const savedTask: GenerationTask = { ...draftTask, ...patch, summary: finalPrompt.trim() || draftTask.summary, generationParams: { ...draftTask.generationParams, ...(patch.generationParams ?? {}) } };
+      const taskId = await onCreateTask(savedTask);
+      setSelectedTaskId(taskId);
+      return;
+    }
+    const updated = updatedTaskFromPatch(patch);
+    if (updated) await onUpdateTask(updated);
+  };
+
+  const closeVideoBatch = () => {
+    if (batchVideoSubmitting) return;
+    videoRequestVersion.current += 1;
+    setBatchVideoOpen(false);
+    setBatchVideoLoading(false);
+  };
+  const openVideoBatch = async (taskIds = selectedIdsInOrder, mode: "single" | "queue" = "queue") => {
+    if (!taskIds.length || batchVideoSubmitting || batchVideoLoading) return;
+    const version = ++videoRequestVersion.current;
+    const requestedIds = [...taskIds];
+    setVideoRequestIds(requestedIds);
+    setVideoRequestMode(mode);
+    setVideoError("");
+    setBatchVideoOpen(mode !== "single");
+    setBatchVideoEligibility(undefined);
+    setBatchVideoLoading(true);
+    try {
+      const eligibility = await onCheckVideoBatchEligibility(requestedIds);
+      if (version !== videoRequestVersion.current) return;
+      setBatchVideoEligibility(eligibility);
+      if (mode === "single" && eligibility.eligibleTaskIds.length === requestedIds.length && !eligibility.skipped.length && !eligibility.warnings?.length) {
+        await submitVideoBatch(eligibility);
+      } else {
+        setBatchVideoOpen(true);
+      }
+    } catch {
+      if (version === videoRequestVersion.current) { setVideoError("无法检查生成条件，请取消后重试。"); setBatchVideoOpen(true); }
+    } finally {
+      if (version === videoRequestVersion.current) setBatchVideoLoading(false);
+    }
+  };
+  const submitVideoBatch = async (eligibility = batchVideoEligibility) => {
+    if (!eligibility?.eligibleTaskIds.length || batchVideoSubmitting) return;
+    setBatchVideoSubmitting(true);
+    setVideoError("");
+    try {
+      const result = await onCreateVideoBatch([...eligibility.eligibleTaskIds]);
+      if (!result.eligibleTaskIds.length) {
+        setBatchVideoEligibility(result);
+        setVideoError("任务状态已变化，本次未提交，请检查下方原因。");
+        setBatchVideoOpen(true);
+        return;
+      }
+      setBatchVideoOpen(false);
+      setBatchSelectedTaskIds(new Set());
+      setBatchAnchorIndex(null);
+    } catch { setVideoError("生成提交未确认，请取消并检查任务状态后重试。"); setBatchVideoOpen(true); }
+    finally { setBatchVideoSubmitting(false); }
+  };
+
+  const activeVideo = project.runtime?.videoJobs?.find(job => job.taskId === selectedTaskId && job.state === "running");
+  const [stopConfirm, setStopConfirm] = useState<string | null>(null);
+  const [stoppingJobs, setStoppingJobs] = useState<Set<string>>(() => new Set());
+  const [stopError, setStopError] = useState("");
+  const stopping = !!activeVideo && (stoppingJobs.has(activeVideo.id) || !!timings[selectedTaskId ?? ""]?.generationProgress?.stopRequested);
+  const confirmStop = async () => {
+    const id = stopConfirm;
+    setStopConfirm(null);
+    if (!id || !onStopVideoJob) return;
+    setStoppingJobs(current => new Set(current).add(id));
+    setStopError("");
+    try { await onStopVideoJob(id); }
+    catch { setStoppingJobs(current => { const next = new Set(current); next.delete(id); return next; }); setStopError("停止请求未确认，请重试。任务可能仍在运行。"); }
+  };
+  const taskActions = managingTasks || actionIds.length ? (
+    <div className={`task-context-actions is-visible${managingTasks ? "" : " is-single"}`} role="region" aria-label="任务操作">
+      {managingTasks && <strong>已选 {actionIds.length} 项</strong>}
+      {managingTasks ? <>
+        <div className="task-action-group" role="group" aria-label="生成操作">
+          <Button disabled={!actionIds.length || batchPromptBusy} onClick={openPromptBatch}><Sparkles size={15} />增强提示词</Button>
+          <Button variant="accent" disabled={!actionIds.length || batchVideoLoading || batchVideoSubmitting} onClick={() => void openVideoBatch(actionIds, "queue")}>{batchVideoLoading || batchVideoSubmitting ? <><LoaderCircle className="task-stop-spinner" size={15} />正在提交</> : <><Play size={15} />生成视频</>}</Button>
+        </div>
+        <div className="task-action-group is-selection" role="group" aria-label="选择操作">
+          <Button disabled={!tasks.length || actionIds.length === tasks.length} onClick={() => setBatchSelectedTaskIds(new Set(tasks.map(task => task.id)))}>全选</Button>
+          <Button disabled={!actionIds.length} onClick={clearBatchSelection}>取消选择</Button>
+        </div>
+      </> : <>
+        <Button onClick={() => actionIds[0] && void openExistingEditor(actionIds[0])}><Pencil size={15} />编辑任务</Button>
+        {activeVideo ? <Button disabled={stopping || !onStopVideoJob} onClick={() => setStopConfirm(activeVideo.id)}>{stopping ? <LoaderCircle className="task-stop-spinner" size={15} /> : <Square size={15} />}{stopping ? "正在停止" : "停止任务"}</Button> : <Button variant="accent" disabled={batchVideoLoading || batchVideoSubmitting} onClick={() => void openVideoBatch(actionIds, "single")}>{batchVideoLoading || batchVideoSubmitting ? <><LoaderCircle className="task-stop-spinner" size={15} />正在提交</> : <><Play size={15} />生成视频</>}</Button>}
+      </>}
+    </div>
+  ) : undefined;
   return (
     <main className="project-workspace-page" aria-label="项目工作台">
       <header className="project-workspace-topbar">
-        <button type="button" className="workspace-home-button" onClick={onBack} aria-label="返回项目首页"><Home size={18} /> 返回首页</button>
-        <div className="workspace-project-title">
-          <Folder size={24} />
-          <strong>{project.title}</strong>
-          <button type="button" aria-label="重命名项目" onClick={() => setRenameOpen(true)}><Pencil size={17} /></button>
+        <div className="workspace-navigation">
+          <Button onClick={onBack} aria-label="返回项目首页"><Home size={16} /><span className="workspace-home-label">返回首页</span></Button>
+          <Button onClick={() => setProjectConfigOpen(true)}><SlidersHorizontal size={16} strokeWidth={1.6} />项目配置</Button>
         </div>
+        <div className="workspace-project-title"><strong>{project.title}</strong></div>
         <div className="workspace-top-actions">
-          <button type="button" className="workspace-project-config-button" aria-label="项目配置" title="项目配置" onClick={() => setProjectConfigOpen(true)}><SlidersHorizontal size={18} /></button>
-          <div className="workspace-view-switch" aria-label="任务视图">
-            <button type="button" className={viewMode === "list" ? "is-active" : ""} onClick={() => setViewMode("list")}><List size={15} /> 表格</button>
-            <span>/</span>
-            <button type="button" className={viewMode === "card" ? "is-active" : ""} onClick={() => setViewMode("card")}><Grid2X2 size={15} /> 卡片</button>
-          </div>
+          {bridgeStatus}
+          <ThemeSwitch />
         </div>
       </header>
 
       <div className="project-workspace-body">
+        <div className="project-task-column">
         <section className="project-task-area" aria-label="任务区域">
-          <header className="task-workspace-toolbar">
-            <Button variant="accent" onClick={openNewTask}><Plus size={15} /> 新建任务</Button>
-            <span>{tasks.length} 个任务</span>
-          </header>
+          <header className="task-collection-heading">
+            <h2>任务</h2>
+            <div className="task-view-control">
+              <Button size="icon" aria-label={viewMode === "list" ? "切换为卡片视图" : "切换为表格视图"} title={viewMode === "list" ? "切换为卡片视图" : "切换为表格视图"} aria-pressed={viewMode === "card"} onClick={() => setViewMode(viewMode === "list" ? "card" : "list")}>
+                <span className={`task-view-glyph is-${viewMode}`} aria-hidden="true"><span className="task-view-list-icon"><List size={16} strokeWidth={1.6} /></span><span className="task-view-grid-icon"><Grid2X2 size={16} strokeWidth={1.6} /></span></span>
+              </Button>
+            </div>
+            <Button disabled={!tasks.length} aria-pressed={managingTasks} onClick={() => { setManagingTasks(!managingTasks); clearBatchSelection(); }}>{managingTasks ? "完成管理" : "管理任务"}</Button>
 
+          </header>
           {viewMode === "list" ? (
-            <div className="task-list-view">
-              {tasks.length === 0 ? (
-                <div className="task-list-empty"><p>当前项目还没有任务。</p></div>
-              ) : tasks.map((task, index) => {
-                const status = displayTaskStatus(task);
+            <div key="list" className="task-list-view">
+              <button type="button" className="task-list-row is-create" onClick={openNewTask} aria-label="新建任务卡"><div className="task-preview is-compact"><Plus className="creation-motion-icon" size={24} /></div><div className="task-list-copy"><strong>新建任务卡</strong></div><div className="task-list-stats"><span>{tasks.length} 个任务</span></div><div className="task-list-status"><Plus size={14} />新建</div></button>
+              {tasks.map((task, index) => {
+                const newKinds = unread(project.taskNewResults?.[task.id]);
+                const warnings = project.taskWarnings?.[task.id] ?? [];
                 const versions = resultCount(project.snapshot, task.id);
-                return (
-                  <ContextMenu key={task.id} actions={[{ label: "编辑任务", onSelect: () => openExistingEditor(task.id) }]}>
-                    <button
-                      type="button"
-                      className={`task-list-row ${selectedTaskId === task.id ? "is-selected" : ""}`}
-                      onClick={() => setSelectedTaskId(task.id)}
-                      onDoubleClick={() => openExistingEditor(task.id)}
-                    >
-                      <TaskPreview previewUrl={taskPreview(project.snapshot, task)} compact />
-                      <div className="task-list-copy">
-                        <strong>#{index + 1} {task.title}</strong>
-                        <span>提示词 {promptSummary(task)}</span>
-                      </div>
-                      <div className="task-list-stats">
-                        <span>使用{task.assetBindings.length}个资产</span>
-                        <span>{versions > 0 ? `${versions}个生成版本` : "无生成结果"}</span>
-                      </div>
-                      <div className={`task-list-status status-sticker is-${status}`}><i />{taskStatusLabel[status]}</div>
-                    </button>
-                  </ContextMenu>
-                );
+                const batchSelected = batchSelectedTaskIds.has(task.id);
+                const reviewed = reviews.get(task.id)?.promptReviewStatus === "approved";
+                const playable = Boolean(taskResult(project.snapshot, task)?.videoUrl);
+                const elapsed = taskTimeSummary(timings[task.id]);
+                return <ContextMenu key={task.id} actions={[{ label: task.state === "queued" || task.state === "running" ? "查看任务" : "编辑任务", onSelect: () => openExistingEditor(task.id) }]}><div className="task-collection-item is-list">{managingTasks && <div className="task-selection-control"><Checkbox checked={batchSelected} ariaLabel={`选择任务 · ${task.title}`} onChange={(checked) => toggleBatchTask(task.id, index, checked)} /></div>}<div className="task-item-content"><button type="button" className={`task-list-row ${selectedTaskId === task.id ? "is-selected" : ""} ${batchSelected ? "is-batch-selected" : ""}`} onClick={(event) => handleTaskSelection(event, task.id, index)} onDoubleClick={() => openExistingEditor(task.id)}><TaskPreview previewUrl={taskPreview(project.snapshot, task)} compact /><div className="task-list-copy"><div className="task-list-heading"><strong>#{index + 1} {task.title}</strong>{!newKinds.length && !warnings.length && <span className="task-plain-status"><i className={`workspace-status-dot is-${displayTaskStatus(task)}`} />{project.taskGenerationNotes?.[task.id] ?? taskStatusLabel[displayTaskStatus(task)]}</span>}</div><span className="task-list-params">{generationSummary(task)}</span></div><div className="task-list-stats"><span>{task.assetBindings.length} 个资产 · {versions > 0 ? `${versions} 个版本` : "无结果"} · {reviewed ? "已检查" : "待检查"}</span>{elapsed && <span className="task-elapsed">{elapsed}</span>}</div><TaskNewResults kinds={newKinds} /><TaskProgressLight timing={timings[task.id]} /></button><TaskRiskSticker warnings={warnings} />{playable && <button type="button" className="task-thumbnail-play" aria-label={`播放视频 · ${task.title}`} onClick={() => playTask(task)}><Play size={20} fill="currentColor" /></button>}</div></div></ContextMenu>;
               })}
             </div>
           ) : (
-            <div className="task-card-view">
-              <button type="button" className="task-create-card" onClick={openNewTask}>
-                <div><Plus className="creation-motion-icon" size={46} /></div>
-                <strong>新建任务卡</strong>
-              </button>
-
+            <div key="card" className="task-card-view">
+              <button type="button" className="task-create-card" onClick={openNewTask}><div><Plus className="creation-motion-icon" size={46} /></div><strong>新建任务卡</strong></button>
               {tasks.map((task, index) => {
-                const status = displayTaskStatus(task);
+                const newKinds = unread(project.taskNewResults?.[task.id]);
+                const warnings = project.taskWarnings?.[task.id] ?? [];
                 const versions = resultCount(project.snapshot, task.id);
-                return (
-                  <ContextMenu key={task.id} actions={[{ label: "编辑任务", onSelect: () => openExistingEditor(task.id) }]}>
-                    <button
-                      type="button"
-                      className={`task-card-item ${selectedTaskId === task.id ? "is-selected" : ""}`}
-                      onClick={() => setSelectedTaskId(task.id)}
-                      onDoubleClick={() => openExistingEditor(task.id)}
-                    >
-                      <div className="task-card-preview-wrap">
-                        <TaskPreview previewUrl={taskPreview(project.snapshot, task)} />
-                        <span className={`task-card-status status-sticker is-${status}`}><i />{taskStatusLabel[status]}</span>
-                      </div>
-                      <strong>#{index + 1} {task.title}</strong>
-                      <p>提示词 {promptSummary(task)}</p>
-                      <footer>使用{task.assetBindings.length}个资产 · {versions > 0 ? `${versions}个生成版本` : "无生成结果"}</footer>
-                    </button>
-                  </ContextMenu>
-                );
+                const batchSelected = batchSelectedTaskIds.has(task.id);
+                const reviewed = reviews.get(task.id)?.promptReviewStatus === "approved";
+                const playable = Boolean(taskResult(project.snapshot, task)?.videoUrl);
+                const elapsed = taskTimeSummary(timings[task.id]);
+                return <ContextMenu key={task.id} actions={[{ label: task.state === "queued" || task.state === "running" ? "查看任务" : "编辑任务", onSelect: () => openExistingEditor(task.id) }]}><div className="task-collection-item is-card">{managingTasks && <div className="task-selection-control"><Checkbox variant="media" checked={batchSelected} ariaLabel={`选择任务 · ${task.title}`} onChange={(checked) => toggleBatchTask(task.id, index, checked)} /></div>}<div className="task-item-content"><button type="button" className={`task-card-item ${selectedTaskId === task.id ? "is-selected" : ""} ${batchSelected ? "is-batch-selected" : ""}`} onClick={(event) => handleTaskSelection(event, task.id, index)} onDoubleClick={() => openExistingEditor(task.id)}><div className="task-card-preview-wrap"><TaskPreview previewUrl={taskPreview(project.snapshot, task)} /><TaskNewResults kinds={newKinds} /></div><div className="task-card-heading"><strong>#{index + 1} {task.title}</strong>{!newKinds.length && !warnings.length && <span className="task-plain-status"><i className={`workspace-status-dot is-${displayTaskStatus(task)}`} />{project.taskGenerationNotes?.[task.id] ?? taskStatusLabel[displayTaskStatus(task)]}</span>}</div><p>{generationSummary(task)}</p><footer>{reviewed ? "已检查" : "待检查"} · 使用{task.assetBindings.length}个资产 · {versions > 0 ? `${versions}个生成版本` : "无生成结果"}{elapsed && <div className="task-elapsed">{elapsed}</div>}</footer><TaskProgressLight timing={timings[task.id]} /></button><TaskRiskSticker warnings={warnings} />{playable && <button type="button" className="task-thumbnail-play" aria-label={`播放视频 · ${task.title}`} onClick={() => playTask(task)}><Play size={20} fill="currentColor" /></button>}</div></div></ContextMenu>;
               })}
             </div>
           )}
         </section>
+        {(managingTasks || actionIds.length > 0) && <OverlayPortal><div className={`task-action-dock${!managingTasks ? " is-mobile-single" : ""}`} style={actionLayer}>{taskActions}</div></OverlayPortal>}
+        </div>
 
-        <TaskInfoPanel
-          snapshot={project.snapshot}
-          task={selectedTask}
-          onPlayResult={(result, task) => setPlaying({ result, task })}
-        />
+        <TaskInfoPanel history={selectedTask ? <VideoVersionSelect key={selectedTask.id} projectId={project.id} taskId={selectedTask.id} resultId={selectedTask.primaryResultId} onChanged={onVideoVersionChanged} /> : undefined} statusNote={selectedTask ? project.taskGenerationNotes?.[selectedTask.id] : undefined} newKinds={unread(selectedTask ? project.taskNewResults?.[selectedTask.id] : undefined)} warnings={selectedTask ? project.taskWarnings?.[selectedTask.id] ?? [] : []} actions={!managingTasks && actionIds.length === 1 ? taskActions : undefined} snapshot={project.snapshot} task={selectedTask} timing={selectedTask ? timings[selectedTask.id] : undefined} review={selectedTask ? reviews.get(selectedTask.id) : undefined} onPlayResult={(result, task) => setPlaying({ result, task })} />
       </div>
 
-      <footer className="project-workspace-statusbar">
-        <button type="button" onClick={() => setSettingsOpen(true)}><Settings size={16} /> 设置</button>
-        <div>
-          {runningTask ? (
-            <><span className="workspace-running-dot" />当前运行：{project.title} · 任务名：{runningTask.title}</>
-          ) : (
-            <><span className="workspace-idle-dot" />当前没有正在运行的任务</>
-          )}
-        </div>
-      </footer>
 
+      {stopError && <Dialog open icon="warning" title="停止任务失败" onClose={() => setStopError("")}><p>{stopError}</p><Button onClick={() => setStopError("")}>知道了</Button></Dialog>}
+      <Dialog open={!!stopConfirm} icon="warning" title="停止任务" onClose={() => setStopConfirm(null)}><p>确定停止这个任务吗？本次未完成的生成将中止，已有结果会保留。</p><div className="task-stop-confirm-actions"><Button onClick={() => setStopConfirm(null)}>继续运行</Button><Button variant="accent" onClick={() => void confirmStop()}>确认停止</Button></div></Dialog>
       <TaskEditorDialog
-        open={Boolean(editingTask)}
-        task={editingTask}
-        assets={project.snapshot.assets}
-        projectContext={{
-          description: project.description,
-          useDescriptionForAiPrompt: project.useDescriptionForAiPrompt,
-        }}
-        onClose={closeEditor}
-        onSave={saveTask}
+        readOnly={!draftTask && (editingTaskState === "queued" || editingTaskState === "running")}
+        workflowProfiles={applicationSettings?.comfyui.workflowProfiles}
+        defaultWorkflowProfileId={applicationSettings?.comfyui.defaultProfileId}
+        onLoadWorkflows={onRefreshComfyUIWorkflows}
+        onViewPromptRevision={id => markViewed("prompt", id)}
+        onUpdateEditorPreference={onUpdateEditorPreference}
+        open={Boolean(editingTask)} task={editingTask ?? undefined} assets={project.snapshot.assets}
+        previousTaskDurationSeconds={previousTaskDurationSeconds} previousTaskId={previousEditingTask?.id} previousTaskSummary={previousTaskSummary}
+        isNewTask={Boolean(draftTask)} reviewStatus={editingTaskId ? reviews.get(editingTaskId)?.promptReviewStatus ?? "pending_review" : "pending_review"}
+        projectContext={{ description: project.description, useDescriptionForAiPrompt: project.useDescriptionForAiPrompt }}
+        reviewNavigation={draftTask ? undefined : { index: editingTaskIndex, total: tasks.length, canPrevious: editingTaskIndex > 0, canNext: editingTaskIndex >= 0 && editingTaskIndex < tasks.length - 1, onPrevious: () => { if (editingTaskIndex > 0) void openExistingEditor(tasks[editingTaskIndex - 1].id); }, onNext: () => { if (editingTaskIndex >= 0 && editingTaskIndex < tasks.length - 1) void openExistingEditor(tasks[editingTaskIndex + 1].id); } }}
+        onEnhancePrompt={onEnhancePrompt} onClose={closeEditor} onSave={saveTask}
       />
 
-      <ProjectConfigDialog
-        open={projectConfigOpen}
-        project={project}
-        onClose={() => setProjectConfigOpen(false)}
-        onSave={(settings, assets) => {
-          onUpdateProjectSettings(settings);
-          onSnapshotChange({ ...project.snapshot, assets });
-        }}
-      />
+      <BatchPromptDialog aiLabel={applicationSettings?.promptAiLabel} open={batchPromptOpen} taskCount={promptRequestIds.length} eligibility={promptEligibility} loading={promptEligibilityLoading} onRetry={() => void loadPromptEligibility(promptRequestIds)} projectBackgroundAvailable={project.useDescriptionForAiPrompt && Boolean(project.description.trim())} busy={batchPromptBusy} error={batchPromptError} onClose={closePromptBatch} onConfirm={(options) => void submitBatchPromptEnhancement(options)} />
+      <BatchVideoDialog open={batchVideoOpen} selectedCount={videoRequestIds.length} title={videoRequestMode === "single" ? "生成当前视频" : "批量生成视频"} error={videoError} eligibility={batchVideoEligibility} loading={batchVideoLoading} submitting={batchVideoSubmitting} onClose={closeVideoBatch} onConfirm={() => void submitVideoBatch()} />
 
-      <Dialog open={renameOpen} icon="edit" title="重命名项目" onClose={() => setRenameOpen(false)}>
-        <div className="project-simple-dialog">
-          <label><span>项目名称</span><input autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} /></label>
-          <footer>
-            <Button onClick={() => setRenameOpen(false)}>取消</Button>
-            <Button variant="accent" onClick={() => {
-              const next = renameValue.trim();
-              if (next) onRenameProject(next);
-              setRenameOpen(false);
-            }}>保存</Button>
-          </footer>
-        </div>
-      </Dialog>
+      <ProjectConfigPanel open={projectConfigOpen} project={project} onClose={() => setProjectConfigOpen(false)} onSave={onSaveProjectConfiguration} />
 
-      <Dialog open={Boolean(playing)} icon="video" title={playing ? `播放结果 · ${playing.task.title}` : "播放结果"} onClose={() => setPlaying(null)}>
-        {playing && (
-          <div className="task-playback-dialog">
-            <video controls autoPlay={false} poster={playing.result.previewUrl} src={playing.result.videoUrl} />
-            <footer><span>{playing.task.number}</span><Button onClick={() => setPlaying(null)}>关闭</Button></footer>
-          </div>
-        )}
-      </Dialog>
-
-      <Dialog open={settingsOpen} icon="settings" title="设置" onClose={() => setSettingsOpen(false)}>
-        <div className="project-settings-placeholder">
-          <Settings size={22} />
-          <h3>应用设置</h3>
-          <p>生成服务与应用级低频设置从这里进入；项目自身的信息和资产请使用右上角“项目配置”。</p>
-          <Button onClick={() => setSettingsOpen(false)}>关闭</Button>
-        </div>
-      </Dialog>
+      <Dialog open={Boolean(playing)} size="wide" icon="video" title={playing ? `播放结果 · ${playing.task.title}` : "播放结果"} onClose={() => setPlaying(null)}>{playing && <TaskResultPlayer result={playing.result} taskNumber={playing.task.number}
+        playlist={tasks.flatMap(task => { const result = task.id === playing.task.id ? playing.result : taskResult(project.snapshot, task); return result?.videoUrl ? [{ result, taskId: task.id, taskNumber: task.number, title: task.title }] : []; })}
+        onCurrentChange={entry => { const task = tasks.find(task => task.id === entry.taskId); if (task) setPlaying({ result: entry.result, task }); }}
+        onClose={() => setPlaying(null)} />}</Dialog>
     </main>
-  );
-}
-
-export function CreateProjectDialog({
-  open,
-  onClose,
-  onCreate,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onCreate: (title: string) => void;
-}) {
-  const [title, setTitle] = useState("");
-
-  useEffect(() => {
-    if (open) setTitle("");
-  }, [open]);
-
-  return (
-    <Dialog open={open} icon="create" title="新建项目" description="创建后进入项目工作台。" onClose={onClose}>
-      <div className="project-simple-dialog">
-        <label><span>项目名称</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：异星边境 初到基地" /></label>
-        <footer>
-          <Button onClick={onClose}>取消</Button>
-          <Button variant="accent" disabled={!title.trim()} onClick={() => onCreate(title.trim())}><Check size={14} /> 创建项目</Button>
-        </footer>
-      </div>
-    </Dialog>
   );
 }

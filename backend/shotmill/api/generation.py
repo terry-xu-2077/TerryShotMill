@@ -37,6 +37,12 @@ async def submit_generation(
     return map_job(job)
 
 
+@router.post("/projects/{project_id}/jobs/{job_id}/stop", status_code=202)
+async def stop_video_job(project_id: str, job_id: str, container: ContainerDep):
+    await container.generation_service.stop_job(project_id, job_id)
+    return {"accepted": True}
+
+
 @router.get("/jobs/{job_id}", response_model=JobView)
 def get_job(
     job_id: str,

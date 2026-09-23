@@ -67,6 +67,10 @@ export class BatchReviewGateway {
     });
   }
 
+  stopVideoJob(projectId: string, jobId: string) {
+    return request<{accepted: boolean}>(`/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/stop`, {method: "POST"});
+  }
+
   cancelQueuedVideos(projectId: string, jobIds: string[]) {
     return request<{ cancelledJobIds: string[] }>(
       `/projects/${encodeURIComponent(projectId)}/video-generation-queue/cancel`,

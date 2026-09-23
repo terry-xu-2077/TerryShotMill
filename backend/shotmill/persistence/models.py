@@ -86,6 +86,9 @@ class TaskModel(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     script_source: Mapped[str] = mapped_column(Text, nullable=False, default="")
     user_intent: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    user_prompt_history: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
     user_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     ai_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     final_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -169,6 +172,7 @@ class JobModel(Base):
     provider_profile_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     params_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     context_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    runtime_progress: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     execution_context: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     provider_job_id: Mapped[str | None] = mapped_column(String(200), nullable=True)

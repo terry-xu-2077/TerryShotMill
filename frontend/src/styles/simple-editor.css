@@ -81,94 +81,6 @@
   .task-parameter-toggle { padding-inline: 10px; }
 }
 
-.director-storyboard.has-readonly-panel {
-  padding-right: 420px;
-}
-
-.director-readonly-detail {
-  box-shadow: -14px 0 36px rgba(0,0,0,.24);
-}
-
-.director-readonly-section {
-  padding: 14px 0;
-  border-top: 1px solid var(--sm-border);
-}
-
-.director-readonly-section > span,
-.director-readonly-grid span {
-  display: block;
-  margin-bottom: 7px;
-  color: var(--sm-text-dim);
-  font-size: 9px;
-}
-
-.director-readonly-section > p {
-  margin: 0;
-  color: var(--sm-text-muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.director-readonly-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 14px 0;
-  border-top: 1px solid var(--sm-border);
-}
-
-.director-readonly-grid > div {
-  padding: 10px;
-  border: 1px solid var(--sm-border);
-  border-radius: var(--sm-radius);
-  background: var(--sm-surface-2);
-}
-
-.director-readonly-grid strong {
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.director-readonly-hint {
-  margin: 16px 0 0;
-  padding: 10px 11px;
-  border-top: 1px solid var(--sm-border);
-  color: var(--sm-text-dim);
-  font-size: 9px;
-  line-height: 1.5;
-}
-
-.director-card-menu {
-  position: fixed;
-  z-index: 450;
-  min-width: 150px;
-  padding: 5px;
-  border: 1px solid var(--sm-border-strong);
-  border-radius: var(--sm-radius);
-  background: var(--sm-surface-2);
-  box-shadow: 0 14px 40px rgba(0,0,0,.46);
-}
-
-.director-card-menu button {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 9px;
-  border: 0;
-  border-radius: 6px;
-  color: var(--sm-text-muted);
-  background: transparent;
-  cursor: pointer;
-  font-size: 10px;
-  text-align: left;
-}
-
-.director-card-menu button:hover {
-  color: var(--sm-text);
-  background: var(--sm-surface-3);
-}
-
 .simple-duration-input > div {
   display: flex;
   align-items: center;
@@ -273,11 +185,6 @@
   gap: 12px;
   color: var(--sm-text-dim);
   font-size: 9px;
-}
-
-@media (max-width: 980px) {
-  .director-storyboard.has-readonly-panel { padding-right: 30px; }
-  .director-readonly-detail { width: min(360px, calc(100vw - 72px)); }
 }
 
 .workflow-duration-note, .simple-context-note, .simple-context-range-empty { margin: 0; color: var(--sm-text-muted); font-size: 12px; line-height: 1.5; align-self: end; }

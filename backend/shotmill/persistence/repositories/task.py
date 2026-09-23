@@ -35,6 +35,7 @@ class SqlAlchemyTaskRepository:
                 script_source=task.script_source,
                 user_intent=task.user_intent,
                 user_prompt=task.user_prompt,
+                user_prompt_history=task.user_prompt_history,
                 ai_prompt=task.ai_prompt,
                 final_prompt=task.final_prompt,
                 prompt_source=task.prompt_source.value,
@@ -93,6 +94,7 @@ class SqlAlchemyTaskRepository:
         row.summary = task.summary
         row.script_source = task.script_source
         row.user_intent = task.user_intent
+        row.user_prompt_history = list(task.user_prompt_history)
         row.user_prompt = task.user_prompt
         row.ai_prompt = task.ai_prompt
         row.final_prompt = task.final_prompt

@@ -30,7 +30,7 @@ test("long workflow names stay in their slot and the library menu escapes the pa
       const bounds = await select.boundingBox();
       const seconds = await page.locator(".simple-slider-field").boundingBox();
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(seconds!.x);
-      await expect(page.getByRole("slider", { name: "总秒数", exact: true })).toHaveClass(/tc-range/);
+      await expect(page.getByRole("slider", { name: "总秒数", exact: true })).toHaveClass(/sm-slider-range/);
       const numeric = await page.getByRole("spinbutton", { name: "总秒数数值" }).boundingBox();
       expect(numeric!.x + numeric!.width).toBeLessThanOrEqual(seconds!.x + seconds!.width + 1);
       await select.click();

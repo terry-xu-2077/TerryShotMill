@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { useModalPortalTarget } from "terry-react-ui-library";
+import { useModalPortalTarget } from "../primitives";
 
 type OverlayRegistration = {
   id: string;

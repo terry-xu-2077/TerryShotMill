@@ -1,7 +1,7 @@
 import { categoryLabel } from "../assets/assetCategories";
 import { FileImage, Film, Music2, RefreshCw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button, SlidingTabs, TextField } from "terry-react-ui-library";
+import { Button, SlidingTabs, TextField } from "../../ui/primitives";
 import type { ProjectAsset, TaskAssetBinding } from "../../domain/storyboard";
 import type { ComfyUIWorkflow, WorkflowInputSelection } from "../../gateways/projectGateway";
 import { Dialog } from "../../ui/overlay";

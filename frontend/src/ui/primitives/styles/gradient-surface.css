@@ -1,0 +1,12 @@
+.tc-gradient-surface{
+  --tc-gradient-start:color-mix(in srgb,var(--tc-accent) 42%,var(--tc-panel) 58%);
+  --tc-gradient-end:color-mix(in srgb,var(--tc-base) 76%,var(--tc-panel) 24%);
+  position:relative;
+  overflow:hidden;
+  background:linear-gradient(105deg,var(--tc-gradient-start),var(--tc-gradient-end));
+}
+.tc-gradient-surface.tone-blue{--tc-gradient-start:color-mix(in srgb,var(--tc-tone-blue) 72%,black 28%);--tc-gradient-end:color-mix(in srgb,var(--tc-tone-blue) 78%,white 22%)}
+.tc-gradient-surface.tone-red{--tc-gradient-start:color-mix(in srgb,var(--tc-tone-red) 72%,black 28%);--tc-gradient-end:color-mix(in srgb,var(--tc-tone-red) 78%,white 22%)}
+.tc-gradient-surface.tone-purple{--tc-gradient-start:color-mix(in srgb,var(--tc-tone-purple) 72%,black 28%);--tc-gradient-end:color-mix(in srgb,var(--tc-tone-purple) 78%,white 22%)}
+.tc-gradient-surface.tone-neutral{--tc-gradient-start:color-mix(in srgb,var(--tc-tone-neutral) 78%,var(--tc-text-main) 22%);--tc-gradient-end:var(--tc-panel)}
+.tc-gradient-surface.tone-accent{--tc-gradient-start:color-mix(in srgb,var(--tc-accent) 52%,var(--tc-panel) 48%);--tc-gradient-end:color-mix(in srgb,var(--tc-base) 72%,var(--tc-panel) 28%)}

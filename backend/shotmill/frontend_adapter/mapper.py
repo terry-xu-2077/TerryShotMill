@@ -106,6 +106,7 @@ def map_task_summary(
             duration_seconds=primary.metadata.get("durationSeconds"),
         )
     return TaskSummary(
+        prompt_source=task.prompt_source.value,
         latest_video_result_id=latest.id if latest else None,
         id=task.id,
         display_number=task.display_order,
@@ -126,8 +127,12 @@ def map_task_summary(
         prompt_enhancement_status="running" if has_active_prompt_job else "idle",
         video_generation_status=(
             task.state.value
-            if task.state in {
-                TaskState.QUEUED, TaskState.RUNNING, TaskState.COMPLETED, TaskState.FAILED,
+            if task.state
+            in {
+                TaskState.QUEUED,
+                TaskState.RUNNING,
+                TaskState.COMPLETED,
+                TaskState.FAILED,
             }
             else "idle"
         ),
@@ -148,13 +153,12 @@ def map_task_editor(task: Task, previous_duration: float | None) -> TaskEditorVi
         user_intent=task.user_intent,
         prompt_source=task.prompt_source.value,
         user_prompt=task.user_prompt,
+        user_prompt_history=task.user_prompt_history,
         ai_enhanced_prompt=task.ai_prompt,
         final_prompt=task.final_prompt,
         editor_preference=EditorPreference(
             user_view_mode=(
-                task.user_view_mode
-                if task.user_view_mode in {"visual", "text"}
-                else "visual"
+                task.user_view_mode if task.user_view_mode in {"visual", "text"} else "visual"
             ),
             ai_view_mode=task.ai_view_mode if task.ai_view_mode in {"visual", "text"} else "visual",
         ),

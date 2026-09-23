@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Button } from "terry-react-ui-library";
+import { Button } from "../../ui/primitives";
 import type { ComfyUIStatus } from "../../gateways/projectGateway";
 
 export function BridgeStatus({ load, address }: { load: (signal?: AbortSignal) => Promise<ComfyUIStatus>; address?: string }) {

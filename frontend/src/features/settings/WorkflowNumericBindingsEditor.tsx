@@ -1,4 +1,5 @@
-import { Select, TextField } from "terry-react-ui-library";
+import { TextField } from "../../ui/primitives";
+import { Select } from "../../ui/Select";
 import type { ComfyUIWorkflow, WorkflowNumericBinding } from "../../gateways/projectGateway";
 
 export type NumericBindingDraft = Omit<WorkflowNumericBinding, "value" | "fps" | "frameMultiple" | "frameOffset"> & {

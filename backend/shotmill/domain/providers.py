@@ -95,6 +95,16 @@ class VideoGenerationResponse:
     outputs: tuple[GeneratedOutput, ...]
 
 
+@runtime_checkable
+class ProgressReportingVideoProvider(Protocol):
+    def set_progress_callback(self, callback) -> None: ...
+
+
+@runtime_checkable
+class StoppableVideoProvider(Protocol):
+    async def stop(self, job_id: str) -> None: ...
+
+
 class VideoGenerationProvider(Protocol):
     id: str
     capability: VideoGenerationCapability

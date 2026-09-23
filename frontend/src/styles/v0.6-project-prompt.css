@@ -78,13 +78,15 @@
   background: color-mix(in srgb, var(--h3-chip-tone) 16%, var(--sm-surface-1));
 }
 .h3-dialogue-language {
-  max-width: 92px;
+  max-width: 120px;
+  height: 26px;
+  padding: 0 6px;
   border: 0;
   border-radius: 4px;
   outline: 0;
   color: var(--sm-prompt-dialogue);
   background: var(--sm-surface-1);
-  font-size: 9px;
+  font: inherit;
 }
 .h3-dialogue-text { min-width: 72px; outline: 0; color: var(--sm-text); user-select: text; }
 .h3-dialogue-language:focus-visible { outline: 2px solid var(--sm-prompt-dialogue); outline-offset: 2px; }
@@ -103,3 +105,6 @@
   .simple-prompt-title-group { gap: 6px; }
   .simple-prompt-view-tabs button { padding-inline: 6px; }
 }
+
+.h3-visual-chip.is-media[role="button"] { cursor: pointer; }
+.h3-visual-chip.is-media[role="button"]:hover { border-color: var(--sm-accent); background: color-mix(in srgb, var(--sm-accent) 18%, var(--sm-surface-1)); }

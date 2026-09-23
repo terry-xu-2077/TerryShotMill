@@ -96,3 +96,24 @@ describe("H3PromptEditor visual asset mentions", () => {
     expect(screen.getByTestId("prompt-value")).toHaveTextContent("仓库门口 <Subject 1>");
   });
 });
+
+it("inserts an editable dialogue from the slash menu", () => {
+  render(<Harness />);
+  const editor = screen.getByRole("textbox", { name: "用户提示词可视化" });
+  editor.textContent = "他说/";
+  const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false);
+  window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(range);
+  fireEvent.input(editor);
+  fireEvent.click(screen.getByRole("option", { name: /对白块/ }));
+  expect(screen.getByTestId("prompt-value")).toHaveTextContent("他说<d>[Chinese] </d>");
+  expect(screen.getByRole("combobox", { name: "对白语言" })).toBeInTheDocument();
+  const body = editor.querySelector(".h3-dialogue-text")!;
+  body.textContent = "你好"; fireEvent.input(body);
+  expect(screen.getByTestId("prompt-value")).toHaveTextContent("<d>[Chinese] 你好</d>");
+});
+it("replaces only the clicked asset reference", () => {
+  render(<Harness initialValue="<Picture 1> 与 <Picture 1>。" />);
+  fireEvent.click(screen.getAllByRole("button", { name: "更换资产：旧港口仓库外景" })[1]);
+  fireEvent.click(screen.getByRole("option", { name: /林澜/ }));
+  expect(screen.getByTestId("prompt-value")).toHaveTextContent("<Picture 1> 与 <Subject 1>。");
+});

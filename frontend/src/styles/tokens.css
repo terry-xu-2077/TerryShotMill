@@ -13,7 +13,7 @@
   --sm-warning: #956513;
   --sm-surface-base-weight: 12%;
   --sm-surface-mix: white;
-  --sm-bg: color-mix(in srgb, var(--tc-base) 8%, white);
+  --sm-bg: color-mix(in srgb, var(--tc-base) 16%, white);
 }
 
 :root[data-tc-mode="dark"] {
@@ -27,7 +27,7 @@
   --sm-danger: #f38b8b;
   --sm-warning: #e9bc72;
   --sm-surface-base-weight: 95%;
-  --sm-surface-mix: var(--tc-text-bright);
+  --sm-surface-mix: var(--tc-text-main);
   --sm-bg: var(--tc-base);
 }
 
@@ -68,10 +68,10 @@
   --sm-prompt-dialogue: light-dark(oklch(from var(--tc-accent) .40 calc(c * .7) calc(h + 85)), oklch(from var(--tc-accent) .84 calc(c * .7) calc(h + 85)));
   --sm-glass: color-mix(in srgb, var(--sm-surface-1) 86%, transparent);
   --sm-glass-edge: color-mix(in srgb, white 13%, transparent);
-  --sm-surface-gradient: linear-gradient(135deg, color-mix(in srgb, var(--sm-surface-1) 97%, var(--tc-text-bright)), var(--sm-glass));
+  --sm-surface-gradient: linear-gradient(135deg, color-mix(in srgb, var(--sm-surface-1) 97%, var(--tc-text-main)), var(--sm-glass));
   --sm-canvas: linear-gradient(125deg, var(--sm-bg), color-mix(in srgb, var(--sm-bg) 98%, var(--tc-text-main)));
   --sm-card-shadow: 0 4px 14px var(--sm-shadow-color), inset 0 1px 0 var(--sm-glass-edge);
-  --sm-focus-glow: 0 0 0 1px color-mix(in srgb, var(--sm-accent) 35%, transparent), 0 4px 24px color-mix(in srgb, var(--sm-accent) 13%, transparent);
+  --sm-focus-glow: 0 0 0 1px color-mix(in srgb, var(--sm-effect) 35%, transparent), 0 4px 24px color-mix(in srgb, var(--sm-effect) 13%, transparent);
   --sm-radius-sm: 12px;
   --sm-radius: 16px;
   --sm-radius-lg: 16px;

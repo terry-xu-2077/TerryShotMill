@@ -1,6 +1,7 @@
+import { BoolSwitch } from "../../ui/BoolSwitch";
 import { useRef, useState } from "react";
 import { SkipBack, SkipForward } from "lucide-react";
-import { Button, BoolSwitch } from "terry-react-ui-library";
+import { Button } from "../../ui/primitives";
 import type { Result } from "../../domain/storyboard";
 
 export type PlaybackEntry = { result: Result; taskNumber: string; taskId?: string; title?: string };

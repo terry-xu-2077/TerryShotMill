@@ -1,0 +1,126 @@
+/* Borderless tabs for dense parameter groups. */
+.tc-sliding-tabs{
+  --tc-sliding-count:2;
+  --tc-sliding-index:0;
+  position:relative;
+  display:inline-flex;
+  align-items:stretch;
+  min-width:0;
+  height:30px;
+  font-size:12px;
+}
+
+.tc-sliding-tabs.is-fluid{
+  display:flex;
+  width:100%;
+}
+
+.tc-sliding-tab{
+  position:relative;
+  z-index:2;
+  width:76px;
+  min-width:0;
+  height:100%;
+  display:inline-flex;
+  flex:0 0 76px;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  margin:0;
+  padding:0 8px 3px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  color:var(--tc-text-muted);
+  font:inherit;
+  line-height:1;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:color .14s ease,background .14s ease;
+}
+
+.tc-sliding-tabs.is-fluid .tc-sliding-tab{
+  width:auto;
+  flex:1 1 0;
+}
+
+.tc-sliding-tabs.is-compact{
+  height:26px;
+  font-size:11px;
+}
+
+.tc-sliding-tabs.is-compact .tc-sliding-tab{
+  width:68px;
+  flex-basis:68px;
+  padding-inline:6px;
+}
+
+.tc-sliding-tabs.is-fluid.is-compact .tc-sliding-tab{
+  width:auto;
+  flex-basis:0;
+}
+
+.tc-sliding-tabs-track,
+.tc-sliding-tabs-indicator{
+  position:absolute;
+  left:0;
+  bottom:0;
+  height:2px;
+  pointer-events:none;
+}
+
+.tc-sliding-tabs-track{
+  z-index:0;
+  width:100%;
+  background:color-mix(in srgb,var(--tc-border-color) 42%,transparent 58%);
+}
+
+.tc-sliding-tabs-indicator{
+  z-index:3;
+  width:calc(100% / var(--tc-sliding-count));
+  background:var(--tc-accent);
+  transform:translateX(calc(var(--tc-sliding-index) * 100%));
+  box-shadow:0 0 6px color-mix(in srgb,var(--tc-accent) 30%,transparent 70%);
+  transition:transform .18s cubic-bezier(.2,.8,.2,1);
+}
+
+.tc-sliding-tab:hover:not(:disabled):not(.is-active){
+  color:var(--tc-text);
+  background:color-mix(in srgb,var(--tc-accent) 6%,transparent 94%);
+}
+
+.tc-sliding-tab.is-active{
+  color:var(--tc-text-bright);
+}
+
+.tc-sliding-tab:focus-visible{
+  outline:1px solid var(--tc-glow);
+  outline-offset:-2px;
+}
+
+.tc-sliding-tab:disabled{
+  cursor:not-allowed;
+  opacity:.42;
+}
+
+.tc-sliding-tab-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:none;
+}
+
+.tc-sliding-tab-icon>svg{
+  width:14px;
+  height:14px;
+}
+
+.tc-sliding-tab-label{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+@media(prefers-reduced-motion:reduce){
+  .tc-sliding-tabs-indicator{transition:none}
+}

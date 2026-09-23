@@ -4,10 +4,10 @@ import asyncio
 import json
 import re
 import time
+from contextlib import suppress
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import httpx
 
@@ -194,6 +194,11 @@ def _prune_missing_optional_assets(
 
 
 class ComfyUIVideoGenerationProvider:
+    progress_callback = None
+
+    def set_progress_callback(self, callback):
+        self.progress_callback = callback
+
     id = "comfyui"
     capability = VideoGenerationCapability(
         job_resumption=True,
@@ -270,7 +275,8 @@ class ComfyUIVideoGenerationProvider:
         provider.frozen_workflow_id = profile["workflowId"]
         if profile.get("workflowSnapshot") is not None:
             provider.workflow_snapshot = checked_workflow_snapshot(
-                profile["workflowSnapshot"], profile["workflowId"],
+                profile["workflowSnapshot"],
+                profile["workflowId"],
             )
         provider.numeric_bindings = tuple(
             WorkflowNumericBinding(**binding) for binding in profile.get("numericBindings", [])
@@ -540,43 +546,56 @@ class ComfyUIVideoGenerationProvider:
                     if response.status_code == 404:
                         raise ShotMillError(
                             "WORKFLOW_SNAPSHOT_UNAVAILABLE",
-                            "无法取得工作流快照，请确认文件仍存在并将 Bridge 更新到 0.3.0。", 422,
+                            "无法取得工作流快照，请确认文件仍存在并将 Bridge 更新到 0.3.0。",
+                            422,
                         )
                     if response.is_client_error:
                         raise ShotMillError(
                             "WORKFLOW_COMPILE_FAILED",
-                            f"工作流编译失败：{response.text[:12000]}", 422,
+                            f"工作流编译失败：{response.text[:12000]}",
+                            422,
                         )
                     response.raise_for_status()
                     captured = response.json()
                     if not isinstance(captured, dict):
                         raise ValueError("snapshot response must be an object")
                     snapshot = checked_workflow_snapshot(
-                        captured.get("snapshot"), workflow_id,
+                        captured.get("snapshot"),
+                        workflow_id,
                     )
                 # A file can change between catalogue lookup and capture. Only
                 # the ports captured with the execution graph govern the Job.
                 numeric_inputs: dict[str, float | int] = {}
                 input_slots = await self._validate_workflow_inputs(
-                    client, base_url.rstrip("/"), workflow_id, request, workflow_snapshot=snapshot,
+                    client,
+                    base_url.rstrip("/"),
+                    workflow_id,
+                    request,
+                    workflow_snapshot=snapshot,
                     numeric_values=numeric_inputs,
                 )
                 preflight = await client.post(
                     f"{base_url.rstrip('/')}/shotmill/v1/workflows/validate",
                     json=_bridge_payload(
-                        request, workflow_id, snapshot, input_slots, numeric_inputs,
+                        request,
+                        workflow_id,
+                        snapshot,
+                        input_slots,
+                        numeric_inputs,
                     ),
                     timeout=30.0,
                 )
                 if preflight.status_code == 404:
                     raise ShotMillError(
                         "WORKFLOW_PREFLIGHT_UNAVAILABLE",
-                        "请将 Bridge 更新到 0.3.1 以检查工作流。", 422,
+                        "请将 Bridge 更新到 0.3.1 以检查工作流。",
+                        422,
                     )
                 if preflight.is_client_error:
                     raise ShotMillError(
                         "WORKFLOW_PREFLIGHT_FAILED",
-                        f"工作流生成前检查失败：{_preflight_message(preflight)}", 422,
+                        f"工作流生成前检查失败：{_preflight_message(preflight)}",
+                        422,
                     )
                 preflight.raise_for_status()
                 validation = preflight.json()
@@ -591,57 +610,114 @@ class ComfyUIVideoGenerationProvider:
             ) from exc
 
     async def _collect_bridge_job(
-        self, client: httpx.AsyncClient, base_url: str, job_id: str,
+        self,
+        client: httpx.AsyncClient,
+        base_url: str,
+        job_id: str,
         prompt_id: str | None = None,
     ) -> VideoGenerationResponse:
+        from .progress import StepProgress, watch_progress
+
+        monitor = None
+        if self.progress_callback and prompt_id:
+            graph = (self.workflow_snapshot or {}).get("prompt", {})
+            monitor = asyncio.create_task(
+                watch_progress(
+                    base_url,
+                    f"shotmill-{job_id}",
+                    StepProgress(prompt_id, graph),
+                    self.progress_callback,
+                )
+            )
+        try:
+            return await self._poll_bridge_job(client, base_url, job_id, prompt_id)
+        finally:
+            if monitor:
+                monitor.cancel()
+                with suppress(asyncio.CancelledError):
+                    await monitor
+
+    async def _poll_bridge_job(self, client, base_url, job_id, prompt_id):
         started = time.monotonic()
         while time.monotonic() - started < self.timeout_seconds:
             response = await client.get(f"{base_url}/shotmill/v1/jobs/{job_id}")
             if response.status_code == 404:
                 raise ShotMillError(
                     "SHOTMILL_BRIDGE_JOB_NOT_FOUND",
-                    "生成服务找不到原视频任务，请检查运行记录。", 502,
+                    "生成服务找不到原视频任务，请检查运行记录。",
+                    502,
                 )
             response.raise_for_status()
             try:
                 state = response.json()
             except ValueError as exc:
                 raise ShotMillError(
-                    "SHOTMILL_BRIDGE_INVALID_RESPONSE", "生成服务返回了无效任务状态。", 502,
+                    "SHOTMILL_BRIDGE_INVALID_RESPONSE",
+                    "生成服务返回了无效任务状态。",
+                    502,
                 ) from exc
             if not isinstance(state, dict):
                 raise ShotMillError(
-                    "SHOTMILL_BRIDGE_INVALID_RESPONSE", "生成服务返回了无效任务状态。", 502,
+                    "SHOTMILL_BRIDGE_INVALID_RESPONSE",
+                    "生成服务返回了无效任务状态。",
+                    502,
                 )
             if state.get("status") == "not_found":
                 raise ShotMillError(
                     "SHOTMILL_BRIDGE_JOB_NOT_FOUND",
-                    "生成服务找不到原视频任务，请检查运行记录。", 502,
+                    "生成服务找不到原视频任务，请检查运行记录。",
+                    502,
                 )
             if state.get("status") == "failed":
                 raise ShotMillError(
                     "SHOTMILL_BRIDGE_JOB_FAILED",
-                    str(state.get("error") or "Bridge job failed"), 502,
+                    str(state.get("error") or "Bridge job failed"),
+                    502,
                 )
             if state.get("status") == "completed":
                 outputs = await self._fetch_bridge_outputs(
-                    client, base_url, job_id, state.get("results", []),
+                    client,
+                    base_url,
+                    job_id,
+                    state.get("results", []),
                 )
                 if not outputs:
                     raise ShotMillError(
                         "SHOTMILL_BRIDGE_NO_OUTPUT",
-                        "ShotMill IO Bridge completed without downloadable outputs", 502,
+                        "ShotMill IO Bridge completed without downloadable outputs",
+                        502,
                     )
                 remote_id = state.get("promptId") or state.get("prompt_id") or prompt_id
                 if not remote_id:
                     raise ShotMillError(
-                        "SHOTMILL_BRIDGE_INVALID_RESPONSE", "原视频任务缺少生成记录标识。", 502,
+                        "SHOTMILL_BRIDGE_INVALID_RESPONSE",
+                        "原视频任务缺少生成记录标识。",
+                        502,
                     )
                 return VideoGenerationResponse(str(remote_id), tuple(outputs))
             await asyncio.sleep(self.poll_interval_seconds)
         raise ShotMillError(
-            "SHOTMILL_BRIDGE_TIMEOUT", "Timed out waiting for ShotMill IO Bridge generation", 504,
+            "SHOTMILL_BRIDGE_TIMEOUT",
+            "Timed out waiting for ShotMill IO Bridge generation",
+            504,
         )
+
+    async def stop(self, job_id: str) -> None:
+        base = self.base_url_getter() if self.base_url_getter else self.base_url
+        async with httpx.AsyncClient(timeout=15, transport=self.transport) as client:
+            response = await client.get(f"{base}/shotmill/v1/jobs/{job_id}")
+            response.raise_for_status()
+            state = response.json()
+            remote = state.get("promptId") or state.get("prompt_id")
+            if state.get("status") in {"completed", "failed"}:
+                return
+            if not remote:
+                raise ShotMillError("STOP_NOT_READY", "任务尚在准备，请稍后重试停止。", 409)
+            # Both calls target the exact remote prompt; never interrupt unrelated work.
+            deleted = await client.post(f"{base}/queue", json={"delete": [remote]})
+            deleted.raise_for_status()
+            interrupted = await client.post(f"{base}/interrupt", json={"prompt_id": remote})
+            interrupted.raise_for_status()
 
     async def resume(self, job_id: str) -> VideoGenerationResponse:
         # Only observe the persisted logical job and download its original outputs.
@@ -662,7 +738,9 @@ class ComfyUIVideoGenerationProvider:
             return await self.bind_profile(profile).generate(request)
         if self.workflow_snapshot is None:
             raise ShotMillError(
-                "WORKFLOW_SNAPSHOT_MISSING", "视频任务缺少工作流内容快照，请重新提交生成。", 409,
+                "WORKFLOW_SNAPSHOT_MISSING",
+                "视频任务缺少工作流内容快照，请重新提交生成。",
+                409,
             )
         base_url = self.base_url_getter() if self.base_url_getter is not None else self.base_url
         base_url = base_url.rstrip("/") if base_url else None
@@ -671,7 +749,7 @@ class ComfyUIVideoGenerationProvider:
                 "ComfyUI endpoint is not configured. Set SHOTMILL_COMFYUI_BASE_URL "
                 "or SHOTMILL_COMFYUI_ENDPOINT."
             )
-        client_id = f"shotmill-{uuid4().hex}"
+        client_id = f"shotmill-{request.job_id}"
         coordinator_acquired = False
         try:
             async with httpx.AsyncClient(
@@ -695,8 +773,11 @@ class ComfyUIVideoGenerationProvider:
                     f"{base_url}/shotmill/v1/jobs",
                     json={
                         **_bridge_payload(
-                            request, workflow_id, self.workflow_snapshot,
-                            input_slots, numeric_inputs,
+                            request,
+                            workflow_id,
+                            self.workflow_snapshot,
+                            input_slots,
+                            numeric_inputs,
                         ),
                         "clientId": client_id,
                         "assetValues": asset_values,
@@ -723,7 +804,10 @@ class ComfyUIVideoGenerationProvider:
                     )
 
                 return await self._collect_bridge_job(
-                    client, base_url, request.job_id, str(prompt_id),
+                    client,
+                    base_url,
+                    request.job_id,
+                    str(prompt_id),
                 )
         except ShotMillError:
             raise

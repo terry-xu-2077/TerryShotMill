@@ -58,7 +58,7 @@
   gap: 7px;
 }
 
-.context-timeline-trigger { width: 100%; justify-content: space-between; font-size: 12px; font-variant-numeric: tabular-nums; }
+.context-timeline-trigger { border-radius: 999px; width: 100%; justify-content: space-between; font-size: 12px; font-variant-numeric: tabular-nums; }
 .context-timeline-popover { width: min(560px, calc(100vw - 16px)); overflow: visible; }
 .context-timeline-editor { display: grid; min-width: 0; gap: 10px; }
 .context-timeline-editor > header { color: var(--sm-text); font-size: 13px; }

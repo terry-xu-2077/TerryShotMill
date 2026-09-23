@@ -4,6 +4,8 @@ ShotMill 的开发文档按职责拆分，避免单个文档无限膨胀。开�
 
 ## 当前开发任务
 
+- [前端 UI 微调指南（HTML/CSS 开发者）](./FRONTEND_UI_DEVELOPMENT.md)：当前页面与 TSX/CSS 对照、主题、启动、调试、测试，以及旧实现清理范围。
+
 2026-09-20：指定工作流的“异星边境”8 项批量生产已实跑通过，详细进展见 [开发记录](./DEVELOPMENT_LOG.md) 和 [验收记录](./UX_ACCEPTANCE_BASELINE.md)。这不代表 V0.4 路线图及所有 UI/UX 待办已经完成。ComfyUI 节点包安装与升级说明见 [Bridge 文档](../integrations/comfyui_shotmill/README.md)。
 
 - [UI/UX 验收底线与实测记录](./UX_ACCEPTANCE_BASELINE.md)

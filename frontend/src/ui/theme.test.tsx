@@ -53,3 +53,24 @@ describe("color theme", () => {
     expect(screen.getByRole("button", { name: "暗色" })).toHaveAttribute("aria-pressed", "true");
   });
 });
+
+
+describe("custom palettes", () => {
+  it("keeps light and dark independent and restores them on mode changes", async () => {
+    const { savePalette, readPalette, paletteDefaults, setColorTheme, initializeTheme } = await import("./theme");
+    savePalette("light", { ...paletteDefaults.light, accent: "#123456" });
+    savePalette("dark", { ...paletteDefaults.dark, accent: "#abcdef" });
+    setColorTheme("light");
+    expect(document.documentElement.style.getPropertyValue("--tc-accent")).toBe("#123456");
+    setColorTheme("dark"); initializeTheme();
+    expect(document.documentElement.style.getPropertyValue("--tc-accent")).toBe("#abcdef");
+    savePalette("dark", { ...paletteDefaults.dark });
+    expect(readPalette("light").accent).toBe("#123456");
+    expect(readPalette("dark")).toEqual(paletteDefaults.dark);
+  });
+  it("ignores corrupt saved colors", async () => {
+    const { readPalette, paletteDefaults } = await import("./theme");
+    localStorage.setItem("shotmill.palette.light", JSON.stringify({ base: "invalid" }));
+    expect(readPalette("light")).toEqual(paletteDefaults.light);
+  });
+});

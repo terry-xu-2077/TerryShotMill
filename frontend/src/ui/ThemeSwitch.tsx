@@ -1,5 +1,5 @@
 import { Moon, Sun } from "lucide-react";
-import { SegmentedControl } from "terry-react-ui-library";
+import { SegmentedControl } from "./primitives";
 import { setColorTheme, useColorTheme } from "./theme";
 
 export function ThemeSwitch() {

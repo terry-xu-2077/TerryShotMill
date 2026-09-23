@@ -54,7 +54,7 @@ test("timeline clip moves as a whole, clamps without changing duration and trims
   await page.locator(".sm-dialog").evaluate(async element => {
     await Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished));
   });
-  const track = page.locator(".simple-context-range-control .tc-range-slider-track");
+  const track = page.locator(".simple-context-range-control .sm-range-slider-track");
   const box = (await track.boundingBox())!;
   const atTime = (time: number) => box.x + box.width * time / 6;
   const dragClip = async (delta: number) => {
@@ -172,7 +172,7 @@ test("continuation handles share a timeline and drag independently before save a
     await Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished));
   });
   // Drag from the selected interval's actual end, not a DOM-only change event.
-  const selection = page.locator(".simple-context-range-selection, .tc-range-slider-selection");
+  const selection = page.locator(".sm-range-slider-selection");
   const box = await selection.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width, box!.y + box!.height / 2);
@@ -210,7 +210,7 @@ test("continuation handles share a timeline and drag independently before save a
   expect(await start.evaluate((element) => {
     const box = element.getBoundingClientRect();
     const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    return hit?.closest(".tc-range-slider-input") === element.closest(".tc-range-slider-input");
+    return hit?.closest(".sm-range-slider-input") === element.closest(".sm-range-slider-input");
   })).toBe(true);
   await page.mouse.move(closeBox!.x + closeBox!.width / 2, closeBox!.y + closeBox!.height / 2);
   await page.mouse.down();

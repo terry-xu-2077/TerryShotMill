@@ -3,7 +3,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
-import { Dialog, OverlayProvider, PortalSelect, useToast } from ".";
+import { Select } from "../Select";
+import { Dialog, OverlayProvider, useToast } from ".";
 
 function Harness() {
   const [dialogOpen, setDialogOpen] = useState(true);
@@ -11,7 +12,7 @@ function Harness() {
   return (
     <OverlayProvider>
       <Dialog open={dialogOpen} title="嵌套浮层" onClose={() => setDialogOpen(false)}>
-        <PortalSelect
+        <Select
           value={value}
           options={[
             { value: "visual", label: "Visual" },
@@ -65,7 +66,7 @@ describe("Overlay system", () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    await user.click(screen.getByRole("button", { name: "上下文模式" }));
+    await user.click(screen.getByRole("combobox", { name: "上下文模式" }));
     const menu = screen.getByRole("listbox", { name: "上下文模式选项" });
 
     expect(document.getElementById("shotmill-overlay-root")).toContainElement(menu);
@@ -75,7 +76,7 @@ describe("Overlay system", () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    const trigger = screen.getByRole("button", { name: "上下文模式" });
+    const trigger = screen.getByRole("combobox", { name: "上下文模式" });
     vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
       x: 40,
       y: 60,
@@ -97,7 +98,7 @@ describe("Overlay system", () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    await user.click(screen.getByRole("button", { name: "上下文模式" }));
+    await user.click(screen.getByRole("combobox", { name: "上下文模式" }));
     await user.keyboard("{Escape}");
 
     expect(screen.queryByRole("listbox", { name: "上下文模式选项" })).not.toBeInTheDocument();

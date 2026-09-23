@@ -130,28 +130,6 @@
   gap: 8px;
 }
 
-.sm-select-menu {
-  min-width: 0;
-  max-width: calc(100vw - 16px);
-  overflow-x: hidden;
-}
-
-.sm-select-menu > button {
-  min-width: 0;
-}
-
-.sm-select-menu > button > span {
-  min-width: 0;
-  overflow: hidden;
-}
-
-.sm-select-menu strong,
-.sm-select-menu small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 @media (max-width: 720px) {
   .task-dialog-title input { width: min(300px, 54vw); }
   .simple-prompt-footer { align-items: flex-start; flex-direction: column; gap: 4px; }

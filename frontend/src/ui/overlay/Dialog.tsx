@@ -3,7 +3,7 @@ import { X, PanelsTopLeft, Settings, SlidersHorizontal, FolderPlus, Pencil, Spar
   Activity, Trash2, Save, Replace } from "lucide-react";
 import type { KeyboardEventHandler, ReactNode } from "react";
 import { useEffect, useId, useState } from "react";
-import { Modal } from "terry-react-ui-library";
+import { Modal } from "../primitives";
 
 import {
   OverlayDepth,

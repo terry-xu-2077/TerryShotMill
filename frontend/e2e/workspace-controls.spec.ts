@@ -27,11 +27,14 @@ test("single generation submits only the current task, and select-all generation
   const project = await createProject(page, "生成入口");
   const first = await createTask(page, project.id, "第一条");
   const second = await createTask(page, project.id, "第二条");
+  let releaseCheck!: () => void;
+  const holdCheck = new Promise<void>(resolve => { releaseCheck = resolve; });
   const checks: string[][] = [];
   const submissions: string[][] = [];
   await page.route(`**/projects/${project.id}/video-generation-batches/eligibility`, async (route) => {
     const { taskIds } = route.request().postDataJSON();
     checks.push(taskIds);
+    await holdCheck;
     await route.fulfill({ json: { eligibleTaskIds: taskIds, skipped: [] } });
   });
   await page.route(`**/projects/${project.id}/video-generation-batches`, async (route) => {
@@ -42,11 +45,17 @@ test("single generation submits only the current task, and select-all generation
   await openProject(page, project.title);
   await page.locator(".task-list-row:not(.is-create)").nth(1).click();
   await page.getByRole("button", { name: "生成视频", exact: true }).click();
+  const submitting = page.getByRole("button", { name: "正在提交", exact: true });
+  await expect(submitting).toBeDisabled();
+  await expect(submitting.locator('.task-stop-spinner')).toBeVisible();
+  releaseCheck();
   const single = page.getByRole("dialog", { name: "生成当前视频" });
-  await single.getByRole("button", { name: "生成 1 个视频" }).click();
+  await expect.poll(() => submissions.length).toBe(1);
   await expect(single).toHaveCount(0);
   expect(checks[0]).toEqual([second.id]);
   expect(submissions).toEqual([[second.id]]);
+  await expect(page.locator(".task-list-row.is-selected")).toContainText("第二条");
+  await expect(page.getByRole("complementary", {name:"任务信息"})).toContainText("任务名：第二条");
   await selectAllTasks(page);
   await page.getByRole("button", { name: "生成视频", exact: true }).click();
   const queue = page.getByRole("dialog", { name: "批量生成视频" });
@@ -90,14 +99,18 @@ test("queue respects multi-selection and excludes tasks with execution errors", 
 
 test("unreviewed tasks can be generated and request failures are visible", async ({ page }) => {
   const project = await createProject(page, "生成检查");
-  await createTask(page, project.id);
+  const task = await createTask(page, project.id);
+  let submitted = false;
+  await page.route(`**/projects/${project.id}/video-generation-batches`, async route => {
+    submitted = true;
+    await route.fulfill({json:{batchId:"direct",eligibleTaskIds:[task.id],skipped:[]}});
+  });
   await openProject(page, project.title);
   await page.locator(".task-list-row:not(.is-create)").first().click();
   await page.getByRole("button", { name: "生成视频", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "生成当前视频" });
-  await expect(dialog).toContainText("1 个任务将进入视频生成队列");
-  await expect(dialog.getByRole("button", { name: "生成 1 个视频" })).toBeEnabled();
-  await dialog.getByRole("button", { name: "取消" }).click();
+  await expect.poll(() => submitted).toBe(true);
+  await expect(page.getByRole("dialog", {name:"生成当前视频"})).toHaveCount(0);
+  await expect(page.locator(".task-list-row.is-selected")).toHaveCount(1);
   await page.route(`**/projects/${project.id}/video-generation-batches/eligibility`, (route) => route.fulfill({ status: 503, json: {} }));
   await page.getByRole("button", { name: "生成视频", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("无法检查生成条件");
@@ -201,7 +214,6 @@ test("submission failure keeps the confirmation open with an error instead of cl
   await page.locator(".task-list-row:not(.is-create)").first().click();
   await page.getByRole("button", { name: "生成视频", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "生成当前视频" });
-  await dialog.getByRole("button", { name: "生成 1 个视频" }).click();
   await expect(dialog.getByRole("alert")).toContainText("生成提交未确认");
   await expect(dialog.getByRole("button", { name: "取消" })).toBeEnabled();
 });

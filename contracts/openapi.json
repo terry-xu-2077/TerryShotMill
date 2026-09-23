@@ -2542,6 +2542,14 @@
           "userPrompt": {
             "title": "Userprompt",
             "type": "string"
+          },
+          "userPromptHistory": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/UserPromptRevisionView"
+            },
+            "title": "Userprompthistory",
+            "type": "array"
           }
         },
         "required": [
@@ -2637,6 +2645,11 @@
               }
             ],
             "title": "Revision"
+          },
+          "saveUserPromptVersion": {
+            "default": false,
+            "title": "Saveuserpromptversion",
+            "type": "boolean"
           },
           "scriptSource": {
             "default": "",
@@ -2791,6 +2804,15 @@
             "title": "Promptreviewstatus",
             "type": "string"
           },
+          "promptSource": {
+            "default": "user",
+            "enum": [
+              "user",
+              "ai"
+            ],
+            "title": "Promptsource",
+            "type": "string"
+          },
           "resultCount": {
             "title": "Resultcount",
             "type": "integer"
@@ -2836,6 +2858,18 @@
       },
       "TaskTiming": {
         "properties": {
+          "generationProgress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generationprogress"
+          },
           "measuredAt": {
             "anyOf": [
               {
@@ -2914,6 +2948,29 @@
           }
         },
         "title": "TaskTiming",
+        "type": "object"
+      },
+      "UserPromptRevisionView": {
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "prompt",
+          "createdAt"
+        ],
+        "title": "UserPromptRevisionView",
         "type": "object"
       },
       "ValidationError": {
@@ -3794,6 +3851,55 @@
         "summary": "Project Events",
         "tags": [
           "events"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/jobs/{job_id}/stop": {
+      "post": {
+        "operationId": "stop_video_job_api_v1_projects__project_id__jobs__job_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Video Job",
+        "tags": [
+          "generation"
         ]
       }
     },

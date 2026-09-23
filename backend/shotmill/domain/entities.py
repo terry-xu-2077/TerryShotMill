@@ -64,6 +64,7 @@ class Task:
     script_source: str = ""
     user_intent: str = ""
     user_prompt: str = ""
+    user_prompt_history: list[dict[str, Any]] = field(default_factory=list)
     ai_prompt: str = ""
     final_prompt: str = ""
     prompt_source: PromptSource = PromptSource.USER
@@ -114,6 +115,7 @@ class Job:
     provider_profile_snapshot: dict[str, Any]
     params_snapshot: dict[str, Any]
     context_snapshot: dict[str, Any]
+    runtime_progress: dict[str, Any] | None = None
     execution_context: dict[str, Any] | None = None
     seed: int | None = None
     provider_job_id: str | None = None

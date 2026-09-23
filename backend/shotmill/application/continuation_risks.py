@@ -26,6 +26,16 @@ def continuation_risks(uow, task):
 
 
 def continuation_status(uow, task):
+    jobs = uow.jobs.list_by_task(task.id)
+    latest = max(jobs, key=lambda job: job.submitted_at, default=None)
+    if latest and latest.status.value == "cancelled" and latest.error_code == "USER_STOPPED":
+        return "用户停止"
+    if (
+        latest
+        and latest.status.value == "running"
+        and (latest.runtime_progress or {}).get("stopRequested")
+    ):
+        return "正在停止"
     active = next(
         (job for job in uow.jobs.list_by_task(task.id) if job.status.value == "queued"), None
     )

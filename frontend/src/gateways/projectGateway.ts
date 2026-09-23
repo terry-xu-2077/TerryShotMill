@@ -51,6 +51,7 @@ export type TaskSummary = {
   assetCount: number;
   resultCount: number;
   durationSeconds: number;
+  promptSource?: "user" | "ai";
   generationSummary: {
     resolution: string;
     quality: string;
@@ -115,6 +116,7 @@ export type TaskAssetRef = {
 };
 
 export type TaskEditorView = {
+  userPromptHistory?: { id: string; prompt: string; createdAt: string }[];
   id: string;
   displayNumber: number;
   title: string;
@@ -229,6 +231,7 @@ export type ComfyUISettings = {
 };
 
 export type TaskTiming = {
+  generationProgress?: { stopRequested?: boolean; stage: string; step: number | null; total: number | null; percent: number | null; stageStartedAt: number; measuredAt: number; stageSeconds: number; remainingSeconds: number | null; stages: {stage: string; seconds: number}[] } | null;
   videoSeconds?: number | null; videoQueueSeconds?: number | null;
   promptSeconds?: number | null; promptQueueSeconds?: number | null;
   videoRunning: boolean; videoQueued?: boolean; promptRunning?: boolean; promptQueued?: boolean;
@@ -273,6 +276,7 @@ export type ApplicationSettings = {
 };
 
 export type SaveTaskInput = {
+  saveUserPromptVersion?: boolean;
   title: string;
   summary: string;
   scriptSource: string;
@@ -435,7 +439,16 @@ function mapAsset(projectId: string, asset: BackendAsset): ProjectAsset {
   };
 }
 
+export type VideoResultVersion = {id: string; createdAt: string};
+
 export class HttpProjectGateway implements ProjectGateway {
+  getVideoVersions(projectId: string, taskId: string) {
+    return request<{items: VideoResultVersion[]}>(`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/results`);
+  }
+  selectVideoVersion(projectId: string, taskId: string, resultId: string) {
+    return request(`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/primary-result`, {method: "PATCH", headers: {"Content-Type":"application/json"}, body: JSON.stringify({resultId})});
+  }
+
   private preferenceWrites = new Map<string, Promise<unknown>>();
 
   updateEditorPreference(projectId: string, taskId: string, input: Partial<TaskEditorView["editorPreference"]>) {
@@ -499,8 +512,14 @@ export class HttpProjectGateway implements ProjectGateway {
     return request<ProjectSettings>(`/projects/${encodeURIComponent(projectId)}/settings`);
   }
 
-  getWorkspace(projectId: string) {
-    return request<ProjectWorkspaceView>(`/projects/${encodeURIComponent(projectId)}/workspace`);
+  async getWorkspace(projectId: string) {
+    const workspace = await request<ProjectWorkspaceView>(`/projects/${encodeURIComponent(projectId)}/workspace`);
+    // Support an older running backend without interrupting generation to restart it.
+    await Promise.all(workspace.tasks.filter(task => task.promptSource == null).map(async task => {
+      try { task.promptSource = (await this.getTaskEditor(projectId, task.id)).promptSource; }
+      catch { /* Keep unknown rather than mislabel an AI prompt as user-authored. */ }
+    }));
+    return workspace;
   }
 
   async getTaskEditor(projectId: string, taskId: string) {

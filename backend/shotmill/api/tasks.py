@@ -26,6 +26,7 @@ def _command(payload: TaskSaveRequest) -> SaveTaskData:
         user_view_mode=payload.editor_preference.user_view_mode,
         ai_view_mode=payload.editor_preference.ai_view_mode,
         revision=payload.revision,
+        save_user_prompt_version=payload.save_user_prompt_version,
     )
 
 

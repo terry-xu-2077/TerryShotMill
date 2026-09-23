@@ -188,6 +188,7 @@ function createTokenChip(raw: string, assets: PromptAsset[], notifyChange: () =>
   const asset = assets.find((item) => item.reference.toLowerCase() === raw.trim().toLowerCase());
   if (asset) {
     chip.classList.add("is-media");
+    if (!readOnly) { chip.setAttribute("role", "button"); chip.tabIndex = 0; chip.setAttribute("aria-label", `更换资产：${asset.name}`); }
     if (asset.previewUrl && asset.kind !== "audio") {
       const image = document.createElement("img");
       image.src = asset.previewUrl;
@@ -361,6 +362,8 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, r
   const visualRef = useRef<HTMLDivElement>(null);
   const renderedReadOnly = useRef<boolean | undefined>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
+  const pendingDialogue = useRef(false);
+  const [menuKind, setMenuKind] = useState<"asset" | "slash" | "replace">("asset");
   const pendingCaret = useRef<number | null>(null);
   const latestValue = useRef(value);
   const [mention, setMention] = useState<AssetMention | null>(null);
@@ -373,11 +376,12 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, r
 
   const assetKey = useMemo(() => assets.map((asset) => `${asset.id}:${asset.reference}:${asset.previewUrl || ""}:${asset.name}`).join("|"), [assets]);
   const visibleAssets = useMemo(() => {
-    if (!mention?.query) return assets;
-    return assets.filter((asset) => `${asset.name} ${asset.reference} ${asset.detail} ${asset.kind}`
+    const options: PromptAsset[] = menuKind === "slash" ? [{ id: "dialogue", name: "对白块", kind: "subject", reference: "<d>[Chinese] </d>", detail: "dialogue · 可编辑对白", tone: "pink" }] : assets;
+    if (!mention?.query) return options;
+    return options.filter((asset) => `${asset.name} ${asset.reference} ${asset.detail} ${asset.kind}`
       .toLocaleLowerCase()
       .includes(mention.query));
-  }, [assets, mention]);
+  }, [assets, mention, menuKind]);
 
   const closeMenu = () => {
     setMention(null);
@@ -389,7 +393,9 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, r
   const updateMention = (root: HTMLElement, nextValue = serializeVisual(root)) => {
     if (readOnly) return;
     const caret = serializedCaretOffset(root);
-    const nextMention = caret == null ? null : findAssetMention(nextValue, caret);
+    const slash = caret == null ? null : nextValue.slice(0, caret).match(/\/([^\/<>\n]*)$/);
+    const nextMention = slash && caret != null ? { start: caret - slash[0].length, end: caret, query: slash[1].trim().toLowerCase() } : caret == null ? null : findAssetMention(nextValue, caret);
+    setMenuKind(slash ? "slash" : "asset");
     setMention((current) => {
       if (!nextMention || !current || current.query !== nextMention.query || current.start !== nextMention.start) setActiveIndex(0);
       return nextMention;
@@ -413,6 +419,13 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, r
       const caret = pendingCaret.current;
       pendingCaret.current = null;
       placeSerializedCaret(root, caret);
+      if (pendingDialogue.current) {
+        pendingDialogue.current = false;
+        const selection = window.getSelection();
+        const before = selection?.anchorNode === root ? root.childNodes[Math.max(0, (selection.anchorOffset || 1) - 1)] : selection?.anchorNode?.previousSibling;
+        const body = before instanceof HTMLElement ? before.querySelector<HTMLElement>(".h3-dialogue-text") : null;
+        if (body) { body.focus(); const range = document.createRange(); range.selectNodeContents(body); range.collapse(false); selection?.removeAllRanges(); selection?.addRange(range); }
+      }
     }
   }, [assetKey, assets, onChange, value, viewMode, readOnly]);
 
@@ -460,7 +473,8 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, r
     const root = visualRef.current;
     if (!root || !mention) return;
     const current = serializeVisual(root);
-    const result = insertAssetReference(current, mention, asset.reference);
+    const result = menuKind === "replace" ? { value: current.slice(0, mention.start) + asset.reference + current.slice(mention.end), caret: mention.start + asset.reference.length } : insertAssetReference(current, mention, asset.reference);
+    pendingDialogue.current = menuKind === "slash";
     pendingCaret.current = result.caret;
     latestValue.current = result.value;
     onChange(result.value);
@@ -496,7 +510,16 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, r
           onChange(next);
           updateMention(event.currentTarget, next);
         }}
-        onClick={(event) => updateMention(event.currentTarget)}
+        onClick={(event) => {
+          const chip = (event.target as HTMLElement).closest<HTMLElement>(".is-media[data-raw]");
+          if (!readOnly && chip && event.currentTarget.contains(chip)) {
+            let start = 0;
+            for (const node of Array.from(event.currentTarget.childNodes)) { if (node === chip) break; start += serializedNodeLength(node); }
+            setMenuKind("replace"); setMention({ start, end: start + (chip.dataset.raw?.length || 0), query: "" }); setActiveIndex(0);
+            return;
+          }
+          updateMention(event.currentTarget);
+        }}
         onKeyUp={(event) => {
           // Escape dismisses the mention without changing its text or caret.
           // Re-reading that same caret on keyup would immediately reopen it.
@@ -505,6 +528,7 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, r
           updateMention(event.currentTarget);
         }}
         onKeyDown={(event) => {
+          if (!menuOpen && (event.key === "Enter" || event.key === " ") && (event.target as HTMLElement).matches('.is-media[role="button"]')) { event.preventDefault(); (event.target as HTMLElement).click(); return; }
           if (!menuOpen) return;
           if (event.key === "Escape") {
             event.preventDefault();
@@ -544,10 +568,10 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, r
             className="prompt-asset-menu sm-overlay-surface h3-visual-asset-menu"
             style={{ position: "fixed", ...menuPosition, ...zIndex }}
             role="listbox"
-            aria-label="引用任务资产"
+            aria-label={menuKind === "slash" ? "插入 H3 对白" : "引用任务资产"}
             data-testid="h3-visual-asset-menu"
           >
-            <header><strong>引用参考</strong><span>{mention.query ? `“${mention.query}”` : `${assets.length} 项资产`}</span></header>
+            <header><strong>{menuKind === "slash" ? "H3 语法" : menuKind === "replace" ? "更换资产" : "引用参考"}</strong><span>{mention.query ? `“${mention.query}”` : menuKind === "slash" ? "对白" : `${assets.length} 项资产`}</span></header>
             <div className="prompt-asset-options">
               {visibleAssets.map((asset, index) => (
                 <button
@@ -564,9 +588,9 @@ export function H3PromptEditor({ value, onChange, assets, ariaLabel, viewMode, r
                   <span className={`prompt-asset-menu-thumb tone-${asset.tone}`}>
                     {asset.previewUrl && asset.kind !== "audio"
                       ? <img src={asset.previewUrl} alt="" />
-                      : <span>{mediaGlyph(asset)}</span>}
+                      : <span>{menuKind === "slash" ? "“ ”" : mediaGlyph(asset)}</span>}
                   </span>
-                  <span className="prompt-asset-menu-copy"><strong>{asset.name}</strong><small>{asset.reference} · {asset.detail}</small></span>
+                  <span className="prompt-asset-menu-copy"><strong>{asset.name}</strong><small>{menuKind === "slash" ? "可编辑对白" : `${asset.reference} · ${asset.detail}`}</small></span>
                   <kbd>↵</kbd>
                 </button>
               ))}

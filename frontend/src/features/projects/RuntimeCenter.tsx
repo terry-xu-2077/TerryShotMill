@@ -1,6 +1,6 @@
 import { FolderOpen, Sparkles, Film, ArrowUp, ArrowDown, Pause, Play, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { Button } from "terry-react-ui-library";
+import { Button } from "../../ui/primitives";
 import type { ProjectRuntimeView, ProjectWorkspaceView, RuntimeTaskItem } from "../../gateways/projectGateway";
 import { Dialog } from "../../ui/overlay";
 import { formatElapsed } from "./taskTiming";

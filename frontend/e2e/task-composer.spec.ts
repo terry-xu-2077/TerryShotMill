@@ -42,7 +42,7 @@ test("H3 @ asset menu inserts a readable reference and Save binds that asset", a
   await expect(menu).toBeVisible();
   await menu.getByRole("option", { name: /林澜主视觉/ }).click();
   await expect(prompt).toHaveValue(/<Picture 3>/);
-  await page.getByRole("button", { name: "保存" }).click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByRole("region", { name: "任务区域" })).toContainText("1 个任务");
 
   const workspace = await page.request.get(`/api/v1/projects/${project.id}/workspace`);
@@ -78,7 +78,7 @@ test("prompt source and visual/text modes stay separate in the simple editor", a
   await useTextPrompt(page, "用户版本提示词");
   await page.getByRole("tab", { name: /AI 增强/ }).click();
   await expect(page.getByRole("textbox", { name: "AI 增强提示词可视化" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
   await page.getByRole("tab", { name: "用户" }).click();
   await expect(page.getByRole("textbox", { name: "用户提示词" })).toHaveValue("用户版本提示词");
 });

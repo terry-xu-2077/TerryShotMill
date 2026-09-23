@@ -1,0 +1,13 @@
+/*
+ * Icon-role boundary: opening Select/MultiSelect rotates only the trigger chevron.
+ * Legacy theme rules historically targeted every descendant SVG and could invert checkmarks
+ * or action icons inside the popup. These late role selectors make that behavior impossible.
+ */
+.tc-select .tc-select-button>svg,
+.tc-multi .tc-select-button>svg{transform:none}
+.tc-select.is-open .tc-select-button>svg,
+.tc-multi.is-open .tc-select-button>svg{transform:rotate(180deg)}
+.tc-select .tc-pop svg,
+.tc-multi .tc-pop svg,
+.tc-select.is-open .tc-pop svg,
+.tc-multi.is-open .tc-pop svg{transform:none}

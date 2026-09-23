@@ -129,14 +129,23 @@ def test_old_primary_result_gets_measured_duration_without_rewriting_history(
         assert uow.results.get(legacy.id).metadata == old_metadata
 
 
-def test_stale_source_rejected_but_no_context_is_isolated(client, providers):
+def test_stale_source_refreshes_automatically_but_no_context_is_isolated(client, providers):
     _, source, target, route = setup_context(client, providers, "尾帧承接")
     service = client.app.state.container.generation_service
     with service.uow_factory() as uow:
+        upstream = uow.tasks.get(source)
+        old_id = upstream.primary_result_id
+        latest = replace(uow.results.get(old_id), id=new_id("result"))
+        uow.results.add(latest)
+        upstream.primary_result_id = latest.id
+        uow.tasks.update(upstream)
         uow.contexts.mark_stale_by_source(source)
     response = client.post(f"{route}/{target}/generation", json={})
-    assert response.status_code == 409, response.text
-    assert response.json()["error"]["code"] == "CONTEXT_STALE"
+    assert response.status_code == 202, response.text
+    assert _wait_job(client, response.json()["id"])["status"] == "completed"
+    job = service.get_job(response.json()["id"])
+    assert job.context_snapshot["links"][0]["sourceResultId"] == latest.id
+    assert job.context_snapshot["media"][0]["sourceResultId"] == latest.id
     response = client.patch(
         f"{route}/{target}",
         json={
@@ -224,3 +233,15 @@ def test_default_tail_continuation_and_first_task_generation(client):
     assert preview["warnings"] == []
     summary = client.get("/api/v1/projects").json()["items"][0]
     assert summary["createdAt"] == project["createdAt"]
+
+
+def test_segment_submission_resolves_previous_result_without_resaving(client, providers):
+    _, source, target, route = setup_context(client, providers, "片段承接")
+    service = client.app.state.container.generation_service
+    with service.uow_factory() as uow:
+        uow.contexts.replace_for_target(target, [])
+    response = client.post(f"{route}/{target}/generation", json={})
+    assert response.status_code == 202, response.text
+    job = service.get_job(response.json()["id"])
+    assert job.context_snapshot["links"][0]["sourceTaskId"] == source
+    assert job.context_snapshot["media"][0]["mediaType"] == "video"

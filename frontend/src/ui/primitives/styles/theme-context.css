@@ -1,0 +1,64 @@
+/*
+ * Re-derive all chromatic semantic roles at the actual theme host.
+ *
+ * IMPORTANT: consumers such as Rulesmd Editor override the five public channels on
+ * `.tc-theme`. Any chromatic derivative that is computed only on :root can freeze the
+ * library's default teal/blue palette into a composite token such as --tc-border and
+ * then survive later theme changes. Keep every coloured role here tied to the current
+ * theme host. Neutral black/white/transparent mixes are allowed; no independent hue is.
+ */
+.tc-theme{
+  /* Typography: secondary/value roles now shift hue and saturation as well as luminance. */
+  --tc-text:var(--tc-text-main);
+  --tc-text-muted:color-mix(in oklab,var(--tc-text-main) 78%,var(--tc-base) 22%);
+  --tc-text-subtle:color-mix(in oklab,var(--tc-text-main) 62%,var(--tc-base) 38%);
+  --tc-placeholder:color-mix(in oklab,var(--tc-text-main) 54%,color-mix(in oklab,var(--tc-base) 84%,var(--tc-effect) 16%) 46%);
+  --tc-value-text:color-mix(in oklab,var(--tc-text-bright) 88%,var(--tc-accent) 12%);
+  --tc-text-accent:color-mix(in oklab,var(--tc-text-bright) 84%,var(--tc-effect) 16%);
+  --tc-accent-contrast:var(--tc-text-main);
+
+  /* Accent/effect derivatives deliberately move through nearby theme hues instead of
+   * only adding white/black. This gives custom palettes visible hue/saturation depth. */
+  --tc-accent-bright:color-mix(in oklab,var(--tc-accent) 80%,var(--tc-effect) 20%);
+  --tc-accent-dark:color-mix(in oklab,var(--tc-accent) 82%,var(--tc-base) 18%);
+  --tc-hover:color-mix(in oklab,var(--tc-accent) 76%,var(--tc-effect) 24%);
+  --tc-active:color-mix(in oklab,var(--tc-accent) 78%,var(--tc-text-bright) 22%);
+  --tc-glow:color-mix(in oklab,var(--tc-effect) 84%,var(--tc-text-bright) 16%);
+  --tc-hover-effect:color-mix(in oklab,var(--tc-effect) 78%,var(--tc-text-bright) 22%);
+  --tc-focus-effect:color-mix(in srgb,color-mix(in oklab,var(--tc-effect) 76%,var(--tc-accent) 24%) 72%,transparent 28%);
+  --tc-particle:color-mix(in oklab,var(--tc-effect) 86%,var(--tc-text-bright) 14%);
+
+  /* Composite tokens must also be re-created here. This is the token that previously
+   * preserved the library's default teal border after Rulesmd Editor changed themes. */
+  --tc-border:var(--tc-border-width) solid var(--tc-border-color);
+  --tc-accent-on:linear-gradient(90deg,var(--tc-accent-dark) 60%,var(--tc-accent-bright) 80%,var(--tc-accent-dark) 90%);
+
+  /* Status roles use only the five public channels. */
+  --tc-good:color-mix(in oklab,var(--tc-accent) 72%,var(--tc-text-bright) 28%);
+  --tc-warn:color-mix(in oklab,var(--tc-effect) 62%,var(--tc-text-bright) 38%);
+  --tc-danger:color-mix(in oklab,var(--tc-accent) 58%,var(--tc-effect) 42%);
+
+  /* Header tone roles are likewise palette-derived rather than fixed blue/red/purple. */
+  --tc-tone-blue:var(--tc-effect);
+  --tc-tone-red:var(--tc-accent);
+  --tc-tone-purple:var(--tc-text-bright);
+  --tc-tone-neutral:var(--tc-base);
+  --tc-header-accent:linear-gradient(30deg,color-mix(in oklab,var(--tc-accent) 82%,var(--tc-base) 18%),color-mix(in oklab,var(--tc-accent) 78%,var(--tc-effect) 22%));
+  --tc-header-blue:linear-gradient(30deg,color-mix(in oklab,var(--tc-tone-blue) 82%,var(--tc-base) 18%),color-mix(in oklab,var(--tc-tone-blue) 82%,var(--tc-text-bright) 18%));
+  --tc-header-red:linear-gradient(30deg,color-mix(in oklab,var(--tc-tone-red) 82%,var(--tc-base) 18%),color-mix(in oklab,var(--tc-tone-red) 80%,var(--tc-text-bright) 20%));
+  --tc-header-purple:linear-gradient(30deg,color-mix(in oklab,var(--tc-tone-purple) 82%,var(--tc-base) 18%),color-mix(in oklab,var(--tc-tone-purple) 80%,var(--tc-effect) 20%));
+  --tc-header-neutral:linear-gradient(30deg,color-mix(in oklab,var(--tc-tone-neutral) 84%,var(--tc-effect) 16%),color-mix(in oklab,var(--tc-tone-neutral) 72%,var(--tc-text-main) 28%));
+}
+
+/*
+ * Idle light controls must visibly use the light control fill too. A generic rule in
+ * theme.css historically paints TextField/Select/number surfaces with --tc-panel. The
+ * hover rule has higher contextual specificity, which is why the previous change only
+ * appeared while hovering. Keep this mode-specific component rule after the base theme
+ * so the idle state uses --tc-control-fill as designed, without !important overrides.
+ */
+.tc-theme[data-mode="light"] .tc-text input,
+.tc-theme[data-mode="light"] .tc-number,
+.tc-theme[data-mode="light"] .tc-select-button{
+  background:var(--tc-control-fill,var(--tc-panel));
+}

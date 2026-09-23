@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
-import { Button, Select } from "terry-react-ui-library";
+import { Button } from "../../ui/primitives";
+import { Select } from "../../ui/Select";
 import type { ProjectAsset, Result } from "../../domain/storyboard";
 import type { ProjectCoverSelection } from "../../gateways/projectGateway";
 import { Dialog } from "../../ui/overlay";
