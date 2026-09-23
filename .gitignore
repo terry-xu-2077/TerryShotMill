@@ -35,6 +35,7 @@ frontend/src-tauri/.cargo/
 frontend/.artifacts/
 .shotmill/
 .workbuddy/
+frontend/task-editor-results.json
 .env
 .env.*
 !.env.example
