@@ -1,4 +1,4 @@
-import mark from "../assets/brand-mark.svg";
+import mark from "../../assets/brand-mark.svg";
 import "./BrandPlaceholder.css";
 
 export function BrandPlaceholder() {

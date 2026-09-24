@@ -5,8 +5,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button, Checkbox, SegmentedControl } from "../../ui/primitives";
 import { Select } from "../../ui/Select";
 
-import { H3PromptEditor, type H3PromptViewMode } from "../../components/H3PromptEditor";
-import type { PromptAsset } from "../../components/PromptAssetEditor";
+import { H3PromptEditor, type H3PromptViewMode } from "../prompt/H3PromptEditor";
+import type { PromptAsset } from "../prompt/PromptAssetEditor";
 import type { GenerationTask, ProjectAsset } from "../../domain/storyboard";
 import type { PromptReviewStatus } from "../../gateways/batchReviewGateway";
 import type { ComfyUIWorkflow, ComfyUIWorkflowProfile, WorkflowInputSelection } from "../../gateways/projectGateway";

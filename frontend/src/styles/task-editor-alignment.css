@@ -1,0 +1,6 @@
+.simple-prompt-head { align-items: center; }
+.simple-prompt-title-group { min-height: 28px; align-items: center; }
+.simple-prompt-view-tabs, .simple-prompt-tabs, .simple-ai-history-select { align-self: center; margin-block: 0; }
+.simple-ai-prompt-empty { display: block; left: 22px; top: 22px; max-width: calc(100% - 44px); color: var(--sm-text-dim); }
+.simple-ai-prompt-empty strong { display: none; }
+.simple-ai-prompt-empty span { display: block; overflow: hidden; color: var(--sm-text-dim); font-size: 10px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }

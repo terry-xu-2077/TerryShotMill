@@ -1,7 +1,7 @@
 import type { GenerationTask, StoryboardDomainSnapshot } from "../domain/storyboard";
 import { mockStoryboard } from "./storyboard";
 
-import type { DirectorProject } from "../features/projects/projectTypes";
+import type { DirectorProject } from "../components/project/projectTypes";
 
 function cloneStoryboard() {
   return structuredClone(mockStoryboard) as StoryboardDomainSnapshot;

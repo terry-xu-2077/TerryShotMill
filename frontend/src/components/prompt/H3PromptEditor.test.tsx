@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 
-import { OverlayProvider } from "../ui/overlay";
+import { OverlayProvider } from "../../ui/overlay";
 import { H3PromptEditor } from "./H3PromptEditor";
 import type { PromptAsset } from "./PromptAssetEditor";
 

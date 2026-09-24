@@ -6,7 +6,7 @@ import type {
   StoryboardDomainSnapshot,
   TaskAssetBinding,
 } from "../domain/storyboard";
-import type { DirectorProject } from "../features/projects/projectTypes";
+import type { DirectorProject } from "../components/project/projectTypes";
 import type {
   ProjectSettings,
   ProjectWorkspaceView,

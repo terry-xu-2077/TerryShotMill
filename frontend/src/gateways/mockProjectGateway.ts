@@ -1,9 +1,9 @@
-import type { DirectorProject } from "../features/projects/projectTypes";
-import systemPromptPresets from "../features/settings/systemPromptPresets.json";
+import type { DirectorProject } from "../components/project/projectTypes";
+import systemPromptPresets from "../components/settings/systemPromptPresets.json";
 import { listTasksInStoryOrder, type GenerationTask } from "../domain/storyboard";
 import { makeEmptyProject, makeMockProjects } from "../mock/projects";
 import type { PromptEnhancementRequest } from "../services/promptEnhancement";
-import { insertTaskAfter, updateTaskComposerFields } from "../features/storyboard/storyboardMutations";
+import { insertTaskAfter, updateTaskComposerFields } from "../components/task/storyboardMutations";
 import type {
   AssetPatch,
   ApplicationSettings,

@@ -1,0 +1,6 @@
+.simple-prompt-body, .h3-visual-editor-shell, .simple-prompt-body .prompt-asset-editor { min-width: 0; min-height: 0; }
+.simple-prompt-body { overflow: hidden; }
+.simple-prompt-body > .h3-visual-editor-shell, .simple-prompt-body > .prompt-asset-editor { height: 100%; }
+.h3-visual-editor, .simple-prompt-body .prompt-asset-editor > textarea { min-height: 0; height: 100%; }
+.h3-visual-asset-menu .prompt-asset-menu-thumb { overflow: hidden; }
+.h3-visual-asset-menu .prompt-asset-menu-thumb img { width: 100%; height: 100%; display: block; object-fit: cover; }

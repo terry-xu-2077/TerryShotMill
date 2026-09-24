@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { OverlayPortal, useOverlayRegistration, useOverlayZIndex } from "../ui/overlay";
+import { OverlayPortal, useOverlayRegistration, useOverlayZIndex } from "../../ui/overlay";
 import {
   findAssetMention,
   insertAssetReference,

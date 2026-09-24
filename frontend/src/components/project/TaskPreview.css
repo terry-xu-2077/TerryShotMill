@@ -1,0 +1,41 @@
+.task-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: var(--sm-radius-sm);
+  color: var(--sm-text-dim);
+  background-color: var(--sm-surface-2);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.task-preview-duration {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 65%);
+  color: white;
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.task-preview.is-compact {
+  width: 88px;
+  height: 54px;
+  aspect-ratio: auto;
+}
+
+.task-preview:has(.brand-placeholder) {
+  --placeholder-opacity: .08;
+}
+
+:root[data-tc-mode="light"] .task-preview:has(.brand-placeholder) {
+  background-color: #edf0f4;
+}

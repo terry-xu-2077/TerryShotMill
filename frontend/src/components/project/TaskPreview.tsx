@@ -1,4 +1,5 @@
-import { BrandPlaceholder } from "../../components/BrandPlaceholder";
+import { BrandPlaceholder } from "../../ui/branding/BrandPlaceholder";
+import "./TaskPreview.css";
 
 export function TaskPreview({ previewUrl, compact = false, durationSeconds }: {
   previewUrl?: string;

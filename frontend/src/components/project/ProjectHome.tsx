@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Check, Plus } from "lucide-react";
-import { BrandPlaceholder } from "../../components/BrandPlaceholder";
-import { BrandLogo } from "../../components/BrandLogo";
+import { BrandPlaceholder } from "../../ui/branding/BrandPlaceholder";
+import { BrandLogo } from "../../ui/branding/BrandLogo";
 import { TaskNewResults, useViewedResults } from "./TaskNewResults";
 import { TaskRiskSticker } from "./TaskRiskSticker";
 import type { ProjectSummary } from "../../gateways/projectGateway";

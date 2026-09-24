@@ -1,0 +1,20 @@
+.task-dialog-title-shell { display: flex; align-items: center; gap: 10px 22px; }
+.task-dialog-title { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 9px; vertical-align: middle; }
+.task-dialog-title > svg { flex: 0 0 auto; color: var(--sm-accent); }
+.task-dialog-title-edit { min-width: 0; display: inline-flex; align-items: center; gap: 7px; padding: 2px 4px; border: 0; border-radius: 6px; color: inherit; background: transparent; cursor: pointer; font: inherit; font-weight: inherit; }
+.task-dialog-title-edit:hover { background: var(--sm-surface-2); }
+.task-dialog-title-edit span, .task-dialog-title > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-dialog-title-edit svg { flex: 0 0 auto; color: var(--sm-text-dim); }
+.task-dialog-title input { width: min(520px, 48vw); min-width: 180px; padding: 3px 6px; border: 1px solid var(--sm-border-strong); border-radius: 6px; outline: 0; color: var(--sm-text); background: var(--sm-surface-2); font: inherit; font-weight: 650; }
+.simple-context-tabs { width: 100%; }
+.simple-context-params { display: grid; gap: 7px; padding: 9px; border: 1px solid var(--sm-border); border-radius: 8px; background: rgba(255,255,255,.015); }
+.simple-context-params small { margin: 0; color: var(--sm-text-dim); font-size: 8.5px; line-height: 1.5; }
+.simple-prompt-body .prompt-asset-hint { display: none; }
+.simple-prompt-footer { min-height: 32px; display: flex; align-items: center; gap: 16px; padding: 8px 14px; border-top: 1px solid var(--sm-border); color: var(--sm-text-dim); background: var(--sm-surface-1); font-size: 12px; }
+.simple-prompt-footer strong { color: var(--sm-accent); font-size: 11px; }
+.simple-ai-prompt { display: block; }
+.simple-ai-prompt > textarea { height: 100%; }
+.simple-task-prompt-source { min-width: 0; display: flex; align-items: center; gap: 10px; margin-right: auto; color: var(--sm-text-muted); font-size: 10px; }
+.simple-task-prompt-source span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.simple-task-editor-action-buttons { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 720px) { .task-dialog-title input { width: min(300px, 54vw); } .simple-prompt-footer { align-items: flex-start; flex-direction: column; gap: 4px; } .simple-task-editor-action-buttons { justify-content: flex-end; } }

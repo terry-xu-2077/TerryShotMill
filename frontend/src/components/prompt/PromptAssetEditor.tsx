@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 
-import { OverlayPortal, useOverlayRegistration, useOverlayZIndex } from "../ui/overlay";
+import { OverlayPortal, useOverlayRegistration, useOverlayZIndex } from "../../ui/overlay";
 
 export type PromptAssetKind = "subject" | "picture" | "video" | "audio";
 

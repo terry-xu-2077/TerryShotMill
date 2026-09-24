@@ -1,0 +1,15 @@
+:root { --sm-dense-control-h: 28px; --sm-dense-row-h: 52px; --sm-dense-gap: 7px; --sm-dense-panel-pad: 10px; }
+.sm-dialog > header { gap: 14px; padding: 11px 14px 9px; }
+.sm-dialog > header h2 { font-size: 16px; }
+.sm-dialog > header p { margin-top: 2px; }
+.sm-dialog-content { padding: 10px 12px 12px; }
+.sm-dialog > header > button { width: 28px; height: 28px; }
+.simple-choice-field { min-width: 0; }
+.simple-segmented-control, .simple-context-tabs { width: 100%; }
+.simple-prompt-head { height: auto; min-height: 42px; align-items: center; gap: 8px; padding: 8px 12px; }
+.simple-prompt-head h2 { padding-inline: 11px; }
+.simple-prompt-title-group { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.simple-prompt-view-tabs, .simple-prompt-tabs { flex: 0 0 auto; align-self: center; }
+.simple-ai-history-select { width: min(190px, 24%); min-width: 140px; margin-left: auto; }
+.simple-prompt-body { min-height: 0; padding: 10px; overflow: hidden; }
+.h3-visual-editor { padding: 10px; }

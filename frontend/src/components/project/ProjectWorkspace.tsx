@@ -3,6 +3,7 @@ import { GenerationProgress, TaskProgressLight } from "./GenerationProgress";
 import { TaskRiskSticker } from "./TaskRiskSticker";
 import { TaskNewResults, useViewedResults } from "./TaskNewResults";
 import { TaskPreview } from "./TaskPreview";
+import "./TaskCollection.css";
 import {
   LoaderCircle,
   Square,
@@ -32,14 +33,14 @@ import type {
 } from "../../gateways/batchReviewGateway";
 import type { ApplicationSettings } from "../../gateways/projectGateway";
 import { taskSaveInput } from "../../gateways/projectGatewayMapper";
-import type { DirectorProject } from "../../features/projects/projectTypes";
+import type { DirectorProject } from "./projectTypes";
 import type {
   PromptEnhancementRequest,
   PromptEnhancementResponse,
 } from "../../services/promptEnhancement";
 import { ContextMenu, Dialog, OverlayPortal, useOverlayZIndex } from "../../ui/overlay";
-import { TaskEditorDialog } from "../storyboard/TaskEditorDialog";
-import { updateTaskComposerFields } from "../storyboard/storyboardMutations";
+import { TaskEditorDialog } from "../task/TaskEditorDialog";
+import { updateTaskComposerFields } from "../task/storyboardMutations";
 import {
   BatchPromptDialog,
   BatchVideoDialog,

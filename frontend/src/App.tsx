@@ -17,12 +17,12 @@ import {
   mapWorkspaceProject,
   taskSaveInput,
 } from "./gateways/projectGatewayMapper";
-import { ProjectWorkspace } from "./features/projects/ProjectWorkspace";
-import { CreateProjectDialog, ProjectHome } from "./features/projects/ProjectHome";
-import type { DirectorProject } from "./features/projects/projectTypes";
-import { BridgeStatus } from "./features/projects/BridgeStatus";
+import { ProjectWorkspace } from "./components/project/ProjectWorkspace";
+import { CreateProjectDialog, ProjectHome } from "./components/project/ProjectHome";
+import type { DirectorProject } from "./components/project/projectTypes";
+import { BridgeStatus } from "./components/project/BridgeStatus";
 
-import { GlobalStatusbar } from "./features/projects/GlobalStatusbar";
+import { GlobalStatusbar } from "./components/project/GlobalStatusbar";
 
 type AppProps = {
   gateway?: ProjectGateway;

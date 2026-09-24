@@ -1,6 +1,6 @@
 # ShotMill 前端 UI 微调指南
 
-更新：2026-09-23。面向熟悉 HTML + CSS、希望直接调整当前界面的开发者。
+更新：2026-09-24。面向熟悉 HTML + CSS、希望直接调整当前界面的开发者。
 
 ## 1. 先看这几个文件
 
@@ -8,25 +8,45 @@
 
 | 想调整什么 | 页面结构（相对于 `frontend/src/`） | 主要 CSS（同样相对于 `frontend/src/`） |
 | --- | --- | --- |
-| 首页、项目文件夹、新建项目弹窗 | `features/projects/ProjectHome.tsx` | `styles/project-workspace.css`、`styles/application-settings.css` 中的 `.project-simple-dialog` |
-| 工作台顶部、任务列表/卡片、右侧详情 | `features/projects/ProjectWorkspace.tsx` | `styles/project-workspace.css` |
-| 底部状态栏、运行中心 | `features/projects/GlobalStatusbar.tsx`、`RuntimeCenter.tsx` | `styles/project-workspace.css` |
-| 任务编辑弹窗 | `features/storyboard/TaskEditorDialog.tsx` | 见下方“任务编辑器样式顺序” |
-| 提示词可视化内容、标签 | `components/H3PromptEditor.tsx` | `styles/v0.6-project-prompt.css`、`styles/v0.9-flex-layout-fixes.css` |
-| 文本提示词、输入 @ 后的素材菜单 | `components/PromptAssetEditor.tsx` | `styles/prompt-asset-editor.css`、任务编辑器样式 |
-| 工作流素材槽位 | `features/storyboard/WorkflowInputSlots.tsx` | 同目录 `WorkflowInputSlots.css` |
-| 项目配置、项目素材列表 | `features/projects/ProjectConfigPanel.tsx` | `styles/project-config.css` |
-| 项目封面编辑 | `features/projects/ProjectCoverEditor.tsx` | `styles/project-config.css` |
-| 设置中的 AI / 通信 / 工作流 / 外观 | `features/settings/ApplicationSettingsPanel.tsx` | `styles/application-settings.css` |
-| 配色编辑区 | `features/settings/ThemePaletteEditor.tsx` | 同目录 `ThemePaletteEditor.css` |
-| 视频播放器 | `features/projects/TaskResultPlayer.tsx` | `styles/v0.6-project-prompt.css` 中 `.task-player-*` |
-| 新结果贴纸、风险贴纸、生成进度 | `features/projects/TaskNewResults.tsx`、`TaskRiskSticker.tsx`、`GenerationProgress.tsx` | `styles/project-workspace.css` |
+| 项目首页 | `components/project/ProjectHome.tsx`、`ProjectCoverEditor.tsx` | `styles/project-workspace.css`、`styles/project-config.css` |
+| 项目工作台 | `components/project/ProjectWorkspace.tsx` | `styles/project-workspace.css`、`components/project/TaskCollection.css` |
+| 任务卡片、任务列表、任务缩略图 | `components/project/TaskCollection.css`、`TaskPreview.tsx` | `TaskCollection.css`、`TaskPreview.css` |
+| 任务编辑弹窗 | `components/task/TaskEditorDialog.tsx`、`WorkflowInputSlots.tsx` | 见下方“任务编辑器样式顺序” |
+| 提示词编辑器 | `components/prompt/H3PromptEditor.tsx`、`PromptAssetEditor.tsx` | `styles/task-editor-prompt.css`、`styles/prompt-asset-editor.css` |
+| 项目配置和项目资产 | `components/project/ProjectConfigPanel.tsx` | `styles/project-config.css` |
+| 设置页面 | `components/settings/ApplicationSettingsPanel.tsx`、`ThemePaletteEditor.tsx` | `styles/application-settings.css`、同目录 `ThemePaletteEditor.css` |
+| 视频播放器 | `components/project/TaskResultPlayer.tsx` | 同目录 `TaskResultPlayer.css` |
+| 运行中心和底部状态栏 | `components/project/RuntimeCenter.tsx`、`GlobalStatusbar.tsx` | `styles/project-workspace.css` |
+| 结果贴纸、风险贴纸、生成进度 | `components/project/TaskNewResults.tsx`、`TaskRiskSticker.tsx`、`GenerationProgress.tsx` | `styles/project-workspace.css` |
 | 全局颜色、字体、圆角、阴影 | `ui/theme.ts` + `styles/tokens.css` | `styles/tokens.css` |
-| 弹窗外框、遮罩、右键菜单 | `ui/overlay/` | `styles/overlays.css`，紧凑尺寸另见 `styles/v0.9-compact-density.css` |
+| 弹窗外框、遮罩、右键菜单 | `ui/overlay/` | `styles/overlays.css`、`styles/layout-density.css` |
 | 按钮、输入框、复选框、两类标签 | `ui/primitives/` | `ui/primitives/styles/`，入口为 `ui/primitives/style.css` |
 | 下拉、滑块、区间滑块、开关 | `ui/Select.tsx`、`Slider.tsx`、`RangeSlider.tsx`、`BoolSwitch.tsx` | 各自同名 `.css` |
 
 `ProjectWorkspaceV2.tsx` 已整理为 `ProjectWorkspace.tsx`。不要寻找另一套旧工作台。
+
+## 1.1 当前目录职责
+
+```text
+src/
+  components/
+    project/      项目首页、工作台、任务集合、运行中心
+    task/         任务编辑器、素材槽位、任务辅助逻辑
+    prompt/       H3 可视化提示词和文本提示词编辑器
+    settings/     应用设置、工作流和外观设置
+    assets/       资产分类等业务小组件
+  ui/
+    branding/     品牌 Logo 和占位图
+    overlay/      Dialog、Popover、ContextMenu
+    primitives/   Button、Select、SegmentedControl 等基础控件
+  domain/         核心领域类型和纯领域逻辑
+  gateways/       Gateway、Mapper、运行事件
+  mock/           测试和开发模式数据
+  services/       应用服务
+  styles/         全局样式和跨组件样式
+```
+
+找文件时先按大组件进入 `components/`，不要再寻找旧的 `features/` 目录。只有跨业务复用的基础控件放在 `ui/`；数据接口放在 `gateways/`，开发和测试数据放在 `mock/`。
 
 ## 2. 启动与预览
 
@@ -86,15 +106,15 @@ Set-Location G:\AIGC\TerryShotMill
 index.html
 └─ src/main.tsx：加载样式、初始化主题、挂载 React
    └─ src/App.tsx：获取数据、切换首页/工作台、连接保存操作
-      ├─ ProjectHome.tsx：项目首页 + 新建项目弹窗
-      ├─ ProjectWorkspace.tsx：列表/卡片 + 只读详情 + 各业务弹窗
-      │  ├─ TaskEditorDialog.tsx
-      │  ├─ ProjectConfigPanel.tsx
-      │  └─ TaskResultPlayer.tsx
-      └─ GlobalStatusbar.tsx：底部状态、设置、运行中心
+      ├─ components/project/ProjectHome.tsx：项目首页 + 新建项目弹窗
+      ├─ components/project/ProjectWorkspace.tsx：列表/卡片 + 只读详情 + 各业务弹窗
+      │  ├─ components/task/TaskEditorDialog.tsx
+      │  ├─ components/project/ProjectConfigPanel.tsx
+      │  └─ components/project/TaskResultPlayer.tsx
+      └─ components/project/GlobalStatusbar.tsx：底部状态、设置、运行中心
 ```
 
-`features/storyboard/` 这个目录名仍保留，但当前主要是任务编辑器、素材槽位和任务辅助逻辑，并不表示还存在独立故事板页面。
+当前不存在独立的 `features/` 页面层，也不应恢复“故事板 / 生产 / 素材”一级导航。
 
 弹窗通过 Portal 挂载，实际 DOM 不一定在你看到的业务父元素内部。不要靠 `.project-workspace-page .sm-dialog` 这样的祖先选择器控制弹窗；使用弹窗自身类名或已有的 `:has(.simple-task-editor)` 等作用域。
 
@@ -110,39 +130,36 @@ index.html
 
 ### 任务编辑器样式顺序
 
-这些文件仍有实际作用，版本号不代表废弃。相同优先级下，后加载规则覆盖前面的规则：
+这些文件仍有实际作用。相同优先级下，后加载规则覆盖前面的规则：
 
 | 顺序 | 文件（`src/styles/`） | 主要职责 |
 | --- | --- | --- |
 | 1 | `simple-editor.css` | 编辑窗框架、上方提示词区、下方折叠参数区、底部操作 |
-| 2 | `task-editor-polish.css` | 标题、底部操作、提示词来源状态 |
-| 3 | `v0.6-project-prompt.css` | H3 标签、视频播放器、任务导航确认 |
-| 4 | `v0.7-controls-polish.css` | 承接时间轴及区间控件宿主 |
-| 5 | `v0.8-ai-enhance.css` | AI 历史、空状态、增强操作区 |
-| 6 | `v0.9-flex-layout-fixes.css` | 提示词区的弹性尺寸、素材菜单图片 |
-| 7 | `v0.9-compact-density.css` | 紧凑弹窗尺寸、提示词区间距 |
-| 8 | `task-editor-feedback.css` | 当前提示词标题与 AI 空状态的最终布局 |
+| 2 | `task-editor-header.css` | 标题、底部操作、提示词来源状态 |
+| 3 | `task-editor-prompt.css` | H3 标签、任务导航确认 |
+| 4 | `task-editor-controls.css` | 承接时间轴及区间控件宿主 |
+| 5 | `prompt-enhancement.css` | AI 历史、空状态、增强操作区 |
+| 6 | `layout-resilience.css` | 提示词区的弹性尺寸、素材菜单图片 |
+| 7 | `layout-density.css` | 紧凑弹窗尺寸、提示词区间距 |
+| 8 | `task-editor-alignment.css` | 当前提示词标题与 AI 空状态的最终布局 |
 | 9 | `batch-review.css` | 批量弹窗、任务前后导航等 |
 
-目前这部分还保留分层覆盖，不能假定只改 `simple-editor.css` 就一定生效。修改前用 Computed 确认最终来源。本次没有为了清理文件名而改变这些仍生效的规则顺序。
+目前这部分仍保留分层覆盖，不能假定只改 `simple-editor.css` 就一定生效。修改前用 Computed 确认最终来源。不要新增 `fix`、`polish`、`feedback`、`final` 或版本号样式文件；应修改现有职责文件，或将组件专属样式放到组件旁边。
 
-### 常用工作台选择器
+### 常用工作台样式文件
 
-在 `project-workspace.css` 中直接搜索：
+按区域直接打开对应文件：
 
-| 区域 | 选择器 |
+| 区域 | 文件 |
 | --- | --- |
-| 顶栏 | `.project-workspace-topbar` |
-| 左右区域分配 | `.project-workspace-body` |
-| 任务主区 | `.project-task-column`、`.project-task-area` |
-| 列表行 | `.task-list-row`、`.task-list-copy`、`.task-list-params` |
-| 卡片网格 | `.task-card-view`、`.task-card-item` |
-| 任务缩略图 | `.task-preview` |
-| 右侧详情 | `.project-task-info`、`.project-info-block` |
-| 底栏 | `.project-workspace-statusbar` |
-| 首页文件夹 | `.project-folder-grid`、`.project-folder-card`、`.project-folder-front` |
+| 顶栏、左右区域、右侧详情、底栏、首页文件夹 | `styles/project-workspace.css` |
+| 任务列表、任务卡片、创建卡 | `components/project/TaskCollection.css` |
+| 任务缩略图 | `components/project/TaskPreview.css` |
+| 播放器 | `components/project/TaskResultPlayer.css` |
+| 项目配置 | `styles/project-config.css` |
+| 设置页面 | `styles/application-settings.css` |
 
-例如要让任务行更紧凑，先改现有 `.task-list-row` 的 `padding`、`gap` 和相关预览尺寸，不要先缩小所有文字。
+例如要让任务列表更紧凑，直接修改 `components/project/TaskCollection.css`；不要再把任务卡片规则追加回 `project-workspace.css`。
 
 ## 6. 主题：五个输入颜色，派生全站颜色
 
@@ -232,7 +249,7 @@ node scripts/capture-dev-ui.mjs
 - 移除旧 `app.css`、`storyboard.css`、`director.css`、`director-dialogs.css`；从旧 `composer.css` 提取仍用到的素材引用菜单样式。
 - 移除无调用的 StatusPill、旧全屏预览、旧浮层 Tooltip、PortalSelect 兼容包装；浮层回归测试直接验证当前 Select。
 - 移除未被依赖声明或安装脚本引用的 UI 包归档和补丁；更新截图脚本，移除绑定旧演示数据的临时响应式截图脚本。
-- 正式项目视图类型移到 `features/projects/projectTypes.ts`，不再放在 mock 文件中。
+- 正式项目视图类型位于 `components/project/projectTypes.ts`，不再放在 mock 文件中。
 
 `mock/`、`mockProjectGateway.ts`、`storyboardExecution.ts` 等仍被有效单元测试引用的辅助实现保留。不要把“生产页面不引用”直接等同于“整个工程未引用”。后端领域、任务历史、资产文件和项目数据不在本次清理范围内。
 

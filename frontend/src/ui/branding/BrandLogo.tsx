@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import mark from "../assets/brand-mark.svg";
+import mark from "../../assets/brand-mark.svg";
 import "./BrandLogo.css";
 
 type Props = { size?: number; background?: string; ink?: "black" | "white" };

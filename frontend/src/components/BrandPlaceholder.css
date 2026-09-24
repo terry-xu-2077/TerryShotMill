@@ -1,3 +1,0 @@
-.brand-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; container-type: size; }
-.brand-placeholder-disc { width: min(100cqw, 100cqh); aspect-ratio: 1; display: grid; place-items: center; opacity: var(--placeholder-opacity, .2); }
-.brand-placeholder-disc > span { width: var(--placeholder-mark-size, 65%); aspect-ratio: 248.41 / 162.99; background: var(--placeholder-ink, currentColor); mask-size: contain; mask-position: center; mask-repeat: no-repeat; }

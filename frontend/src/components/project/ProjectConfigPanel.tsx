@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Checkbox, SegmentedControl, SlidingTabs, TextField } from "../../ui/primitives";
 
 import type { ProjectAsset } from "../../domain/storyboard";
-import type { DirectorProject } from "../../features/projects/projectTypes";
+import type { DirectorProject } from "./projectTypes";
 import { Dialog } from "../../ui/overlay";
 import type { ProjectCoverSelection } from "../../gateways/projectGateway";
 import { ProjectCoverEditor } from "./ProjectCoverEditor";
