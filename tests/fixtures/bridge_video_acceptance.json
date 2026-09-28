@@ -1,0 +1,8 @@
+{
+  "prompt": {
+    "1": {"class_type": "EmptyImage", "inputs": {"width": 32, "height": 32, "batch_size": 8, "color": 255}},
+    "2": {"class_type": "CreateVideo", "inputs": {"images": ["1", 0], "fps": 8}},
+    "3": {"class_type": "TerryFlowBridgeOut", "inputs": {"*": ["2", 0]}},
+    "4": {"class_type": "SaveVideo", "inputs": {"video": ["3", 0], "filename_prefix": "acceptance", "format": "mp4", "format.codec": "auto"}}
+  }
+}

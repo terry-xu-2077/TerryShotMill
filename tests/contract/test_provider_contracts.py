@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 
@@ -257,6 +258,7 @@ def test_comfyui_optional_asset_slots_are_pruned_with_dangling_inputs(
 def test_comfyui_provider_uploads_assets_submits_and_collects_video(
     tmp_path: Path,
     bridge_snapshot,
+    bridge_health,
 ) -> None:
     media_path = tmp_path / "frame.png"
     media_path.write_bytes(b"image-bytes")
@@ -291,15 +293,17 @@ def test_comfyui_provider_uploads_assets_submits_and_collects_video(
     submitted: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/shotmill/v1/workflows/validate":
+        if request.url.path == "/terryflow/v1/health":
+            return httpx.Response(200, json=bridge_health)
+        if request.url.path == "/terryflow/v1/workflows/validate":
             assert "assetValues" not in json.loads(request.content)
             return httpx.Response(200, json={"ok": True})
-        if request.url.path == "/shotmill/v1/workflows/snapshot":
+        if request.url.path == "/terryflow/v1/workflows/snapshot":
             assert request.url.params["workflowId"] == "workflow.json"
             return httpx.Response(200, json={"snapshot": bridge_snapshot(
                 "workflow.json", [{"name": "image", "direction": "input", "type": "IMAGE"}],
             )})
-        if request.url.path == "/shotmill/v1/assets":
+        if request.url.path == "/terryflow/v1/assets":
             assert b"image-bytes" in request.content
             return httpx.Response(
                 200,
@@ -308,10 +312,11 @@ def test_comfyui_provider_uploads_assets_submits_and_collects_video(
                     "asset": {
                         "assetId": "asset-1",
                         "relativePath": "shotmill/assets/asset-1/asset-1.png",
+                        "sha256": hashlib.sha256(b"image-bytes").hexdigest(),
                     },
                 },
             )
-        if request.url.path == "/shotmill/v1/workflows":
+        if request.url.path == "/terryflow/v1/workflows":
             return httpx.Response(
                 200,
                 json={
@@ -325,11 +330,11 @@ def test_comfyui_provider_uploads_assets_submits_and_collects_video(
                     ],
                 },
             )
-        if request.url.path == "/shotmill/v1/jobs":
+        if request.url.path == "/terryflow/v1/jobs":
             payload = json.loads(request.content)
             submitted.update(payload)
             return httpx.Response(200, json={"jobId": "job-1", "promptId": "prompt-1"})
-        if request.url.path == "/shotmill/v1/jobs/job-1":
+        if request.url.path == "/terryflow/v1/jobs/job-1":
             return httpx.Response(
                 200,
                 json={
@@ -345,11 +350,12 @@ def test_comfyui_provider_uploads_assets_submits_and_collects_video(
                     ],
                 },
             )
-        if request.url.path == "/shotmill/v1/results/job-1/files/0":
+        if request.url.path == "/terryflow/v1/results/job-1/files/0":
             return httpx.Response(
                 200,
                 content=b"video-bytes",
-                headers={"content-type": "video/mp4"},
+                headers={"content-type": "video/mp4",
+                         "x-content-sha256": hashlib.sha256(b"video-bytes").hexdigest()},
             )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
@@ -386,5 +392,6 @@ def test_comfyui_provider_uploads_assets_submits_and_collects_video(
     assert submitted["params"] == {"durationSeconds": 6}
     assert submitted["assetValues"]["<Picture 1>"] == "shotmill/assets/asset-1/asset-1.png"
     assert response.provider_job_id == "prompt-1"
-    assert response.outputs[0].content == b"video-bytes"
+    assert response.outputs[0].content.read() == b"video-bytes"
+    response.close()
     assert response.outputs[0].content_type == "video/mp4"

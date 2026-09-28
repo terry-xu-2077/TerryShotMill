@@ -51,6 +51,9 @@ import { useTaskViewMode } from "./useTaskViewMode";
 import { ThemeSwitch } from "../../ui/ThemeSwitch";
 import { TaskResultPlayer } from "./TaskResultPlayer";
 import { formatElapsed, taskTimeSummary, useLiveTaskTimings } from "./taskTiming";
+import type { LifecycleGateway } from "../../gateways/lifecycleGateway";
+import { TaskLifecycleDialog, type TaskLifecycleIntent } from "./TaskLifecycleDialog";
+import { TaskLifecycleBrowser } from "./TaskLifecycleBrowser";
 
 
 
@@ -154,8 +157,9 @@ function makeDraftTask(snapshot: StoryboardDomainSnapshot): GenerationTask {
   };
 }
 
-function TaskInfoPanel({ history, snapshot, task, review, onPlayResult, timing, actions, newKinds, warnings, statusNote }: {
+function TaskInfoPanel({ history, snapshot, task, review, onPlayResult, timing, actions, newKinds, warnings, statusNote, referenceWarning }: {
   statusNote?: string | null;
+  referenceWarning?: boolean;
   newKinds: ("video" | "prompt")[];
   warnings: string[];
   actions?: ReactNode;
@@ -175,7 +179,7 @@ function TaskInfoPanel({ history, snapshot, task, review, onPlayResult, timing, 
     <aside className="project-task-info" aria-label="任务信息">
       <div className="task-info-preview">
       {result ? <button type="button" className="task-result-preview-button" onClick={() => onPlayResult(result, task)} aria-label={`播放任务 ${task.title} 的生成结果`}><TaskPreview previewUrl={preview} /><span className="task-result-play"><Play size={25} fill="currentColor" /></span></button> : <TaskPreview previewUrl={preview} />}
-        <div className="task-info-notices"><TaskNewResults kinds={newKinds} /><TaskRiskSticker key={task.id} warnings={warnings} /></div>
+        <div className="task-info-notices"><TaskNewResults kinds={newKinds} /><TaskRiskSticker tooltipOnly={referenceWarning} key={task.id} warnings={warnings} /></div>
       </div>
       {actions}
       {history}
@@ -200,6 +204,8 @@ function TaskInfoPanel({ history, snapshot, task, review, onPlayResult, timing, 
 }
 
 export function ProjectWorkspace({
+  lifecycleGateway,
+  onLifecycleChanged,
   bridgeStatus,
   project,
   promptReviewItems,
@@ -219,6 +225,8 @@ export function ProjectWorkspace({
   applicationSettings,
   onRefreshComfyUIWorkflows,
 }: {
+  lifecycleGateway?: LifecycleGateway;
+  onLifecycleChanged?: () => Promise<void>;
   bridgeStatus?: ReactNode;
   project: DirectorProject;
   promptReviewItems: PromptReviewItem[];
@@ -247,6 +255,8 @@ export function ProjectWorkspace({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [batchSelectedTaskIds, setBatchSelectedTaskIds] = useState<Set<string>>(() => new Set());
   const [managingTasks, setManagingTasks] = useState(false);
+  const [lifecycleIntent, setLifecycleIntent] = useState<TaskLifecycleIntent | null>(null);
+  const [lifecycleBrowser, setLifecycleBrowser] = useState<"archived" | "trash" | null>(null);
   const [batchAnchorIndex, setBatchAnchorIndex] = useState<number | null>(null);
   const [batchPromptOpen, setBatchPromptOpen] = useState(false);
   const [batchPromptBusy, setBatchPromptBusy] = useState(false);
@@ -478,8 +488,6 @@ export function ProjectWorkspace({
         return;
       }
       setBatchVideoOpen(false);
-      setBatchSelectedTaskIds(new Set());
-      setBatchAnchorIndex(null);
     } catch { setVideoError("生成提交未确认，请取消并检查任务状态后重试。"); setBatchVideoOpen(true); }
     finally { setBatchVideoSubmitting(false); }
   };
@@ -507,6 +515,10 @@ export function ProjectWorkspace({
           <Button variant="accent" disabled={!actionIds.length || batchVideoLoading || batchVideoSubmitting} onClick={() => void openVideoBatch(actionIds, "queue")}>{batchVideoLoading || batchVideoSubmitting ? <><LoaderCircle className="task-stop-spinner" size={15} />正在提交</> : <><Play size={15} />生成视频</>}</Button>
         </div>
         <div className="task-action-group is-selection" role="group" aria-label="选择操作">
+          {lifecycleGateway && <>
+            <Button disabled={!actionIds.length} onClick={() => setLifecycleIntent({ action: "archive", tasks: tasks.filter(task => actionIds.includes(task.id)) })}>归档</Button>
+            <Button disabled={!actionIds.length} onClick={() => setLifecycleIntent({ action: "trash", tasks: tasks.filter(task => actionIds.includes(task.id)) })}>删除</Button>
+          </>}
           <Button disabled={!tasks.length || actionIds.length === tasks.length} onClick={() => setBatchSelectedTaskIds(new Set(tasks.map(task => task.id)))}>全选</Button>
           <Button disabled={!actionIds.length} onClick={clearBatchSelection}>取消选择</Button>
         </div>
@@ -535,6 +547,7 @@ export function ProjectWorkspace({
         <section className="project-task-area" aria-label="任务区域">
           <header className="task-collection-heading">
             <h2>任务</h2>
+            {lifecycleGateway && <Button onClick={() => setLifecycleBrowser("archived")}>已归档</Button>}
             <div className="task-view-control">
               <Button size="icon" aria-label={viewMode === "list" ? "切换为卡片视图" : "切换为表格视图"} title={viewMode === "list" ? "切换为卡片视图" : "切换为表格视图"} aria-pressed={viewMode === "card"} onClick={() => setViewMode(viewMode === "list" ? "card" : "list")}>
                 <span className={`task-view-glyph is-${viewMode}`} aria-hidden="true"><span className="task-view-list-icon"><List size={16} strokeWidth={1.6} /></span><span className="task-view-grid-icon"><Grid2X2 size={16} strokeWidth={1.6} /></span></span>
@@ -554,7 +567,7 @@ export function ProjectWorkspace({
                 const reviewed = reviews.get(task.id)?.promptReviewStatus === "approved";
                 const playable = Boolean(taskResult(project.snapshot, task)?.videoUrl);
                 const elapsed = taskTimeSummary(timings[task.id]);
-                return <ContextMenu key={task.id} actions={[{ label: task.state === "queued" || task.state === "running" ? "查看任务" : "编辑任务", onSelect: () => openExistingEditor(task.id) }]}><div className="task-collection-item is-list">{managingTasks && <div className="task-selection-control"><Checkbox checked={batchSelected} ariaLabel={`选择任务 · ${task.title}`} onChange={(checked) => toggleBatchTask(task.id, index, checked)} /></div>}<div className="task-item-content"><button type="button" className={`task-list-row ${selectedTaskId === task.id ? "is-selected" : ""} ${batchSelected ? "is-batch-selected" : ""}`} onClick={(event) => handleTaskSelection(event, task.id, index)} onDoubleClick={() => openExistingEditor(task.id)}><TaskPreview previewUrl={taskPreview(project.snapshot, task)} compact /><div className="task-list-copy"><div className="task-list-heading"><strong>#{index + 1} {task.title}</strong>{!newKinds.length && !warnings.length && <span className="task-plain-status"><i className={`workspace-status-dot is-${displayTaskStatus(task)}`} />{project.taskGenerationNotes?.[task.id] ?? taskStatusLabel[displayTaskStatus(task)]}</span>}</div><span className="task-list-params">{generationSummary(task)}</span></div><div className="task-list-stats"><span>{task.assetBindings.length} 个资产 · {versions > 0 ? `${versions} 个版本` : "无结果"} · {reviewed ? "已检查" : "待检查"}</span>{elapsed && <span className="task-elapsed">{elapsed}</span>}</div><TaskNewResults kinds={newKinds} /><TaskProgressLight timing={timings[task.id]} /></button><TaskRiskSticker warnings={warnings} />{playable && <button type="button" className="task-thumbnail-play" aria-label={`播放视频 · ${task.title}`} onClick={() => playTask(task)}><Play size={20} fill="currentColor" /></button>}</div></div></ContextMenu>;
+                return <ContextMenu key={task.id} actions={[{ label: task.state === "queued" || task.state === "running" ? "查看任务" : "编辑任务", onSelect: () => openExistingEditor(task.id) }]}><div className="task-collection-item is-list">{managingTasks && <div className="task-selection-control"><Checkbox checked={batchSelected} ariaLabel={`选择任务 · ${task.title}`} onChange={(checked) => toggleBatchTask(task.id, index, checked)} /></div>}<div className="task-item-content"><button type="button" className={`task-list-row ${selectedTaskId === task.id ? "is-selected" : ""} ${batchSelected ? "is-batch-selected" : ""}`} onClick={(event) => handleTaskSelection(event, task.id, index)} onDoubleClick={() => openExistingEditor(task.id)}><TaskPreview previewUrl={taskPreview(project.snapshot, task)} compact /><div className="task-list-copy"><div className="task-list-heading"><strong>#{index + 1} {task.title}</strong>{!newKinds.length && !warnings.length && <span className="task-plain-status"><i className={`workspace-status-dot is-${displayTaskStatus(task)}`} />{project.taskGenerationNotes?.[task.id] ?? taskStatusLabel[displayTaskStatus(task)]}</span>}</div><span className="task-list-params">{generationSummary(task)}</span></div><div className="task-list-stats"><span>{task.assetBindings.length} 个资产 · {versions > 0 ? `${versions} 个版本` : "无结果"} · {reviewed ? "已检查" : "待检查"}</span>{elapsed && <span className="task-elapsed">{elapsed}</span>}</div><TaskNewResults kinds={newKinds} /><TaskProgressLight timing={timings[task.id]} /></button><TaskRiskSticker tooltipOnly={project.taskMissingReferences?.[task.id]} warnings={warnings} />{playable && <button type="button" className="task-thumbnail-play" aria-label={`播放视频 · ${task.title}`} onClick={() => playTask(task)}><Play size={20} fill="currentColor" /></button>}</div></div></ContextMenu>;
               })}
             </div>
           ) : (
@@ -568,7 +581,7 @@ export function ProjectWorkspace({
                 const reviewed = reviews.get(task.id)?.promptReviewStatus === "approved";
                 const playable = Boolean(taskResult(project.snapshot, task)?.videoUrl);
                 const elapsed = taskTimeSummary(timings[task.id]);
-                return <ContextMenu key={task.id} actions={[{ label: task.state === "queued" || task.state === "running" ? "查看任务" : "编辑任务", onSelect: () => openExistingEditor(task.id) }]}><div className="task-collection-item is-card">{managingTasks && <div className="task-selection-control"><Checkbox variant="media" checked={batchSelected} ariaLabel={`选择任务 · ${task.title}`} onChange={(checked) => toggleBatchTask(task.id, index, checked)} /></div>}<div className="task-item-content"><button type="button" className={`task-card-item ${selectedTaskId === task.id ? "is-selected" : ""} ${batchSelected ? "is-batch-selected" : ""}`} onClick={(event) => handleTaskSelection(event, task.id, index)} onDoubleClick={() => openExistingEditor(task.id)}><div className="task-card-preview-wrap"><TaskPreview previewUrl={taskPreview(project.snapshot, task)} /><TaskNewResults kinds={newKinds} /></div><div className="task-card-heading"><strong>#{index + 1} {task.title}</strong>{!newKinds.length && !warnings.length && <span className="task-plain-status"><i className={`workspace-status-dot is-${displayTaskStatus(task)}`} />{project.taskGenerationNotes?.[task.id] ?? taskStatusLabel[displayTaskStatus(task)]}</span>}</div><p>{generationSummary(task)}</p><footer>{reviewed ? "已检查" : "待检查"} · 使用{task.assetBindings.length}个资产 · {versions > 0 ? `${versions}个生成版本` : "无生成结果"}{elapsed && <div className="task-elapsed">{elapsed}</div>}</footer><TaskProgressLight timing={timings[task.id]} /></button><TaskRiskSticker warnings={warnings} />{playable && <button type="button" className="task-thumbnail-play" aria-label={`播放视频 · ${task.title}`} onClick={() => playTask(task)}><Play size={20} fill="currentColor" /></button>}</div></div></ContextMenu>;
+                return <ContextMenu key={task.id} actions={[{ label: task.state === "queued" || task.state === "running" ? "查看任务" : "编辑任务", onSelect: () => openExistingEditor(task.id) }]}><div className="task-collection-item is-card">{managingTasks && <div className="task-selection-control"><Checkbox variant="media" checked={batchSelected} ariaLabel={`选择任务 · ${task.title}`} onChange={(checked) => toggleBatchTask(task.id, index, checked)} /></div>}<div className="task-item-content"><button type="button" className={`task-card-item ${selectedTaskId === task.id ? "is-selected" : ""} ${batchSelected ? "is-batch-selected" : ""}`} onClick={(event) => handleTaskSelection(event, task.id, index)} onDoubleClick={() => openExistingEditor(task.id)}><div className="task-card-preview-wrap"><TaskPreview previewUrl={taskPreview(project.snapshot, task)} /><TaskNewResults kinds={newKinds} /></div><div className="task-card-heading"><strong>#{index + 1} {task.title}</strong>{!newKinds.length && !warnings.length && <span className="task-plain-status"><i className={`workspace-status-dot is-${displayTaskStatus(task)}`} />{project.taskGenerationNotes?.[task.id] ?? taskStatusLabel[displayTaskStatus(task)]}</span>}</div><p>{generationSummary(task)}</p><footer>{reviewed ? "已检查" : "待检查"} · 使用{task.assetBindings.length}个资产 · {versions > 0 ? `${versions}个生成版本` : "无生成结果"}{elapsed && <div className="task-elapsed">{elapsed}</div>}</footer><TaskProgressLight timing={timings[task.id]} /></button><TaskRiskSticker tooltipOnly={project.taskMissingReferences?.[task.id]} warnings={warnings} />{playable && <button type="button" className="task-thumbnail-play" aria-label={`播放视频 · ${task.title}`} onClick={() => playTask(task)}><Play size={20} fill="currentColor" /></button>}</div></div></ContextMenu>;
               })}
             </div>
           )}
@@ -576,11 +589,14 @@ export function ProjectWorkspace({
         {(managingTasks || actionIds.length > 0) && <OverlayPortal><div className={`task-action-dock${!managingTasks ? " is-mobile-single" : ""}`} style={actionLayer}>{taskActions}</div></OverlayPortal>}
         </div>
 
-        <TaskInfoPanel history={selectedTask ? <VideoVersionSelect key={selectedTask.id} projectId={project.id} taskId={selectedTask.id} resultId={selectedTask.primaryResultId} onChanged={onVideoVersionChanged} /> : undefined} statusNote={selectedTask ? project.taskGenerationNotes?.[selectedTask.id] : undefined} newKinds={unread(selectedTask ? project.taskNewResults?.[selectedTask.id] : undefined)} warnings={selectedTask ? project.taskWarnings?.[selectedTask.id] ?? [] : []} actions={!managingTasks && actionIds.length === 1 ? taskActions : undefined} snapshot={project.snapshot} task={selectedTask} timing={selectedTask ? timings[selectedTask.id] : undefined} review={selectedTask ? reviews.get(selectedTask.id) : undefined} onPlayResult={(result, task) => setPlaying({ result, task })} />
+        <TaskInfoPanel referenceWarning={selectedTask ? project.taskMissingReferences?.[selectedTask.id] : false} history={selectedTask ? <VideoVersionSelect key={selectedTask.id} projectId={project.id} taskId={selectedTask.id} resultId={selectedTask.primaryResultId} onChanged={onVideoVersionChanged} /> : undefined} statusNote={selectedTask ? project.taskGenerationNotes?.[selectedTask.id] : undefined} newKinds={unread(selectedTask ? project.taskNewResults?.[selectedTask.id] : undefined)} warnings={selectedTask ? project.taskWarnings?.[selectedTask.id] ?? [] : []} actions={!managingTasks && actionIds.length === 1 ? taskActions : undefined} snapshot={project.snapshot} task={selectedTask} timing={selectedTask ? timings[selectedTask.id] : undefined} review={selectedTask ? reviews.get(selectedTask.id) : undefined} onPlayResult={(result, task) => setPlaying({ result, task })} />
       </div>
 
 
       {stopError && <Dialog open icon="warning" title="停止任务失败" onClose={() => setStopError("")}><p>{stopError}</p><Button onClick={() => setStopError("")}>知道了</Button></Dialog>}
+      {lifecycleIntent && lifecycleGateway && onLifecycleChanged && <TaskLifecycleDialog
+        projectId={project.id} intent={lifecycleIntent} gateway={lifecycleGateway}
+        onClose={() => setLifecycleIntent(null)} onChanged={onLifecycleChanged} />}
       <Dialog open={!!stopConfirm} icon="warning" title="停止任务" onClose={() => setStopConfirm(null)}><p>确定停止这个任务吗？本次未完成的生成将中止，已有结果会保留。</p><div className="task-stop-confirm-actions"><Button onClick={() => setStopConfirm(null)}>继续运行</Button><Button variant="accent" onClick={() => void confirmStop()}>确认停止</Button></div></Dialog>
       <TaskEditorDialog
         readOnly={!draftTask && (editingTaskState === "queued" || editingTaskState === "running")}
@@ -600,8 +616,11 @@ export function ProjectWorkspace({
       <BatchPromptDialog aiLabel={applicationSettings?.promptAiLabel} open={batchPromptOpen} taskCount={promptRequestIds.length} eligibility={promptEligibility} loading={promptEligibilityLoading} onRetry={() => void loadPromptEligibility(promptRequestIds)} projectBackgroundAvailable={project.useDescriptionForAiPrompt && Boolean(project.description.trim())} busy={batchPromptBusy} error={batchPromptError} onClose={closePromptBatch} onConfirm={(options) => void submitBatchPromptEnhancement(options)} />
       <BatchVideoDialog open={batchVideoOpen} selectedCount={videoRequestIds.length} title={videoRequestMode === "single" ? "生成当前视频" : "批量生成视频"} error={videoError} eligibility={batchVideoEligibility} loading={batchVideoLoading} submitting={batchVideoSubmitting} onClose={closeVideoBatch} onConfirm={() => void submitVideoBatch()} />
 
-      <ProjectConfigPanel open={projectConfigOpen} project={project} onClose={() => setProjectConfigOpen(false)} onSave={onSaveProjectConfiguration} />
+      <ProjectConfigPanel onOpenTaskTrash={lifecycleGateway ? () => setLifecycleBrowser("trash") : undefined} open={projectConfigOpen} project={project} onClose={() => setProjectConfigOpen(false)} onSave={onSaveProjectConfiguration} />
 
+      {lifecycleBrowser && lifecycleGateway && onLifecycleChanged && <TaskLifecycleBrowser
+        projectId={project.id} initialScope={lifecycleBrowser} gateway={lifecycleGateway}
+        onClose={() => setLifecycleBrowser(null)} onChanged={onLifecycleChanged} />}
       <Dialog open={Boolean(playing)} size="wide" icon="video" title={playing ? `播放结果 · ${playing.task.title}` : "播放结果"} onClose={() => setPlaying(null)}>{playing && <TaskResultPlayer result={playing.result} taskNumber={playing.task.number}
         playlist={tasks.flatMap(task => { const result = task.id === playing.task.id ? playing.result : taskResult(project.snapshot, task); return result?.videoUrl ? [{ result, taskId: task.id, taskNumber: task.number, title: task.title }] : []; })}
         onCurrentChange={entry => { const task = tasks.find(task => task.id === entry.taskId); if (task) setPlaying({ result: entry.result, task }); }}

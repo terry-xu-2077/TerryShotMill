@@ -59,6 +59,7 @@ def asset_preview_url(asset: Asset, storage: MediaStorage) -> str | None:
 
 def map_asset(asset: Asset, storage: MediaStorage) -> ProjectAssetView:
     return ProjectAssetView(
+        provenance=asset.provenance,
         id=asset.id,
         name=asset.name,
         originalFileName=asset.original_filename,
@@ -106,6 +107,8 @@ def map_task_summary(
             duration_seconds=primary.metadata.get("durationSeconds"),
         )
     return TaskSummary(
+        archived_at=task.archived_at,
+        deleted_at=task.deleted_at,
         prompt_source=task.prompt_source.value,
         latest_video_result_id=latest.id if latest else None,
         id=task.id,
@@ -213,6 +216,8 @@ def map_project_summary(
     asset_previews = asset_previews or {}
     cover_url = asset_previews.get(project.cover_asset_id) or cover_url
     return ProjectSummary(
+        archived_at=project.archived_at,
+        deleted_at=project.deleted_at,
         created_at=project.created_at,
         new_results=[{"video": results[0].id} for results in results_by_task.values() if results],
         id=project.id,

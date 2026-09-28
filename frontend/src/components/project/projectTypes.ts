@@ -1,6 +1,8 @@
 import type { StoryboardDomainSnapshot } from "../../domain/storyboard";
 
 export type DirectorProject = {
+  readOnly?: boolean;
+  taskMissingReferences?: Record<string, boolean>;
   taskGenerationNotes?: Record<string, string | null>;
   taskWarnings?: Record<string, string[]>;
   taskNewResults?: Record<string, { video?: string | null; prompt?: string | null }>;
@@ -15,4 +17,3 @@ export type DirectorProject = {
   coverAssetId?: string | null;
   snapshot: StoryboardDomainSnapshot;
 };
-

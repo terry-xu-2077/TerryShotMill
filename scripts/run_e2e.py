@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +59,33 @@ def stop_process(process: subprocess.Popen[bytes]) -> None:
         process.wait(timeout=5)
 
 
+def cleanup_data_root(directory: tempfile.TemporaryDirectory[str]) -> None:
+    # A terminated Windows child can briefly retain its database handle.
+    # Retry only that sharing violation; persistent locks still fail the gate.
+    deadline = time.monotonic() + 2.0
+    while True:
+        try:
+            directory.cleanup()
+            return
+        except PermissionError as error:
+            if (
+                sys.platform != "win32"
+                or getattr(error, "winerror", None) != 32
+                or time.monotonic() >= deadline
+            ):
+                raise
+            time.sleep(0.05)
+
+
+@contextmanager
+def temporary_data_root() -> Iterator[str]:
+    directory = tempfile.TemporaryDirectory(prefix="shotmill-e2e-")
+    try:
+        yield directory.name
+    finally:
+        cleanup_data_root(directory)
+
+
 def main() -> int:
     node = shutil.which("node.exe" if sys.platform == "win32" else "node")
     if not node:
@@ -69,7 +98,7 @@ def main() -> int:
             raise RuntimeError(f"Missing frontend dependency: {required}")
 
     backend_port = available_port()
-    with tempfile.TemporaryDirectory(prefix="shotmill-e2e-") as data_root:
+    with temporary_data_root() as data_root:
         environment = os.environ.copy()
         python_paths = [str(ROOT / "backend"), str(ROOT / "scripts")]
         if environment.get("PYTHONPATH"):

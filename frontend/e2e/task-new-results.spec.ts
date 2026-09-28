@@ -41,6 +41,9 @@ test("new result stickers replace the quiet title-aligned status", async ({ page
   await page.getByRole("button", { name: "切换为卡片视图" }).click();
   await expect(page.locator(".task-card-item").getByRole("img", { name: "新视频结果", exact: true })).toBeVisible();
   await expect(page.locator(".task-card-heading .task-plain-status")).toHaveCount(1);
+  await expect(page.locator('.is-card > .task-selection-control')).toHaveCount(0);
+  await page.getByRole("button", { name: "管理任务", exact: true }).click();
+  await expect(page.locator('.is-card > .task-selection-control')).toHaveCount(3);
   const card = (await page.locator('.task-collection-item.is-card').first().boundingBox())!;
   const selection = (await page.locator('.is-card > .task-selection-control').first().boundingBox())!;
   expect(Math.abs(card.y + card.height - selection.y - selection.height - 14)).toBeLessThan(1);

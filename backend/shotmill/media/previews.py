@@ -16,7 +16,7 @@ def result_with_preview(result: Result, storage: MediaStorage) -> Result:
         return result
     relative = result.video_url[len(prefix):]
     try:
-        duration = video_duration(storage.resolve(result.project_id, relative))
+        duration = video_duration(storage.resolve_read(result.project_id, relative))
     except (ShotMillError, ValueError):
         duration = None
     result = replace(result, metadata={**result.metadata, "durationSeconds": duration})

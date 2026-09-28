@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from shotmill.api.dependencies import ContainerDep
 from shotmill.api.schemas import ProjectCreateRequest, ProjectPatchRequest
+from shotmill.application.lifecycle_service import LifecycleScope
 from shotmill.application.runtime_control import RuntimeControlService
 from shotmill.frontend_adapter.models import (
     ProjectListResponse,
@@ -18,8 +19,8 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 @router.get("", response_model=ProjectListResponse)
-def list_projects(container: ContainerDep) -> ProjectListResponse:
-    return ProjectListResponse(items=container.workspace_query.list_projects())
+def list_projects(container: ContainerDep, scope: LifecycleScope = "active") -> ProjectListResponse:
+    return ProjectListResponse(items=container.workspace_query.list_projects(scope))
 
 
 @router.get("/runtime", response_model=list[ProjectRuntimeView])
@@ -68,8 +69,9 @@ def get_project_settings(
 def get_project_workspace(
     project_id: str,
     container: ContainerDep,
+    scope: LifecycleScope = "active",
 ) -> ProjectWorkspaceView:
-    return container.workspace_query.workspace(project_id)
+    return container.workspace_query.workspace(project_id, scope)
 
 
 class RuntimeActionRequest(BaseModel):

@@ -16,7 +16,7 @@ def previous_video_duration(
         if result.video_url.startswith(prefix):
             try:
                 return video_duration(
-                    storage.resolve(task.project_id, result.video_url[len(prefix) :])
+                    storage.resolve_read(task.project_id, result.video_url[len(prefix) :])
                 )
             except (ShotMillError, ValueError):
                 # The editor remains usable; generation rejects unreadable context separately.

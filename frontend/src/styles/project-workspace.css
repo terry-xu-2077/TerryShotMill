@@ -14,6 +14,7 @@
 .project-home-title h1 > svg { flex-shrink: 0; color: var(--sm-text-muted); }
 .project-home-collection { min-height: 0; overflow-y: auto; padding: 32px max(24px, calc((100% - 1200px) / 2)) 48px; }
 .project-collection-heading, .task-collection-heading { display: flex; align-items: center; gap: 16px; min-height: 32px; margin-bottom: 24px; }
+.project-collection-heading { flex-wrap: wrap; }
 .project-collection-heading > h2, .task-collection-heading > h2 { margin: 0; font-size: 16px; font-weight: 600; }
 :root[data-tc-mode="light"] :is(.project-home-collection, .project-workspace-body) { background: #e5e9ee; }
 .project-home-count { color: var(--sm-text-muted); font-size: 13px; }
@@ -24,7 +25,7 @@
 .project-folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 288px)); align-items: stretch; justify-content: center; gap: 8px 40px; }
 .project-folder-item { position: relative; min-width: 0; width: 100%; max-width: 288px; aspect-ratio: 1; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
 .project-folder-item > .project-folder-card { grid-area: 1 / 1 / 3 / 2; grid-template-rows: subgrid; }
-.project-folder-date { position: absolute; top: -6px; left: 22px; font-size: 8px; line-height: 1.4; opacity: .5; color: var(--folder-ink); }
+.project-folder-date { position: absolute; top: -6px; left: 22px; font-size: 8px; line-height: 1.4; color: var(--folder-ink); }
 .project-folder-tab { min-height: 10px; }
 .project-folder-notices { grid-area: 2 / 1; align-self: start; justify-self: end; display: flex; align-items: start; gap: 5px; margin-right: 14px; position: relative; top: -3px; z-index: 1; pointer-events: none; }
 .project-folder-notices > .task-new-results,
@@ -49,7 +50,7 @@
 :root[data-tc-mode="dark"] .project-folder-card:not(.project-create-card) {
   --folder-color: oklch(from var(--tc-accent) .34 calc(c * .28) h);
   --folder-front: oklch(from var(--tc-accent) .39 calc(c * .28) h);
-  --folder-ink: #f1f3f5;
+  --folder-ink: #ffffff;
   --folder-secondary: #d9dde3;
   --folder-muted: #cdd3db;
 }
@@ -66,9 +67,9 @@
 .project-folder-card.is-empty .project-folder-cover::after { content: ""; position: absolute; top: 0; right: 0; width: 22px; height: 22px; background: linear-gradient(45deg, white 50%, var(--folder-color) 51%); border-bottom-left-radius: 6px; box-shadow: -2px 3px 6px rgb(0 0 0 / 8%); }
 .project-folder-front { position: relative; isolation: isolate; display: flex; flex-direction: column; grid-row: 2; min-width: 0; min-height: 0; margin: 0; padding: 6px 16px 14px; border-radius: 0 20px 22px 22px; }
 .project-folder-front::before { content: ""; position: absolute; z-index: -1; inset: -20px 0 0; border-radius: 20px 20px 22px 22px; clip-path: url(#project-folder-outline); transform-origin: center bottom; transform: perspective(900px) rotateX(-30deg) scaleX(.94); background: linear-gradient(120deg, color-mix(in srgb, var(--folder-front) 82%, transparent), color-mix(in srgb, var(--folder-front) 74%, transparent)); backdrop-filter: blur(10px) saturate(.8); box-shadow: inset 0 1px 0 rgb(255 255 255 / 55%), inset 0 -1px 0 rgb(255 255 255 / 25%); }
-.project-folder-card h2 { margin: 0 0 5px; font-size: 18px; line-height: 1.4; font-weight: 650; opacity: .8; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; min-width: 0; }
-.project-folder-front > footer { margin-top: auto; display: flex; align-items: center; gap: 12px; color: var(--folder-ink); opacity: .5; font-size: 11px; flex-wrap: wrap; }
-.project-folder-description { min-width: 0; margin: 0 0 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--folder-ink); opacity: .65; font-size: 11px; }
+.project-folder-card h2 { margin: 0 0 5px; font-size: 18px; line-height: 1.4; font-weight: 650; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; min-width: 0; }
+.project-folder-front > footer { margin-top: auto; display: flex; align-items: center; gap: 12px; color: var(--folder-ink); font-size: 11px; flex-wrap: wrap; }
+.project-folder-description { min-width: 0; margin: 0 0 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--folder-ink); font-size: 11px; }
 .project-folder-card.project-create-card { display: flex; align-items: center; justify-content: center; border: 1px dashed var(--sm-border-strong); background: color-mix(in srgb, var(--sm-surface-1) 45%, transparent); box-shadow: none; color: var(--sm-text-muted); aspect-ratio: 1.6; align-self: end; }
 /* Small physical labels share the same material across project and task states. */
 .status-sticker {

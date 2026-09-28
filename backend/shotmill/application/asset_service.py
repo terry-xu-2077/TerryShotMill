@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from io import BytesIO
 from pathlib import Path
 
+from shotmill.application.file_library import FileLibrary
+from shotmill.application.legacy_file_references import release_unused_legacy_paths
+from shotmill.application.lifecycle_service import require_writable
+from shotmill.application.snapshot_files import shared_history_owners
 from shotmill.domain.entities import Asset, new_id, utcnow
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import ConflictError, NotFoundError, ShotMillError
@@ -25,9 +30,13 @@ def _infer_media_type(content_type: str | None, filename: str) -> str:
 
 
 class AssetService:
-    def __init__(self, uow_factory: Callable[[], UnitOfWork], storage: MediaStorage) -> None:
+    def __init__(
+        self, uow_factory: Callable[[], UnitOfWork], storage: MediaStorage,
+        file_library: FileLibrary | None = None,
+    ) -> None:
         self.uow_factory = uow_factory
         self.storage = storage
+        self.file_library = file_library
 
     def import_bytes(
         self,
@@ -43,11 +52,18 @@ class AssetService:
         if not content:
             raise ShotMillError("ASSET_EMPTY", "Asset file is empty", 422)
         with self.uow_factory() as uow:
-            if uow.projects.get(project_id) is None:
+            project = uow.projects.get(project_id)
+            if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project)
 
         asset_id = new_id("asset")
-        relative_path, checksum = self.storage.write_asset(project_id, asset_id, filename, content)
+        if self.file_library is None:
+            relative_path, checksum = self.storage.write_asset(
+                project_id, asset_id, filename, content,
+            )
+        else:
+            relative_path, checksum = f"shared/asset/{asset_id}/content", None
         now = utcnow()
         asset = Asset(
             id=asset_id,
@@ -64,14 +80,26 @@ class AssetService:
         )
         try:
             with self.uow_factory() as uow:
-                uow.assets.add(asset)
+                uow.reserve_write()
                 project = uow.projects.get(project_id)
+                if project is None:
+                    raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+                require_writable(project)
+                if self.file_library is not None:
+                    file = self.file_library.import_file(
+                        uow, BytesIO(content), scope_kind="project", scope_id=project_id,
+                        owner_kind="asset", owner_id=asset_id, slot="content",
+                        original_filename=asset.original_filename, mime_type=content_type,
+                    )
+                    asset.hash = file.sha256
+                uow.assets.add(asset)
                 if project is not None:
                     project.updated_at = now
                     uow.projects.update(project)
         except Exception:
-            path = self.storage.resolve(project_id, relative_path)
-            path.unlink(missing_ok=True)
+            if self.file_library is None:
+                path = self.storage.resolve(project_id, relative_path)
+                path.unlink(missing_ok=True)
             raise
         return asset
 
@@ -85,6 +113,11 @@ class AssetService:
         tags: list[str] | None = None,
     ) -> Asset:
         with self.uow_factory() as uow:
+            uow.reserve_write()
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project)
             asset = uow.assets.get(asset_id)
             if asset is None or asset.project_id != project_id:
                 raise NotFoundError("ASSET_NOT_FOUND", "Asset not found")
@@ -103,13 +136,33 @@ class AssetService:
 
     def delete(self, project_id: str, asset_id: str) -> None:
         with self.uow_factory() as uow:
+            uow.reserve_write()
             asset = uow.assets.get(asset_id)
             if asset is None or asset.project_id != project_id:
                 raise NotFoundError("ASSET_NOT_FOUND", "Asset not found")
             project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project)
             if project is not None and project.cover_asset_id == asset_id:
                 raise ConflictError(
                     "ASSET_IS_PROJECT_COVER", "该图片用作项目封面，请先更换封面或恢复自动封面。"
+                )
+            # A draft enhancement can freeze media that is not yet in Task bindings.
+            # Preserve its asset record as well as the underlying immutable file.
+            active_media = [
+                media
+                for job in uow.jobs.list_active() if job.project_id == project_id
+                for media in job.assets_snapshot
+            ] + [
+                media
+                for job in uow.prompt_jobs.list_active() if job.project_id == project_id
+                for media in job.source_snapshot.get("media", [])
+            ]
+            if any(media.get("assetId") == asset_id for media in active_media):
+                raise ConflictError(
+                    "ASSET_IN_ACTIVE_JOB",
+                    "素材正被排队或执行中的任务使用，请等待完成或取消后再删除。",
                 )
             count = uow.assets.binding_count(asset_id)
             if count:
@@ -118,8 +171,12 @@ class AssetService:
                     "Asset is referenced by one or more tasks",
                     {"bindingCount": count},
                 )
-            relative_path = asset.project_relative_path
+            historical = shared_history_owners(uow, project_id)
             uow.assets.delete(asset_id)
+            if ("asset", asset_id) not in historical:
+                uow.files.release_owner("project", project_id, "asset", asset_id)
+            release_unused_legacy_paths(
+                uow, project_id, {asset.project_relative_path, asset.thumbnail_path or ""},
+            )
         # Keep the underlying file for historical immutable Job snapshots.
         # A future storage GC may remove unreferenced files after retention checks.
-        _ = relative_path

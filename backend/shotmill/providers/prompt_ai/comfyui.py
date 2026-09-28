@@ -270,7 +270,7 @@ class ComfyUIPromptAIProvider:
                 char if char.isalnum() or char in "_.-" else "_"
                 for char in media.asset_id
             )
-            filename = f"{safe_id.strip('._') or 'asset'}{media.path.suffix.lower()}"
+            filename = f"{safe_id.strip('._') or 'asset'}{media.file_suffix}"
             mime = (
                 media.mime_type
                 or mimetypes.guess_type(filename)[0]

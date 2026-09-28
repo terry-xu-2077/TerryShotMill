@@ -227,6 +227,98 @@
         "title": "ApplicationSettingsView",
         "type": "object"
       },
+      "ArchiveFileView": {
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "filename",
+          "size",
+          "url"
+        ],
+        "title": "ArchiveFileView",
+        "type": "object"
+      },
+      "ArchivedResultView": {
+        "properties": {
+          "archivedAt": {
+            "format": "date-time",
+            "title": "Archivedat",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveFileView"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "finalPrompt": {
+            "title": "Finalprompt",
+            "type": "string"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "title": "Generatedat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "sourceProjectId": {
+            "title": "Sourceprojectid",
+            "type": "string"
+          },
+          "sourceProjectTitle": {
+            "title": "Sourceprojecttitle",
+            "type": "string"
+          },
+          "sourceTaskId": {
+            "title": "Sourcetaskid",
+            "type": "string"
+          },
+          "sourceTaskTitle": {
+            "title": "Sourcetasktitle",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sourceProjectId",
+          "sourceProjectTitle",
+          "sourceTaskId",
+          "sourceTaskTitle",
+          "generatedAt",
+          "archivedAt",
+          "finalPrompt",
+          "params",
+          "files"
+        ],
+        "title": "ArchivedResultView",
+        "type": "object"
+      },
       "AssetListResponse": {
         "properties": {
           "items": {
@@ -483,6 +575,20 @@
           "file"
         ],
         "title": "Body_import_asset_api_v1_projects__project_id__assets_post",
+        "type": "object"
+      },
+      "Body_import_project_api_v1_projects_import_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_project_api_v1_projects_import_post",
         "type": "object"
       },
       "CancelVideoJobsRequest": {
@@ -856,6 +962,72 @@
         "title": "ComfyUIWorkflowView",
         "type": "object"
       },
+      "ConfirmConfigurationRequest": {
+        "properties": {
+          "configurationId": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Configurationid",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "configurationId",
+          "revision"
+        ],
+        "title": "ConfirmConfigurationRequest",
+        "type": "object"
+      },
+      "DeletionImpactView": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "sourceResultId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceresultid"
+          },
+          "sourceTaskId": {
+            "title": "Sourcetaskid",
+            "type": "string"
+          },
+          "sourceTaskTitle": {
+            "title": "Sourcetasktitle",
+            "type": "string"
+          },
+          "targetTaskId": {
+            "title": "Targettaskid",
+            "type": "string"
+          },
+          "targetTaskTitle": {
+            "title": "Targettasktitle",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceTaskId",
+          "sourceTaskTitle",
+          "targetTaskId",
+          "targetTaskTitle",
+          "kind",
+          "sourceResultId"
+        ],
+        "title": "DeletionImpactView",
+        "type": "object"
+      },
       "EditorPreference": {
         "properties": {
           "aiViewMode": {
@@ -1032,6 +1204,108 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ImportCandidateView": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "asset",
+              "result",
+              "archive"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mediaType": {
+            "title": "Mediatype",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "previewUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previewurl"
+          },
+          "sourceProjectId": {
+            "title": "Sourceprojectid",
+            "type": "string"
+          },
+          "sourceProjectTitle": {
+            "title": "Sourceprojecttitle",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "sourceProjectId",
+          "sourceProjectTitle",
+          "mediaType",
+          "previewUrl",
+          "createdAt"
+        ],
+        "title": "ImportCandidateView",
+        "type": "object"
+      },
+      "ImportSourceRequest": {
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "asset",
+              "result",
+              "archive"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "ImportSourceRequest",
+        "type": "object"
+      },
+      "ImportSourcesRequest": {
+        "properties": {
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ImportSourceRequest"
+            },
+            "minItems": 1,
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources"
+        ],
+        "title": "ImportSourcesRequest",
+        "type": "object"
+      },
       "JobView": {
         "properties": {
           "completedAt": {
@@ -1121,6 +1395,64 @@
           "errorMessage"
         ],
         "title": "JobView",
+        "type": "object"
+      },
+      "LifecycleRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "archive",
+              "unarchive",
+              "trash",
+              "restore"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "LifecycleRequest",
+        "type": "object"
+      },
+      "LifecycleView": {
+        "properties": {
+          "archivedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archivedat"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletedat"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "archivedAt",
+          "deletedAt"
+        ],
+        "title": "LifecycleView",
         "type": "object"
       },
       "LocalInferenceSettingsPayload": {
@@ -1241,6 +1573,153 @@
         "title": "LocalInferenceSettingsView",
         "type": "object"
       },
+      "MissingReferenceView": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "sourceResultId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceresultid"
+          },
+          "sourceTaskId": {
+            "title": "Sourcetaskid",
+            "type": "string"
+          },
+          "sourceTaskTitle": {
+            "title": "Sourcetasktitle",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceTaskId",
+          "sourceTaskTitle",
+          "kind"
+        ],
+        "title": "MissingReferenceView",
+        "type": "object"
+      },
+      "PendingConfigurationView": {
+        "properties": {
+          "readOnly": {
+            "title": "Readonly",
+            "type": "boolean"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "sourceConfigurationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceconfigurationid"
+          },
+          "taskId": {
+            "title": "Taskid",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "title",
+          "revision",
+          "sourceConfigurationId",
+          "readOnly"
+        ],
+        "title": "PendingConfigurationView",
+        "type": "object"
+      },
+      "PermanentDeleteRequest": {
+        "properties": {
+          "archiveResults": {
+            "default": true,
+            "title": "Archiveresults",
+            "type": "boolean"
+          },
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "confirmed"
+        ],
+        "title": "PermanentDeleteRequest",
+        "type": "object"
+      },
+      "PermanentDeleteView": {
+        "properties": {
+          "archivedResultCount": {
+            "title": "Archivedresultcount",
+            "type": "integer"
+          },
+          "cleanupId": {
+            "title": "Cleanupid",
+            "type": "string"
+          },
+          "deletedIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Deletedids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deletedIds",
+          "archivedResultCount",
+          "cleanupId"
+        ],
+        "title": "PermanentDeleteView",
+        "type": "object"
+      },
+      "PermanentTaskDeleteRequest": {
+        "properties": {
+          "archiveResults": {
+            "default": true,
+            "title": "Archiveresults",
+            "type": "boolean"
+          },
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "taskIds": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Taskids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "confirmed",
+          "taskIds"
+        ],
+        "title": "PermanentTaskDeleteRequest",
+        "type": "object"
+      },
       "PrimaryResultRequest": {
         "properties": {
           "resultId": {
@@ -1342,6 +1821,11 @@
           "projectRelativePath": {
             "title": "Projectrelativepath",
             "type": "string"
+          },
+          "provenance": {
+            "additionalProperties": true,
+            "title": "Provenance",
+            "type": "object"
           },
           "tags": {
             "items": {
@@ -1452,6 +1936,46 @@
           "title"
         ],
         "title": "ProjectCreateRequest",
+        "type": "object"
+      },
+      "ProjectExportResponse": {
+        "properties": {
+          "expiresInSeconds": {
+            "title": "Expiresinseconds",
+            "type": "integer"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expiresInSeconds"
+        ],
+        "title": "ProjectExportResponse",
+        "type": "object"
+      },
+      "ProjectImportResponse": {
+        "properties": {
+          "projectId": {
+            "title": "Projectid",
+            "type": "string"
+          },
+          "providerRequirements": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Providerrequirements",
+            "type": "array"
+          }
+        },
+        "required": [
+          "projectId",
+          "providerRequirements"
+        ],
+        "title": "ProjectImportResponse",
         "type": "object"
       },
       "ProjectListResponse": {
@@ -1662,6 +2186,18 @@
       },
       "ProjectSummary": {
         "properties": {
+          "archivedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archivedat"
+          },
           "assetCount": {
             "title": "Assetcount",
             "type": "integer"
@@ -1693,6 +2229,18 @@
               }
             ],
             "title": "Createdat"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletedat"
           },
           "description": {
             "default": "",
@@ -2573,6 +3121,34 @@
         "title": "TaskEditorView",
         "type": "object"
       },
+      "TaskLifecycleRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "archive",
+              "unarchive",
+              "trash",
+              "restore"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "taskIds": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Taskids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "taskIds",
+          "action"
+        ],
+        "title": "TaskLifecycleRequest",
+        "type": "object"
+      },
       "TaskReorderRequest": {
         "properties": {
           "taskIds": {
@@ -2682,11 +3258,52 @@
         "title": "TaskSaveRequest",
         "type": "object"
       },
+      "TaskSelection": {
+        "properties": {
+          "taskIds": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Taskids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "taskIds"
+        ],
+        "title": "TaskSelection",
+        "type": "object"
+      },
       "TaskSummary": {
         "properties": {
+          "archivedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archivedat"
+          },
           "assetCount": {
             "title": "Assetcount",
             "type": "integer"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletedat"
           },
           "displayNumber": {
             "title": "Displaynumber",
@@ -2752,6 +3369,13 @@
               }
             ],
             "title": "Latestvideoresultid"
+          },
+          "missingReferences": {
+            "items": {
+              "$ref": "#/components/schemas/MissingReferenceView"
+            },
+            "title": "Missingreferences",
+            "type": "array"
           },
           "previewUrl": {
             "anyOf": [
@@ -3247,6 +3871,30 @@
       },
       "WorkspaceProject": {
         "properties": {
+          "archivedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archivedat"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletedat"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -3469,6 +4117,23 @@
     "/api/v1/projects": {
       "get": {
         "operationId": "list_projects_api_v1_projects_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "active",
+              "enum": [
+                "active",
+                "archived",
+                "trash"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3479,6 +4144,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Projects",
@@ -3523,6 +4198,115 @@
         "summary": "Create Project",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/exports/{token}": {
+      "delete": {
+        "operationId": "discard_prepared_export_api_v1_projects_exports__token__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Discard Prepared Export",
+        "tags": [
+          "project-transfer"
+        ]
+      },
+      "get": {
+        "operationId": "download_prepared_export_api_v1_projects_exports__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Prepared Export",
+        "tags": [
+          "project-transfer"
+        ]
+      }
+    },
+    "/api/v1/projects/import": {
+      "post": {
+        "operationId": "import_project_api_v1_projects_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_project_api_v1_projects_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectImportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Project",
+        "tags": [
+          "project-transfer"
         ]
       }
     },
@@ -3711,6 +4495,124 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/assets/import": {
+      "post": {
+        "operationId": "import_sources_api_v1_projects__project_id__assets_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportSourcesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectAssetView"
+                  },
+                  "title": "Response Import Sources Api V1 Projects  Project Id  Assets Import Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Sources",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/assets/import-sources": {
+      "get": {
+        "operationId": "import_candidates_api_v1_projects__project_id__assets_import_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sourceProjectId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sourceprojectid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportCandidateView"
+                  },
+                  "title": "Response Import Candidates Api V1 Projects  Project Id  Assets Import Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Candidates",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/assets/{asset_id}": {
       "delete": {
         "operationId": "delete_asset_api_v1_projects__project_id__assets__asset_id__delete",
@@ -3854,6 +4756,191 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/export": {
+      "get": {
+        "operationId": "export_project_api_v1_projects__project_id__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Project",
+        "tags": [
+          "project-transfer"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/exports": {
+      "post": {
+        "operationId": "prepare_export_api_v1_projects__project_id__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prepare Export",
+        "tags": [
+          "project-transfer"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/import-configuration": {
+      "get": {
+        "operationId": "pending_import_configuration_api_v1_projects__project_id__import_configuration_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PendingConfigurationView"
+                  },
+                  "title": "Response Pending Import Configuration Api V1 Projects  Project Id  Import Configuration Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pending Import Configuration",
+        "tags": [
+          "project-transfer"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/import-configuration/{task_id}/confirm": {
+      "post": {
+        "operationId": "confirm_import_configuration_api_v1_projects__project_id__import_configuration__task_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmConfigurationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Import Configuration",
+        "tags": [
+          "project-transfer"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/jobs/{job_id}/stop": {
       "post": {
         "operationId": "stop_video_job_api_v1_projects__project_id__jobs__job_id__stop_post",
@@ -3900,6 +4987,110 @@
         "summary": "Stop Video Job",
         "tags": [
           "generation"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/lifecycle": {
+      "post": {
+        "operationId": "project_lifecycle_api_v1_projects__project_id__lifecycle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LifecycleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Project Lifecycle",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/permanent-delete": {
+      "post": {
+        "operationId": "permanently_delete_project_api_v1_projects__project_id__permanent_delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermanentDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermanentDeleteView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Permanently Delete Project",
+        "tags": [
+          "lifecycle"
         ]
       }
     },
@@ -4417,6 +5608,170 @@
         "summary": "Create Task",
         "tags": [
           "tasks"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/deletion-preview": {
+      "post": {
+        "operationId": "deletion_preview_api_v1_projects__project_id__tasks_deletion_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeletionImpactView"
+                  },
+                  "title": "Response Deletion Preview Api V1 Projects  Project Id  Tasks Deletion Preview Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deletion Preview",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/lifecycle": {
+      "post": {
+        "operationId": "task_lifecycle_api_v1_projects__project_id__tasks_lifecycle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskLifecycleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LifecycleView"
+                  },
+                  "title": "Response Task Lifecycle Api V1 Projects  Project Id  Tasks Lifecycle Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Task Lifecycle",
+        "tags": [
+          "lifecycle"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/tasks/permanent-delete": {
+      "post": {
+        "operationId": "permanently_delete_tasks_api_v1_projects__project_id__tasks_permanent_delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermanentTaskDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermanentDeleteView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Permanently Delete Tasks",
+        "tags": [
+          "lifecycle"
         ]
       }
     },
@@ -5253,6 +6608,21 @@
               "title": "Project Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "active",
+              "enum": [
+                "active",
+                "archived",
+                "trash"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5280,6 +6650,153 @@
         "summary": "Get Project Workspace",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/v1/result-archive": {
+      "get": {
+        "operationId": "list_archived_results_api_v1_result_archive_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sourceProjectId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sourceprojectid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ArchivedResultView"
+                  },
+                  "title": "Response List Archived Results Api V1 Result Archive Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Archived Results",
+        "tags": [
+          "result-archive"
+        ]
+      }
+    },
+    "/api/v1/result-archive/{archive_id}": {
+      "delete": {
+        "operationId": "delete_archived_result_api_v1_result_archive__archive_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "archive_id",
+            "required": true,
+            "schema": {
+              "title": "Archive Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Archived Result",
+        "tags": [
+          "result-archive"
+        ]
+      }
+    },
+    "/api/v1/result-archive/{archive_id}/files/{index}": {
+      "get": {
+        "operationId": "archive_file_api_v1_result_archive__archive_id__files__index__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "archive_id",
+            "required": true,
+            "schema": {
+              "title": "Archive Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "download",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Download",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive File",
+        "tags": [
+          "result-archive"
         ]
       }
     },

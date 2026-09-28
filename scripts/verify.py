@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
-PNPM = shutil.which("pnpm.cmd" if sys.platform == "win32" else "pnpm") or "pnpm"
+NODE = shutil.which("node") or "node"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,9 +30,15 @@ BACKEND = (
     python_stage("backend tests", "-m", "pytest", "-q", "tests/unit", "tests/integration"),
 )
 FRONTEND_STAGES = (
-    Stage("frontend typecheck", (PNPM, "typecheck"), FRONTEND),
-    Stage("frontend tests", (PNPM, "test", "--run"), FRONTEND),
-    Stage("frontend build", (PNPM, "build"), FRONTEND),
+    Stage("frontend typecheck", (
+        NODE, str(FRONTEND / "node_modules/typescript/bin/tsc"), "-b", "--pretty", "false",
+    ), FRONTEND),
+    Stage("frontend tests", (
+        NODE, str(FRONTEND / "node_modules/vitest/vitest.mjs"), "run",
+    ), FRONTEND),
+    Stage("frontend build", (
+        NODE, str(FRONTEND / "node_modules/vite/bin/vite.js"), "build",
+    ), FRONTEND),
 )
 E2E = (
     Stage(

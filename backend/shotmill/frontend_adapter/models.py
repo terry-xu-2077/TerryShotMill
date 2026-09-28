@@ -23,6 +23,8 @@ BatchItemState = Literal["queued", "running", "completed", "failed", "skipped", 
 
 
 class ProjectSummary(ApiModel):
+    archived_at: datetime | None = None
+    deleted_at: datetime | None = None
     created_at: datetime | None = None
     new_results: list[dict[str, str]] = Field(default_factory=list)
     generation_warnings: list[str] = Field(default_factory=list)
@@ -163,7 +165,17 @@ class TaskTiming(ApiModel):
     measured_at: datetime | None = None
 
 
+class MissingReferenceView(ApiModel):
+    source_task_id: str
+    source_task_title: str
+    source_result_id: str | None = None
+    kind: str
+
+
 class TaskSummary(ApiModel):
+    missing_references: list[MissingReferenceView] = Field(default_factory=list)
+    archived_at: datetime | None = None
+    deleted_at: datetime | None = None
     prompt_source: Literal["user", "ai"] = "user"
     generation_status_note: str | None = None
     generation_warnings: list[str] = Field(default_factory=list)
@@ -226,6 +238,8 @@ class ProjectRuntimeSummary(ApiModel):
 class WorkspaceProject(ApiModel):
     id: str
     title: str
+    archived_at: datetime | None = None
+    deleted_at: datetime | None = None
 
 
 class ProjectRuntimeView(ApiModel):
@@ -320,6 +334,7 @@ class AssetReferenceItem(ApiModel):
 
 
 class ProjectAssetView(ApiModel):
+    provenance: dict[str, Any] = Field(default_factory=dict)
     id: str
     name: str
     original_filename: str = Field(alias="originalFileName")

@@ -1,0 +1,3 @@
+.task-reference-tooltip { width: min(320px, calc(100vw - 16px)); padding: 10px 12px; pointer-events: none; }
+.task-reference-message { margin: 0; overflow-wrap: anywhere; }
+.task-reference-message + .task-reference-message { margin-top: 8px; }

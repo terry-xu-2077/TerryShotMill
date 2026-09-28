@@ -18,7 +18,7 @@
   bottom: 6px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgb(0 0 0 / 65%);
+  background: rgb(0 0 0 / 40%);
   color: white;
   font-size: 12px;
   line-height: 1.4;
@@ -36,6 +36,12 @@
   --placeholder-opacity: .08;
 }
 
+:root[data-tc-mode="dark"] .task-preview:has(.brand-placeholder) {
+  background-color: #101214;
+  --placeholder-opacity: .12;
+}
+
 :root[data-tc-mode="light"] .task-preview:has(.brand-placeholder) {
-  background-color: #edf0f4;
+  background-color: #f1f3f5;
+  --placeholder-opacity: .12;
 }

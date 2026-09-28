@@ -19,8 +19,13 @@ test("video posters, automatic and custom project covers, and direct autoplay fo
   }
   const workspace = await (await page.request.get(`/api/v1/projects/${project.id}/workspace`)).json();
   const poster = workspace.tasks[0].primaryResult.previewUrl;
-  expect(poster).toContain("/thumbnails/");
-  expect((await page.request.get(poster)).headers()["content-type"]).toContain("image/png");
+  expect(poster).toBe(`/media/${project.id}/shared/result/${workspace.tasks[0].primaryResult.id}/preview`);
+  const posterResponse = await page.request.get(poster);
+  expect(posterResponse.ok()).toBeTruthy();
+  expect(posterResponse.headers()["content-type"]).toContain("image/png");
+  expect((await posterResponse.body()).subarray(0, 8)).toEqual(
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  );
   const settings = await (await page.request.get(`/api/v1/projects/${project.id}/settings`)).json();
   expect(settings.coverUrl).toBe(poster);
   expect(settings.automaticCoverUrl).toBe(poster);

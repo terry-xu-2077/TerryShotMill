@@ -20,6 +20,18 @@ from shotmill.domain.providers import (
 
 
 @pytest.fixture
+def bridge_health():
+    return {
+        "ok": True, "package": "ComfyUI-TerryFlowBridge", "protocolVersions": [1],
+        "applicationContracts": [{"name": "shotmill.video", "version": 1}],
+        "capabilities": dict.fromkeys([
+            "workflowSnapshot", "preflight", "idempotentSubmit", "assetUpload",
+            "resultDownload", "resultSha256", "cancelSubmission", "durableCompletion",
+        ], True),
+    }
+
+
+@pytest.fixture
 def bridge_snapshot():
     def make(workflow_id="w.json", inputs=None, prompt=None):
         prompt = prompt or {"1": {"class_type": "PrimitiveInt", "inputs": {"value": 17}}}

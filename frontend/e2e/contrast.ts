@@ -38,6 +38,17 @@ export async function textContrast(locator: Locator, translucentSurface?: { sele
       if (!CSS.supports("color", parts[0])) parts.shift(); // optional direction
       return parts.map(part => rgba(part.replace(/\s+[-\d.]+%$/, "")));
     };
+    let glyphOpacity = 1;
+    let paintedDescendant = false;
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      paintedDescendant ||= style.backgroundImage !== "none" || rgba(style.backgroundColor)[3] !== 0;
+      if (Number(style.opacity) !== 1) {
+        if (paintedDescendant) throw new Error("Group opacity needs separate compositing review");
+        // Transparent text-only ancestor groups attenuate the same glyph, not the backdrop.
+        glyphOpacity *= Number(style.opacity);
+      }
+    }
     const backgrounds = (node: Element | null): Color[] => {
       if (!node) throw new Error("No opaque surface behind contrast sample");
       // For frosted media overlays, test the entire black-to-white backdrop range.
@@ -49,12 +60,9 @@ export async function textContrast(locator: Locator, translucentSurface?: { sele
         return layers.flatMap(color => [[0, 0, 0, 1], [255, 255, 255, 1]].map(bg => over(color, bg as Color)));
       }
       const style = getComputedStyle(node);
-      if (Number(style.opacity) !== 1 && (node !== element || style.backgroundImage !== "none" || rgba(style.backgroundColor)[3] !== 0)) {
-        throw new Error("Group opacity needs separate compositing review");
-      }
+      const fill = rgba(style.backgroundColor);
       const gradient = stops(style.backgroundImage);
       if (gradient.length && gradient.every(color => color[3] === 1)) return gradient;
-      const fill = rgba(style.backgroundColor);
       const below = fill[3] === 1 ? [fill] : backgrounds(node.parentElement).map(color => over(fill, color));
       return gradient.length ? gradient.flatMap(color => below.map(bg => over(color, bg))) : below;
     };
@@ -64,9 +72,8 @@ export async function textContrast(locator: Locator, translucentSurface?: { sele
     }).reduce((sum, value, i) => sum + value * [.2126, .7152, .0722][i], 0);
     const style = getComputedStyle(element);
     const foreground = rgba(style.color);
-    // A transparent text-only leaf composites its opacity directly into the glyph color.
-    foreground[3] *= Number(style.opacity);
     const samples = backgrounds(element);
+    foreground[3] *= glyphOpacity;
     const ratios = samples.map(background => {
       const values = [luminance(over(foreground, background)), luminance(background)].sort((a, b) => b - a);
       return (values[0] + .05) / (values[1] + .05);

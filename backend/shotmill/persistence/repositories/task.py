@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from shotmill.domain.entities import Task, TaskAssetBinding
+from shotmill.domain.entities import Task, TaskAssetBinding, utcnow
 from shotmill.persistence import models
 from shotmill.persistence.repositories.mappers import task_from_model
 
@@ -11,6 +11,19 @@ from shotmill.persistence.repositories.mappers import task_from_model
 class SqlAlchemyTaskRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def generation_configuration_required(self, task_id: str) -> bool:
+        row = self.session.get(models.TaskModel, task_id)
+        if row is None:
+            raise KeyError(task_id)
+        return row.generation_configuration_required
+
+    def set_generation_configuration_required(self, task_id: str, required: bool) -> None:
+        row = self.session.get(models.TaskModel, task_id)
+        if row is None:
+            raise KeyError(task_id)
+        row.generation_configuration_required = required
+        self.session.flush()
 
     def list_by_project(self, project_id: str) -> list[Task]:
         rows = self.session.scalars(
@@ -53,6 +66,8 @@ class SqlAlchemyTaskRepository:
                 approved_revision_id=task.approved_revision_id,
                 user_view_mode=task.user_view_mode,
                 ai_view_mode=task.ai_view_mode,
+                archived_at=task.archived_at,
+                deleted_at=task.deleted_at,
                 created_at=task.created_at,
                 updated_at=task.updated_at,
             )
@@ -113,6 +128,8 @@ class SqlAlchemyTaskRepository:
         row.approved_revision_id = task.approved_revision_id
         row.user_view_mode = task.user_view_mode
         row.ai_view_mode = task.ai_view_mode
+        row.archived_at = task.archived_at
+        row.deleted_at = task.deleted_at
         row.updated_at = task.updated_at
         self.replace_bindings(task.id, task.asset_bindings)
         self.session.flush()
@@ -126,6 +143,13 @@ class SqlAlchemyTaskRepository:
             self.session.flush()
 
     def delete(self, task_id: str) -> None:
+        task = self.session.get(models.TaskModel, task_id)
+        if task is not None:
+            self.session.execute(
+                update(models.ContextLinkModel)
+                .where(models.ContextLinkModel.source_task_id == task_id)
+                .values(source_deleted_at=utcnow(), source_task_title=task.title, stale=True)
+            )
         self.session.execute(delete(models.TaskModel).where(models.TaskModel.id == task_id))
         self.session.flush()
 

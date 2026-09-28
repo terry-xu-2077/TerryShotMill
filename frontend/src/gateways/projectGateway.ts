@@ -8,6 +8,8 @@ export type ProjectStatus = "idle" | "running" | "completed" | "failed";
 export type TaskStatus = ProjectStatus;
 
 export type ProjectSummary = {
+  archivedAt?: string | null;
+  deletedAt?: string | null;
   createdAt?: string;
   newResults?: { video?: string; prompt?: string }[];
   generationWarnings?: string[];
@@ -36,6 +38,9 @@ export type ProjectSettings = {
 export type ProjectCoverSelection = { kind: "auto" | "asset" | "video"; assetId?: string; resultId?: string; seconds?: number };
 
 export type TaskSummary = {
+  archivedAt?: string | null;
+  deletedAt?: string | null;
+  missingReferences?: { sourceTaskId: string; sourceTaskTitle: string; sourceResultId?: string | null; kind: string }[];
   generationStatusNote?: string | null;
   generationWarnings?: string[];
   latestVideoResultId?: string | null;
@@ -70,7 +75,7 @@ export type TaskSummary = {
 };
 
 export type ProjectWorkspaceView = {
-  project: { id: string; title: string };
+  project: { id: string; title: string; archivedAt?: string | null; deletedAt?: string | null };
   tasks: TaskSummary[];
   runtime: {
     activeTaskId?: string;
@@ -370,8 +375,12 @@ export class ProjectGatewayError extends Error {
 const configuredApiBase = import.meta.env.VITE_SHOTMILL_API_BASE_URL?.trim();
 const API_BASE = (configuredApiBase || "/api/v1").replace(/\/$/, "");
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, init);
+export function projectApiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
+export async function projectRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(projectApiUrl(path), init);
   if (!response.ok) {
     let payload: BackendErrorPayload | undefined;
     try {
@@ -391,11 +400,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+const request = projectRequest;
+
 type ProjectListResponse = { items: ProjectSummary[] };
 type ApplicationSettingsResponse = ApplicationSettings;
 type AssetListResponse = { items: BackendAsset[] };
 type PromptRevisionListResponse = { items: PromptRevisionView[] };
-type BackendAsset = {
+export type BackendAsset = {
   id: string;
   name: string;
   originalFileName: string;
@@ -423,7 +434,7 @@ function mediaUrl(projectId: string, projectRelativePath: string) {
   return `${new URL(configuredApiBase).origin}${path}`;
 }
 
-function mapAsset(projectId: string, asset: BackendAsset): ProjectAsset {
+export function mapAsset(projectId: string, asset: BackendAsset): ProjectAsset {
   return {
     id: asset.id,
     name: asset.name,

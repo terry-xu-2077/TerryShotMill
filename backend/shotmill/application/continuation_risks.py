@@ -4,6 +4,14 @@ MISSING_PREVIOUS_VIDEO = (
 
 
 def continuation_risks(uow, task):
+    missing = [link for link in uow.contexts.list_by_target(task.id)
+               if link.source_deleted_at is not None]
+    if missing:
+        return [
+            f"承接来源“{link.source_task_title or '已删除任务'}”已永久删除，"
+            "请先取消或重新设置承接。"
+            for link in missing
+        ]
     jobs = uow.jobs.list_by_task(task.id)
     active = next((job for job in jobs if job.status.value in {"queued", "running"}), None)
     if active and active.context_snapshot.get("dependency"):

@@ -1,0 +1,8 @@
+.import-configuration-dialog { display: grid; gap: 12px; min-width: 0; }
+.import-configuration-list { display: grid; gap: 12px; max-height: min(48vh, 420px); overflow-y: auto; }
+.import-configuration-row, .import-configuration-heading { display: grid; gap: 8px; min-width: 0; }
+.import-configuration-copy, .import-configuration-error { margin: 0; overflow-wrap: anywhere; }
+.import-configuration-error { color: var(--sm-danger); }
+.import-configuration-actions, .import-configuration-footer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.import-configuration-select { flex: 1 1 180px; min-width: 0; }
+.import-configuration-footer { justify-content: flex-end; }

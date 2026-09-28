@@ -32,7 +32,7 @@
 .sm-dialog:has(.project-asset-large-image) > .sm-dialog-content { display: grid; min-height: 0; flex: 1; }
 .project-asset-manager-v2 { display: grid; grid-template-columns: minmax(250px, .8fr) minmax(0, 1.2fr); gap: 20px; height: 100%; min-width: 0; min-height: 0; }
 .project-asset-browser { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
-.project-asset-browser > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 12px; }
+.project-asset-browser > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 12px; }
 .project-asset-browser > header > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .project-asset-browser > header strong { font-size: 14px; font-weight: 600; }
 .project-asset-browser > header span { color: var(--sm-text-muted); font-size: 12px; white-space: nowrap; }

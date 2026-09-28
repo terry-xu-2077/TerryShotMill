@@ -2,6 +2,12 @@ import { expect, test } from "@playwright/test";
 import { createProject } from "./helpers";
 
 test("missing previous video is disclosed before submission, with folder date and risk badge", async ({ page }, info) => {
+  const other = await createProject(page, "其他有风险项目");
+  for (const title of ["其他来源", "其他承接任务"]) {
+    expect((await page.request.post(`/api/v1/projects/${other.id}/tasks`, {
+      data: { title, userPrompt: "其他项目场景" },
+    })).ok()).toBeTruthy();
+  }
   const project = await createProject(page, "风险提示");
   const route = `/api/v1/projects/${project.id}`;
   await page.request.post(`${route}/tasks`, { data: { title: "上一个任务", userPrompt: "场景" } });
@@ -15,18 +21,20 @@ test("missing previous video is disclosed before submission, with folder date an
   const folder = page.getByRole('button', { name: `打开项目 ${project.title}`, exact: true });
   await expect(folder.locator('time')).toContainText(new Date().getFullYear().toString());
   await expect(folder.locator('.project-folder-tab svg')).toHaveCount(0);
-  await expect(folder.locator('time')).toHaveCSS('opacity', '0.8');
+  await expect(folder.locator('time')).toHaveCSS('opacity', '1');
   const notices = folder.locator('..').locator('.project-folder-notices');
   await expect(notices.getByRole('button', { name: '查看任务生成风险' })).toBeVisible();
   const front = (await folder.locator('.project-folder-front').boundingBox())!;
   const noticeBounds = (await notices.boundingBox())!;
   expect(Math.abs(noticeBounds.y - front.y + 3)).toBeLessThan(1);
   await page.screenshot({ path: info.outputPath('folder-risk-position.png'), animations: 'disabled' });
-  await page.getByRole('button', { name: '查看任务生成风险' }).click();
+  expect(await page.getByRole('button', { name: '查看任务生成风险' }).count()).toBeGreaterThan(1);
+  await notices.getByRole('button', { name: '查看任务生成风险' }).click();
   await expect(page.getByRole('dialog', { name: '生成风险' })).toContainText('上一任务尚无视频结果');
   await page.keyboard.press('Escape');
   await folder.click();
-  await page.getByRole('button', { name: '查看任务生成风险' }).click();
+  await expect(page.getByRole('main', { name: '项目工作台' })).toBeVisible();
+  await page.getByRole('region', { name: '任务区域' }).getByRole('button', { name: '查看任务生成风险' }).click();
   await expect(page.getByRole('dialog', { name: '生成风险' })).toContainText('不使用尾帧承接');
   await page.keyboard.press('Escape');
   await page.locator('.task-list-row:not(.is-create)').nth(1).click();

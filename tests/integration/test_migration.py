@@ -1,7 +1,8 @@
 from pathlib import Path
 
-from shotmill.persistence.migrations import upgrade_database
-from sqlalchemy import create_engine, inspect
+from alembic import command
+from shotmill.persistence.migrations import alembic_config, upgrade_database
+from sqlalchemy import create_engine, inspect, text
 
 
 def test_alembic_builds_empty_database(tmp_path: Path) -> None:
@@ -26,3 +27,24 @@ def test_alembic_builds_empty_database(tmp_path: Path) -> None:
         "ai_prompt_revisions",
         "alembic_version",
     } <= tables
+
+
+def test_transfer_requirements_upgrade_preserves_existing_projects(tmp_path):
+    url = f"sqlite+pysqlite:///{(tmp_path / 'upgrade.db').as_posix()}"
+    command.upgrade(alembic_config(url), "0014")
+    engine = create_engine(url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO projects
+                (id, title, description, use_description_for_ai_prompt, created_at, updated_at)
+                VALUES ('old', 'Existing project', '', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """))
+        upgrade_database(url)
+        with engine.connect() as connection:
+            row = connection.execute(text(
+                "SELECT title, transfer_requirements FROM projects WHERE id = 'old'"
+            )).one()
+            assert row == ("Existing project", "[]")
+    finally:
+        engine.dispose()

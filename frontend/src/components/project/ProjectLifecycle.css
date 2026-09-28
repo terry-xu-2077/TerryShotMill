@@ -1,0 +1,9 @@
+.project-lifecycle-browser, .project-lifecycle-confirmation { display: grid; gap: 12px; min-width: 0; }
+.project-lifecycle-confirmation p { margin: 0; color: var(--sm-text-muted); overflow-wrap: anywhere; }
+.project-lifecycle-confirmation strong { overflow-wrap: anywhere; }
+.project-lifecycle-rows { max-height: min(48vh, 420px); overflow-y: auto; }
+.project-lifecycle-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 0; }
+.project-lifecycle-details { display: grid; gap: 4px; flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.project-lifecycle-details span { color: var(--sm-text-muted); }
+.project-lifecycle-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; }
+.project-lifecycle-option { display: flex; align-items: center; gap: 8px; }

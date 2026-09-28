@@ -125,6 +125,8 @@ export function mapWorkspaceProject(
 ): DirectorProject {
   const history = summaryHistory(workspace);
   return {
+    readOnly: !!(workspace.project.archivedAt || workspace.project.deletedAt),
+    taskMissingReferences: Object.fromEntries(workspace.tasks.map(task => [task.id, !!task.missingReferences?.length])),
     id: settings.id,
     title: settings.title,
     description: settings.description,

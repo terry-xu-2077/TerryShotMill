@@ -1,4 +1,120 @@
-# ShotMill Bridge node runtime
+# ComfyUI-TerryFlowBridge
+
+Reusable workflow input/output bridge for ComfyUI. Install this repository as
+`ComfyUI/custom_nodes/ComfyUI-TerryFlowBridge` and restart ComfyUI while idle.
+It uses ComfyUI's existing Python dependencies. New workflows can use
+**Terry Flow Bridge In / Out**; existing ShotMill node class names remain supported.
+Do not load this package alongside the old `ComfyUI-ShotMill` package: both own
+the same compatibility routes and node names. Back up and disable the old package
+before an idle upgrade. Preserve `input/shotmill` and `output/shotmill` data;
+the storage layout intentionally remains unchanged during migration.
+
+## Cancelling an uncertain submission
+
+`POST /terryflow/v1/jobs/{job_id}/cancel-submission` (also available under
+`/shotmill/v1`) serializes with submission admission. For an unused logical ID,
+it persists a cancellation record before replying `status: cancelled`. Future
+submissions using that ID receive HTTP 409 `submission_cancelled`; repeat
+cancellation and status queries return the saved cancellation.
+
+For an existing queued/running job, this endpoint returns its current status and
+remote prompt ID; it does **not** stop execution. The caller must use targeted
+ComfyUI queue deletion/interruption and observe the terminal state. Completed
+results remain completed. A saved receipt with missing queue/history returns
+409 `submission_state_unknown`, not a cancellation claim. A write failure cannot
+return success. Preserve the job index across upgrades and restarts: deleting it
+also destroys deduplication and cancellation protection.
+
+## Versioned application contracts (0.5.0)
+
+`GET /terryflow/v1/health` advertises protocol versions, supported application
+contracts and capabilities. New job and preflight requests must specify:
+
+```json
+{"applicationContract": {"name": "generic", "version": 1}}
+```
+
+- `generic@1`: common workflow compilation, port binding and output collection.
+  Does not interpret ShotMill video selectors or remap H3 prompt references.
+- `shotmill.video@1`: additionally binds video selectors and adapts H3 references.
+  ShotMill's video adapter explicitly declares this contract.
+- Unknown names/versions are rejected before validation or enqueueing.
+- `/shotmill/v1` remains an alias and defaults omitted declarations to
+  `shotmill.video@1`, preserving existing applications and workflow files.
+
+Application handlers are registered in `application_contracts.py`; names and
+versions identify behavior, not authentication or permissions. This release is
+for a single user's trusted LAN, without pairing/authentication. Do not expose
+ComfyUI or these routes to the public internet.
+
+### ShotMill submission compatibility
+
+New ShotMill jobs require protocol 1, `shotmill.video@1`, and explicit boolean
+capabilities `workflowSnapshot`, `preflight`, `idempotentSubmit`, `assetUpload`,
+`resultDownload`, `resultSha256`, `cancelSubmission`, and `durableCompletion`. Package version alone
+does not imply support. Upgrade the Bridge before submitting new jobs with the
+updated ShotMill client; incompatible health responses fail before media upload
+or generation submission.
+
+ShotMill freezes the agreement alongside the server address and workflow in the
+Job profile. Recovery uses that agreement without renegotiating or resubmitting.
+Negotiated jobs require `X-Content-SHA256` on downloaded results; missing or
+incorrect digests prevent local result publication. Historical jobs without an
+agreement retain `/shotmill/v1` recovery; absent digests remain explicitly marked
+unverified. A new profile missing its agreement is not treated as a legacy job.
+
+### Completion retention (0.5.1)
+
+`durableCompletion: true` means new Bridge submissions carry an ownership marker.
+The ComfyUI worker completion hook atomically writes an fsynced per-job receipt
+under `output/shotmill/receipts` before returning from completion. It records only
+outputs and status, not the prompt graph or client credentials. Status queries
+can recover from this receipt after ComfyUI history is cleared, without a prior
+client poll. It does not record unrelated ComfyUI jobs. Keep these receipts and
+`output/shotmill/jobs.json` across upgrades; neither is automatically expired.
+
+Successful uploads and results are retained without an automatic expiry or a
+delete-on-download acknowledgement. ShotMill local deletion does not delete
+server files. Administrators must not manually remove uncollected inputs,
+results or receipts. Disk-full errors are logged and cannot guarantee durability;
+in-memory history remains available for a later status query. This hook is not
+a transaction with ComfyUI's execution engine: a process crash during completion
+before receipt publication remains an uncertain outcome, never permission to
+automatically resubmit. Jobs admitted before this upgrade lack the ownership
+marker and retain their previous client-query-based persistence behavior.
+
+CPU-only package smoke tests (no ShotMill or GPU dependencies):
+
+```text
+python -m unittest discover -s tests
+```
+
+Uploads are streamed into temporary files and published under
+`input/shotmill/assets/sha256/<digest>/<filename>`. Uploading new content for an
+existing asset ID never changes a previously submitted file path. Send a
+`sha256` multipart field to validate transfer integrity; responses include the
+computed digest and byte count. Interrupted transfers remove their temporary
+file. An existing damaged blob is rejected, not overwritten. Unreferenced upload
+cleanup is not automatic in this migration release.
+
+Full graph/provider integration and native GPU acceptance remain in the ShotMill
+consumer test suite. The notes below document historical deployments and do not
+claim live acceptance of the new package.
+
+## Pending Flow Bridge migration: submission safety
+
+The migration work now reserves a logical `jobId` in the job index before
+enqueueing. Concurrent retries with an identical payload return the original
+prompt identity; changes to an existing job payload return `409 job_id_conflict`.
+Only `clientId` is excluded from the request fingerprint. Old receipts without a
+fingerprint remain queryable but cannot be resubmitted under that identity.
+
+A prepared receipt without observable queue/history evidence returns
+`409 submission_state_unknown`; the server never assumes that retrying inference
+is safe. A lost response after enqueue can be recovered using the recorded prompt
+identity. A corrupt index blocks submission rather than being replaced. This is
+tested against the production route functions with a deterministic queue, not yet
+deployed or accepted on the live ComfyUI server.
 
 This directory owns the marker node runtime (`nodes.py`) and Bridge API
 (`bridge_api.py`) installed in `ComfyUI/custom_nodes/ComfyUI-ShotMill/`.

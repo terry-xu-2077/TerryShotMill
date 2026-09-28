@@ -26,6 +26,8 @@ def project_from_model(row: models.ProjectModel) -> Project:
         description=row.description,
         use_description_for_ai_prompt=row.use_description_for_ai_prompt,
         cover_asset_id=row.cover_asset_id,
+        archived_at=row.archived_at,
+        deleted_at=row.deleted_at,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -46,6 +48,7 @@ def asset_from_model(row: models.AssetModel) -> Asset:
         duration=row.duration,
         hash=row.hash,
         thumbnail_path=row.thumbnail_path,
+        provenance=dict(row.provenance or {}),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -84,6 +87,8 @@ def task_from_model(session: Session, row: models.TaskModel) -> Task:
         approved_revision_id=row.approved_revision_id,
         user_view_mode=row.user_view_mode,
         ai_view_mode=row.ai_view_mode,
+        archived_at=row.archived_at,
+        deleted_at=row.deleted_at,
         asset_bindings=[
             TaskAssetBinding(
                 asset_id=binding.asset_id,
@@ -167,6 +172,8 @@ def context_from_model(row: models.ContextLinkModel) -> ContextLink:
         source_result_id=row.source_result_id,
         stale=row.stale,
         created_at=row.created_at,
+        source_deleted_at=row.source_deleted_at,
+        source_task_title=row.source_task_title,
     )
 
 

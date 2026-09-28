@@ -9,11 +9,15 @@ from dataclasses import asdict
 
 from shotmill.application.continuation_risks import MISSING_PREVIOUS_VIDEO
 from shotmill.application.event_bus import ProjectEventBus
+from shotmill.application.lifecycle_service import require_writable
 from shotmill.application.managed_queue import ManagedQueue
+from shotmill.application.result_file_collector import ResultFileCollector
+from shotmill.application.snapshot_files import freeze_media_references
 from shotmill.domain.entities import ContextLink, Job, Result, new_id, utcnow
 from shotmill.domain.enums import JobStatus, TaskState
 from shotmill.domain.providers import (
     ProgressReportingVideoProvider,
+    RecoveryContextVideoProvider,
     ResolvedMedia,
     ResumableVideoGenerationProvider,
     SnapshotVideoGenerationProvider,
@@ -36,11 +40,13 @@ class GenerationService:
         provider: VideoGenerationProvider,
         storage: MediaStorage,
         events: ProjectEventBus,
+        result_collector: ResultFileCollector | None = None,
     ) -> None:
         self.uow_factory = uow_factory
         self.provider = provider
         self.storage = storage
         self.events = events
+        self.result_collector = result_collector
         self.queue: GenerationQueue | None = None
         self._executing: set[str] = set()
 
@@ -147,6 +153,15 @@ class GenerationService:
             task = uow.tasks.get(task_id)
             if task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project, task)
+            if uow.tasks.generation_configuration_required(task_id):
+                raise ConflictError(
+                    "GENERATION_CONFIGURATION_REQUIRED",
+                    "导入的任务需要先确认本机生成配置，不能直接使用同名配置。",
+                )
             if task.state in {
                 TaskState.QUEUED,
                 TaskState.RUNNING,
@@ -171,6 +186,10 @@ class GenerationService:
                     }
                 )
             context_links = uow.contexts.list_by_target(task.id)
+            if any(link.source_deleted_at is not None for link in context_links):
+                raise ConflictError(
+                    "CONTEXT_SOURCE_DELETED", "承接来源已永久删除，请先取消或重新设置承接。"
+                )
             context_sources = []
             mode = task.generation_params.get("contextMode", "不承接")
             warnings = []
@@ -364,7 +383,7 @@ class GenerationService:
                 "CONTEXT_SNAPSHOT_MISSING", "旧任务缺少上下文媒体快照，请重新提交。", 409
             )
         for snapshot in [*job.assets_snapshot, *context_media]:
-            path = self.storage.resolve(job.project_id, snapshot["projectRelativePath"])
+            path = self.storage.resolve_read(job.project_id, snapshot["projectRelativePath"])
             if snapshot in context_media and (
                 not path.is_file() or file_digest(path) != snapshot["sha256"]
             ):
@@ -384,6 +403,7 @@ class GenerationService:
                     media_type=snapshot["mediaType"],
                     path=path,
                     mime_type=mime,
+                    original_filename=snapshot.get("originalFilename"),
                 )
             )
         params = deepcopy(job.params_snapshot)
@@ -435,9 +455,14 @@ class GenerationService:
     ) -> Job:
         job = await self.validate_task(project_id, task_id, seed=seed, dependency=dependency)
         with self.uow_factory() as uow:
+            uow.reserve_write()
             task = uow.tasks.get(task_id)
             if task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project, task)
             if task_id in uow.jobs.active_task_ids_by_project(project_id):
                 raise ConflictError("TASK_BUSY", "任务已在视频队列中。")
             if task.revision != job.task_content_snapshot["taskRevision"]:
@@ -446,6 +471,9 @@ class GenerationService:
                 source = uow.tasks.get(media["sourceTaskId"])
                 if source is None or source.primary_result_id != media["sourceResultId"]:
                     raise ConflictError("CONTEXT_STALE", "检查期间上一任务结果已变化，请重新提交。")
+            job.assets_snapshot = freeze_media_references(
+                uow, project_id, "job", job.id, job.assets_snapshot,
+            )
             uow.jobs.add(job)
             task.state = TaskState.QUEUED
             task.progress = 0.0
@@ -575,6 +603,7 @@ class GenerationService:
     async def _execute(self, job_id: str, *, recover: bool) -> None:
         project_id: str | None = None
         task_id: str | None = None
+        response = None
         try:
             with self.uow_factory() as uow:
                 pending_job = uow.jobs.get(job_id)
@@ -649,6 +678,8 @@ class GenerationService:
                         "应用关闭时视频仍在生成，当前服务无法恢复原任务，请检查后重新提交。",
                         409,
                     )
+                if isinstance(provider, RecoveryContextVideoProvider):
+                    provider.set_recovery_context(dict(job.runtime_progress or {}))
                 response = await provider.resume(job.id)
             else:
                 request = self._provider_request(job)
@@ -660,7 +691,13 @@ class GenerationService:
                 response = await provider.generate(request)
 
             created_results: list[Result] = []
+            collected_results = []
             for output in response.outputs:
+                if self.result_collector is not None:
+                    collected = self.result_collector.collect(project_id, task_id, job.id, output)
+                    collected_results.append(collected)
+                    created_results.append(collected.result)
+                    continue
                 relative = self.storage.write_output(
                     project_id, job.id, output.filename, output.content
                 )
@@ -688,10 +725,13 @@ class GenerationService:
                 )
 
             with self.uow_factory() as uow:
+                uow.reserve_write()
                 current_job = uow.jobs.get(job.id)
                 current_task = uow.tasks.get(task_id)
                 if current_job is None or current_task is None:
                     raise RuntimeError("Job or task disappeared during generation")
+                for collected in collected_results:
+                    collected.register_files(uow)
                 for result in created_results:
                     uow.results.add(result)
                 old_primary = current_task.primary_result_id
@@ -705,6 +745,12 @@ class GenerationService:
                 current_job.status = JobStatus.COMPLETED
                 current_job.provider_job_id = response.provider_job_id
                 current_job.completed_at = utcnow()
+                if (current_job.runtime_progress or {}).get("remoteState") == "completed":
+                    current_job.runtime_progress = {
+                        **current_job.runtime_progress,
+                        "collectionState": "saved", "stage": "本地结果已保存",
+                        "remainingSeconds": 0,
+                    }
                 uow.jobs.update_runtime(current_job)
 
             for result in created_results:
@@ -731,7 +777,8 @@ class GenerationService:
                     failed_job = uow.jobs.get(job_id)
                     failed_task = uow.tasks.get(task_id)
                     stopped = bool(
-                        failed_job
+                        getattr(exc, "code", "") == "GENERATION_CANCELLED"
+                        or failed_job
                         and (failed_job.runtime_progress or {}).get("stopRequested")
                         and (
                             "execution_interrupted" in str(exc)
@@ -775,6 +822,9 @@ class GenerationService:
                     state="idle" if stopped else "failed",
                 )
             # The failure is persisted; worker stays alive for later jobs.
+        finally:
+            if response is not None:
+                response.close()
 
 
 class GenerationQueue:
@@ -784,6 +834,7 @@ class GenerationQueue:
         self._queue: asyncio.Queue[str | None] = ManagedQueue(service.uow_factory)
         self._tasks: list[asyncio.Task[None]] = []
         self._started = False
+        self._stopping = False
         self._recovery_ids: set[str] = set()
 
     async def start(self) -> None:
@@ -792,6 +843,7 @@ class GenerationQueue:
         with self.service.uow_factory() as uow:
             jobs = uow.jobs.list_active()
         self._recovery_ids = {job.id for job in jobs if job.status == JobStatus.RUNNING}
+        self._stopping = False
         self._started = True
         self._tasks = [
             asyncio.create_task(self._worker(), name=f"shotmill-generation-{index}")
@@ -803,19 +855,33 @@ class GenerationQueue:
     async def stop(self) -> None:
         if not self._started:
             return
+        self._stopping = True
         for _ in self._tasks:
             await self._queue.put(None)
-        await asyncio.gather(*self._tasks, return_exceptions=True)
-        self._tasks.clear()
-        self._started = False
+        try:
+            # Allow quick local completion, but never wait for an offline server
+            # indefinitely. Cancelling these observers does not call provider.stop.
+            await asyncio.wait(self._tasks, timeout=1.0)
+        finally:
+            for worker in self._tasks:
+                if not worker.done():
+                    worker.cancel()
+            await asyncio.gather(*self._tasks, return_exceptions=True)
+            self._tasks.clear()
+            self._started = False
+            while not self._queue.empty():
+                self._queue.get_nowait()
+                self._queue.task_done()
 
     async def enqueue(self, job_id: str) -> None:
+        if self._stopping:
+            return  # The persisted queued Job is recovered on the next start.
         if not self._started:
             await self.start()
         await self._queue.put(job_id)
 
     async def _worker(self) -> None:
-        while True:
+        while not self._stopping:
             job_id = await self._queue.get()
             try:
                 if job_id is None:

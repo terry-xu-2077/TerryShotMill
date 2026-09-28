@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type RefObject } from "react";
 
 const ModalPortalContext = createContext<HTMLDialogElement | null>(null);
 
@@ -9,6 +9,7 @@ export function useModalPortalTarget() {
 export type ModalProps = Omit<ComponentProps<"dialog">, "open" | "onClose"> & {
   open: boolean;
   onDismiss: () => void;
+  initialFocusRef?: RefObject<HTMLElement | null>;
 };
 
 const focusable = 'button, input:not([type="hidden"]), textarea, select, a[href], [tabindex], [contenteditable="true"], video[controls], audio[controls]';
@@ -21,7 +22,7 @@ function tabStops(host: HTMLDialogElement) {
 }
 
 /** Native modality owns background isolation and restoration; portals stay in its top layer. */
-export function Modal({ open, onDismiss, children, className = "", onKeyDown, onCancel, ...props }: ModalProps) {
+export function Modal({ open, onDismiss, initialFocusRef, children, className = "", onKeyDown, onCancel, ...props }: ModalProps) {
   const [host, setHost] = useState<HTMLDialogElement | null>(null);
   const wasOpen = useRef(false);
   const returnTarget = useRef<HTMLElement | null>(null);
@@ -34,7 +35,9 @@ export function Modal({ open, onDismiss, children, className = "", onKeyDown, on
     if (!host || !open) return;
     if (!host.open) host.showModal();
     const stops = tabStops(host);
-    const initial = stops.find(element => element.hasAttribute("autofocus")) ??
+    const preferred = initialFocusRef?.current;
+    const initial = (preferred && stops.includes(preferred) ? preferred : undefined) ??
+      stops.find(element => element.hasAttribute("autofocus")) ??
       stops.find(element => element.matches('input, textarea, [contenteditable="true"]'));
     initial?.focus({ preventScroll: true });
     const previous = returnTarget.current;
@@ -46,7 +49,7 @@ export function Modal({ open, onDismiss, children, className = "", onKeyDown, on
         }
       });
     };
-  }, [host, open]);
+  }, [host, open, initialFocusRef]);
 
   return <dialog {...props} ref={setHost} role="presentation" className={`tc-modal-layer ${className}`.trim()}
     onCancel={event => {

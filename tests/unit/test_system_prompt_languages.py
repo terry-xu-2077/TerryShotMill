@@ -21,7 +21,9 @@ def test_language_variants_only_change_language_requirements():
         restored = restored.replace(chinese, english)
     assert restored == DEFAULT_H3_SYSTEM_PROMPT
     assert len(DEFAULT_SYSTEM_PROMPT_PRESETS) == 2
-    frontend = Path(__file__).parents[2] / "frontend/src/features/settings/systemPromptPresets.json"
+    frontend = (
+        Path(__file__).parents[2] / "frontend/src/components/settings/systemPromptPresets.json"
+    )
     assert json.loads(frontend.read_text(encoding="utf-8")) == [
         asdict(p) for p in DEFAULT_SYSTEM_PROMPT_PRESETS
     ]

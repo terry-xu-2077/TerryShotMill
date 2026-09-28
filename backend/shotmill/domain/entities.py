@@ -23,8 +23,27 @@ class Project:
     description: str = ""
     use_description_for_ai_prompt: bool = False
     cover_asset_id: str | None = None
+    archived_at: datetime | None = None
+    deleted_at: datetime | None = None
     created_at: datetime = field(default_factory=utcnow)
     updated_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
+class Scene:
+    id: str
+    project_id: str
+    number: int = 1
+    title: str = ""
+    summary: str = ""
+    order_key: int = 1
+
+
+@dataclass(slots=True)
+class TaskPlacement:
+    task_id: str
+    scene_id: str
+    order_key: int
 
 
 @dataclass(slots=True)
@@ -42,6 +61,7 @@ class Asset:
     duration: float | None = None
     hash: str | None = None
     thumbnail_path: str | None = None
+    provenance: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=utcnow)
     updated_at: datetime = field(default_factory=utcnow)
 
@@ -81,6 +101,8 @@ class Task:
     user_view_mode: str = "visual"
     ai_view_mode: str = "visual"
     asset_bindings: list[TaskAssetBinding] = field(default_factory=list)
+    archived_at: datetime | None = None
+    deleted_at: datetime | None = None
     created_at: datetime = field(default_factory=utcnow)
     updated_at: datetime = field(default_factory=utcnow)
 
@@ -100,6 +122,8 @@ class ContextLink:
     source_result_id: str | None = None
     stale: bool = False
     created_at: datetime = field(default_factory=utcnow)
+    source_deleted_at: datetime | None = None
+    source_task_title: str | None = None
 
 
 @dataclass(slots=True)
@@ -156,6 +180,34 @@ class AiPromptRevision:
     elapsed_seconds: float | None = None
     previous_task_summary_snapshot: str | None = None
     created_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
+class ArchivedResult:
+    """Independent copy; source identifiers are provenance, not live references."""
+
+    id: str
+    source_result_id: str
+    source_project_id: str
+    source_project_title: str
+    source_task_id: str
+    source_task_title: str
+    source_job_id: str
+    generated_at: datetime
+    final_prompt: str
+    params: dict[str, Any]
+    files: list[dict[str, Any]]
+    result_metadata: dict[str, Any] = field(default_factory=dict)
+    archived_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
+class PendingFileCleanup:
+    id: str
+    project_id: str
+    paths: list[str]
+    created_at: datetime = field(default_factory=utcnow)
+    last_error: str | None = None
 
 
 @dataclass(slots=True)

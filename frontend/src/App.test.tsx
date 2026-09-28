@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { App } from "./App";
 import { MockProjectGateway } from "./gateways/mockProjectGateway";
+import type { ProjectEvent, ProjectGateway } from "./gateways/projectGateway";
 import { OverlayProvider } from "./ui/overlay";
 
 function renderApp() {
@@ -19,6 +20,36 @@ async function openFirstProject(user: ReturnType<typeof userEvent.setup>) {
 
 describe("V0.6 Terry导演工作台", () => {
   beforeEach(() => localStorage.clear());
+  it("coalesces events received during a refresh into a follow-up refresh", async () => {
+    const user = userEvent.setup();
+    const gateway: ProjectGateway = new MockProjectGateway();
+    let notify!: (event: ProjectEvent) => void;
+    let projectId = "";
+    vi.spyOn(gateway, "subscribeProject").mockImplementation((id, listener) => {
+      projectId = id;
+      notify = listener;
+      return () => undefined;
+    });
+    render(<OverlayProvider><App gateway={gateway} /></OverlayProvider>);
+    await openFirstProject(user);
+    await waitFor(() => expect(notify).toBeDefined());
+    const original = gateway.getProjectSettings.bind(gateway);
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const settings = vi.spyOn(gateway, "getProjectSettings").mockImplementationOnce(async id => {
+      await held;
+      return original(id);
+    });
+    act(() => { notify({ type: "task.updated", projectId }); });
+    expect(settings).toHaveBeenCalledTimes(1);
+    act(() => {
+      notify({ type: "job.completed", projectId });
+      notify({ type: "task.updated", projectId });
+    });
+    expect(settings).toHaveBeenCalledTimes(1);
+    await act(async () => { release(); });
+    await waitFor(() => expect(settings).toHaveBeenCalledTimes(2));
+  });
   it("管理任务仅开启复选框，底栏支持全选与清空并保留管理模式", async () => {
     const user = userEvent.setup();
     renderApp();

@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from shotmill.application.lifecycle_service import require_writable
 from shotmill.domain.entities import Task, utcnow
 from shotmill.domain.enums import PromptSource
 from shotmill.domain.repositories import UnitOfWork
@@ -61,9 +62,14 @@ class PromptReviewService:
 
     def approve(self, project_id: str, task_id: str) -> PromptReviewItem:
         with self.uow_factory() as uow:
+            uow.reserve_write()
             task = uow.tasks.get(task_id)
             if task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project, task)
             prompt = current_prompt_text(task).strip()
             if not prompt:
                 raise ShotMillError(

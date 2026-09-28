@@ -1,0 +1,6 @@
+.project-export-dialog { display: grid; gap: 12px; min-width: 0; }
+.project-export-title, .project-export-status, .project-export-error { margin: 0; overflow-wrap: anywhere; }
+.project-export-status { color: var(--sm-text-muted); }
+.project-export-error { color: var(--sm-danger); }
+.project-export-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.project-export-download { color: var(--sm-accent); text-underline-offset: 3px; }

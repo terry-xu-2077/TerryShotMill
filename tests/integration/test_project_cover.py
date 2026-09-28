@@ -7,7 +7,11 @@ def test_project_cover_can_be_selected_reset_and_not_borrowed_across_projects(cl
         "cover": {"kind": "asset", "assetId": asset["id"]},
     })
     assert response.status_code == 200, response.text
-    assert response.json()["coverUrl"].endswith("cover.png")
+    cover = client.get(response.json()["coverUrl"])
+    assert cover.status_code == 200
+    assert cover.content == b"image"
+    assert cover.headers["content-type"] == "image/png"
+    assert "cover.png" in cover.headers["content-disposition"]
     settings = client.get(f"/api/v1/projects/{project}/settings").json()
     assert settings["coverAssetId"] == asset["id"]
     deletion = client.delete(f"/api/v1/projects/{project}/assets/{asset['id']}")

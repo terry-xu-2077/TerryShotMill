@@ -1,7 +1,7 @@
 import { X, PanelsTopLeft, Settings, SlidersHorizontal, FolderPlus, Pencil, Sparkles,
   Film, Images, Image, Camera, Clapperboard, FileText, History, TriangleAlert,
   Activity, Trash2, Save, Replace } from "lucide-react";
-import type { KeyboardEventHandler, ReactNode } from "react";
+import type { KeyboardEventHandler, ReactNode, RefObject } from "react";
 import { useEffect, useId, useState } from "react";
 import { Modal } from "../primitives";
 
@@ -26,11 +26,12 @@ type DialogProps = {
   description?: ReactNode;
   children: ReactNode;
   onClose: () => void;
+  initialFocusRef?: RefObject<HTMLElement | null>;
   size?: "default" | "wide";
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
 };
 
-export function Dialog({ open, title, description, children, onClose, size = "default", onKeyDown, icon = "window" }: DialogProps) {
+export function Dialog({ open, title, description, children, onClose, initialFocusRef, size = "default", onKeyDown, icon = "window" }: DialogProps) {
   const TitleIcon = titleIcons[icon];
   const titleId = useId();
   const [present, setPresent] = useState(open);
@@ -47,7 +48,7 @@ export function Dialog({ open, title, description, children, onClose, size = "de
 
   return (
     <OverlayPortal>
-      <Modal open={open} onDismiss={onClose} className="sm-dialog-backdrop" data-state={open ? "open" : "closing"} aria-hidden={!open || undefined} inert={!open} style={backdropZ} onAnimationEnd={(event) => {
+      <Modal open={open} onDismiss={onClose} initialFocusRef={initialFocusRef} className="sm-dialog-backdrop" data-state={open ? "open" : "closing"} aria-hidden={!open || undefined} inert={!open} style={backdropZ} onAnimationEnd={(event) => {
         if (!open && event.target === event.currentTarget) setPresent(false);
       }} onMouseDown={(event) => {
         if (open && event.currentTarget === event.target) onClose();

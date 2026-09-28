@@ -87,7 +87,7 @@ def prepare_context_media(
     start: float | None,
     end: float | None,
 ) -> dict:
-    source = storage.resolve(project_id, relative_source)
+    source = storage.resolve_read(project_id, relative_source)
     if not source.is_file():
         raise ShotMillError("CONTEXT_MEDIA_MISSING", "上下文来源视频文件不存在。", 409)
     duration = video_duration(source)

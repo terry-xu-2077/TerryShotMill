@@ -1,16 +1,58 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, Form, Query, Response, UploadFile, status
+from pydantic import Field
 
 from shotmill.api.dependencies import ContainerDep
 from shotmill.api.schemas import AssetPatchRequest
+from shotmill.application.asset_import_service import ImportSelection
 from shotmill.frontend_adapter.mapper import map_asset
-from shotmill.frontend_adapter.models import AssetListResponse, ProjectAssetView
+from shotmill.frontend_adapter.models import ApiModel, AssetListResponse, ProjectAssetView
 
 router = APIRouter(prefix="/projects/{project_id}/assets", tags=["assets"])
+
+
+class ImportSourceRequest(ApiModel):
+    kind: Literal["asset", "result", "archive"]
+    id: str = Field(min_length=1)
+
+
+class ImportSourcesRequest(ApiModel):
+    sources: list[ImportSourceRequest] = Field(min_length=1)
+
+
+class ImportCandidateView(ApiModel):
+    kind: Literal["asset", "result", "archive"]
+    id: str
+    name: str
+    source_project_id: str
+    source_project_title: str
+    media_type: str
+    preview_url: str | None
+    created_at: datetime
+
+
+@router.get("/import-sources", response_model=list[ImportCandidateView])
+def import_candidates(
+    project_id: str, container: ContainerDep,
+    source_project_id: str | None = Query(None, alias="sourceProjectId"),
+) -> list[ImportCandidateView]:
+    return [ImportCandidateView.model_validate(item) for item in
+            container.asset_import_service.candidates(project_id, source_project_id)]
+
+
+@router.post("/import", response_model=list[ProjectAssetView], status_code=201)
+def import_sources(
+    project_id: str, payload: ImportSourcesRequest, container: ContainerDep,
+) -> list[ProjectAssetView]:
+    assets = container.asset_import_service.import_sources(
+        project_id, [ImportSelection(item.kind, item.id) for item in payload.sources],
+    )
+    return [map_asset(asset, container.storage) for asset in assets]
 
 
 def _parse_tags(value: str | None) -> list[str]:

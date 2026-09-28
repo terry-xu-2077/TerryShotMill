@@ -4,6 +4,8 @@ ShotMill 的开发文档按职责拆分，避免单个文档无限膨胀。开�
 
 ## 当前开发任务
 
+- [生命周期、结果归档与 Flow Bridge 局域网实施清单](./LIFECYCLE_BRIDGE_LAN_PLAN.md)：2026-09-27 用户确认的新需求，覆盖任务/项目归档与回收站、永久删除、独立结果归档、跨项目副本导入、Bridge 独立化和两机局域网。功能实现与验收进展以清单为准。
+
 - [前端 UI 微调指南（HTML/CSS 开发者）](./FRONTEND_UI_DEVELOPMENT.md)：当前页面与 TSX/CSS 对照、主题、启动、调试、测试，以及旧实现清理范围。
 
 2026-09-20：指定工作流的“异星边境”8 项批量生产已实跑通过，详细进展见 [开发记录](./DEVELOPMENT_LOG.md) 和 [验收记录](./UX_ACCEPTANCE_BASELINE.md)。这不代表 V0.4 路线图及所有 UI/UX 待办已经完成。ComfyUI 节点包安装与升级说明见 [Bridge 文档](../integrations/comfyui_shotmill/README.md)。

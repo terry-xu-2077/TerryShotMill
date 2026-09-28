@@ -25,12 +25,12 @@ for (const mode of ["light", "dark"] as const) {
       });
       const baseRgb = [1, 3, 5].map(offset => parseInt(base.slice(offset, offset + 2), 16));
       const expected = mode === "light"
-        ? baseRgb.map(channel => Math.round(channel * 0.16 + 255 * 0.84))
+        ? baseRgb.map(channel => Math.round(channel * 0.20 + 255 * 0.80))
         : baseRgb;
-      expect(colors[0].rgb, "light canvas mixes 16% base; dark uses base directly").toEqual(expected);
+      expect(colors[0].rgb, "light canvas mixes 20% base; dark uses base directly").toEqual(expected);
       if (mode === "light") {
         const surface = colors.find(color => color.token === "--sm-surface-1")!;
-        const expectedSurface = baseRgb.map(channel => Math.round((channel * 0.16 + 255 * 0.84) * 0.12 + 255 * 0.88));
+        const expectedSurface = baseRgb.map(channel => Math.round((channel * 0.20 + 255 * 0.80) * 0.12 + 255 * 0.88));
         expect(surface.rgb, "light panels preserve their original white mix").toEqual(expectedSurface);
       }
       for (const { token, rgb } of colors) {

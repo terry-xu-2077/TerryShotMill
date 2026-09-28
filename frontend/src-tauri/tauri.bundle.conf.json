@@ -1,0 +1,12 @@
+{
+  "build": {
+    "beforeBuildCommand": null
+  },
+  "bundle": {
+    "targets": ["nsis"],
+    "resources": {
+      "../../.artifacts/windows-runtime/shotmill-backend/": "runtime/",
+      "../dist/": "frontend/"
+    }
+  }
+}

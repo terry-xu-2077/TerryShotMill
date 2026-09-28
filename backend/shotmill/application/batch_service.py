@@ -7,12 +7,14 @@ from dataclasses import dataclass
 
 from shotmill.application.event_bus import ProjectEventBus
 from shotmill.application.generation_service import GenerationService
+from shotmill.application.lifecycle_service import in_lifecycle_scope, require_writable
 from shotmill.application.managed_queue import ManagedQueue
 from shotmill.application.prompt_enhancement_service import (
     EnhancementContextOptions,
     EnhancementMedia,
     PromptEnhancementService,
 )
+from shotmill.application.snapshot_files import capture_prompt_media, freeze_media_references
 from shotmill.domain.entities import (
     AiPromptRevision,
     PromptEnhancementBatch,
@@ -23,7 +25,23 @@ from shotmill.domain.entities import (
 )
 from shotmill.domain.enums import JobStatus, TaskState
 from shotmill.domain.repositories import UnitOfWork
-from shotmill.errors import NotFoundError, ShotMillError
+from shotmill.errors import ConflictError, NotFoundError, ShotMillError
+
+
+def _freeze_prompt_job_media(uow: UnitOfWork, job: PromptEnhancementJob) -> None:
+    try:
+        job.source_snapshot["media"] = freeze_media_references(
+            uow, job.project_id, "prompt_job", job.id, job.source_snapshot.get("media", []),
+        )
+    except ConflictError as exc:
+        if exc.code != "GENERATION_ASSET_FILE_MISSING":
+            raise
+        # A newly created job may have bound earlier inputs before finding the
+        # missing one. Release only this attempt's references, never its bytes.
+        uow.files.release_owner("project", job.project_id, "prompt_job", job.id)
+        job.status = JobStatus.FAILED
+        job.finished_at = utcnow()
+        job.error = exc.code
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +185,8 @@ class BatchProductionService:
         active_ids: set[str],
         single_input: SinglePromptInput | None = None,
     ) -> PromptBatchSkipped | None:
+        if not in_lifecycle_scope(task, "active"):
+            return PromptBatchSkipped(task.id, "read-only", "任务已归档或移入回收站")
         if task.id in active_ids:
             return PromptBatchSkipped(task.id, "busy", "正在增强或排队")
         if not cls._prompt_text(task, single_input):
@@ -179,8 +199,10 @@ class BatchProductionService:
         task_ids: list[str],
     ) -> PromptBatchEligibility:
         with self.uow_factory() as uow:
-            if uow.projects.get(project_id) is None:
+            project = uow.projects.get(project_id)
+            if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project)
             selected = self._selected_tasks(uow.tasks.list_by_project(project_id), task_ids)
             if task_ids and len(selected) != len(set(task_ids)):
                 raise NotFoundError("TASK_NOT_FOUND", "One or more tasks were not found")
@@ -207,13 +229,18 @@ class BatchProductionService:
         enqueue: bool = True,
     ) -> BatchPromptResult:
         with self.uow_factory() as uow:
+            uow.reserve_write()
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
             all_tasks = uow.tasks.list_by_project(project_id)
+            require_writable(project)
             selected = self._selected_tasks(all_tasks, task_ids)
             if task_ids and len(selected) != len(set(task_ids)):
                 raise NotFoundError("TASK_NOT_FOUND", "One or more tasks were not found")
+            if single_input is not None:
+                for task in selected:
+                    require_writable(project, task)
             active_prompt_task_ids = uow.prompt_jobs.active_task_ids_by_project(project_id)
             if single_input and any(task.id in active_prompt_task_ids for task in selected):
                 raise ShotMillError("TASK_PROMPT_BUSY", "任务正在增强，请等待当前增强完成。", 409)
@@ -240,7 +267,7 @@ class BatchProductionService:
             jobs: list[PromptEnhancementJob] = []
             for task in selected:
                 skip = self._prompt_skip_reason(task, active_prompt_task_ids, single_input)
-                if skip and skip.reason == "busy":
+                if skip and skip.reason in {"busy", "read-only"}:
                     jobs.append(
                         PromptEnhancementJob(
                             id=new_id("promptjob"),
@@ -253,7 +280,7 @@ class BatchProductionService:
                             provider_profile_snapshot={},
                             target_skill=target,
                             finished_at=utcnow(),
-                            error="active-prompt-job",
+                            error="active-prompt-job" if skip.reason == "busy" else "read-only",
                         )
                     )
                     continue
@@ -339,6 +366,11 @@ class BatchProductionService:
                 )
                 jobs.append(job)
             for job in jobs:
+                if job.status == JobStatus.QUEUED:
+                    job.source_snapshot["media"] = capture_prompt_media(
+                        uow, project_id, job.source_snapshot["media"],
+                    )
+                    _freeze_prompt_job_media(uow, job)
                 uow.prompt_jobs.add(job)
             batch.queued_count = sum(job.status == JobStatus.QUEUED for job in jobs)
             batch.failed_count = sum(job.status == JobStatus.FAILED for job in jobs)
@@ -370,7 +402,8 @@ class BatchProductionService:
                 task_id=job.task_id,
                 state=(
                     "skipped"
-                    if job.status == JobStatus.CANCELLED and job.error == "active-prompt-job"
+                    if job.status == JobStatus.CANCELLED
+                    and job.error in {"active-prompt-job", "read-only"}
                     else job.status.value
                 ),
                 revision_id=job.revision_id,
@@ -436,9 +469,15 @@ class BatchProductionService:
                 for job in failed
             ]
             for job in attempts:
+                _freeze_prompt_job_media(uow, job)
                 uow.prompt_jobs.add(job)
+            batch.queued_count = sum(job.status == JobStatus.QUEUED for job in attempts)
+            batch.failed_count = sum(job.status == JobStatus.FAILED for job in attempts)
+            uow.prompt_batches.update(batch)
         for job in attempts:
-            await self.prompt_queue.enqueue(job.id)
+            if job.status == JobStatus.QUEUED:
+                await self.prompt_queue.enqueue(job.id)
+        self.refresh_prompt_batch(batch.id)
         await self._publish_batch_event(project_id, batch.id, state="queued")
         return self.prompt_batch_result(project_id, batch.id)
 
@@ -538,6 +577,7 @@ class BatchProductionService:
                 target=job.target_skill,
                 user_prompt=str(job.source_snapshot.get("userPrompt", "")),
                 media=media,
+                media_snapshot=job.source_snapshot.get("media", []),
                 include_project_background=bool(
                     job.context_snapshot.get("includeProjectBackground")
                 ),

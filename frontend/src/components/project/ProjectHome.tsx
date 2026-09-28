@@ -9,16 +9,19 @@ import { Button } from "../../ui/primitives";
 import { Dialog } from "../../ui/overlay";
 import { ThemeSwitch } from "../../ui/ThemeSwitch";
 
-export function ProjectHome({ bridgeStatus, projects, loading = false, error = "", onRetry, onOpenProject, onCreateProject }: {
+export function ProjectHome({ bridgeStatus, projects, loading = false, error = "", onRetry, onOpenProject, onCreateProject, onManageProjects, onOpenResultArchive, onImportProject }: {
   bridgeStatus?: ReactNode;
   projects: ProjectSummary[]; loading?: boolean; error?: string; onRetry?: () => void;
   onOpenProject: (projectId: string) => void; onCreateProject: () => void;
+  onManageProjects?: () => void;
+  onOpenResultArchive?: () => void;
+  onImportProject?: () => void;
 }) {
   const { unread } = useViewedResults();
   return <main className="project-home" aria-label="项目首页">
     <header className="project-home-title"><h1><BrandLogo />Terry导演工作台</h1>{bridgeStatus}<ThemeSwitch /></header>
     <div className="project-home-collection">
-      <header className="project-collection-heading"><h2>项目</h2><span className="project-home-count">{projects.length} 个项目</span></header>
+      <header className="project-collection-heading"><h2>项目</h2><span className="project-home-count">{projects.length} 个项目</span>{onImportProject && <Button onClick={onImportProject}>导入项目</Button>}{onOpenResultArchive && <Button onClick={onOpenResultArchive}>生成结果归档</Button>}{onManageProjects && <Button onClick={onManageProjects}>项目管理</Button>}</header>
       <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}><defs>
         <clipPath id="project-folder-outline" clipPathUnits="objectBoundingBox"><path d="M0 .15 Q0 0 .06 0 H.32 C.36 0 .36 .13 .42 .13 H.94 Q1 .13 1 .27 V.87 Q1 1 .94 1 H.06 Q0 1 0 .87 Z" /></clipPath>
       </defs></svg>

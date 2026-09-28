@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
+import tempfile
 import time
-from contextlib import suppress
+from contextlib import ExitStack, suppress
+from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import httpx
 
@@ -20,6 +23,10 @@ from shotmill.domain.providers import (
 )
 from shotmill.errors import ProviderUnavailableError, ShotMillError
 from shotmill.providers.comfyui_runtime import ComfyUIExecutionCoordinator
+from shotmill.providers.video_generation.bridge_contract import (
+    checked_bridge_agreement,
+    negotiate_bridge,
+)
 from shotmill.providers.video_generation.numeric_bindings import resolve_numeric_bindings
 from shotmill.providers.video_generation.workflow_snapshot import checked_workflow_snapshot
 
@@ -28,6 +35,7 @@ _OPTIONAL_ASSET_PATTERN = re.compile(r"^\{\{asset\?:(.+)}}$")
 
 def _bridge_payload(request, workflow_id, snapshot, input_slots, numeric_inputs):
     return {
+        "applicationContract": {"name": "shotmill.video", "version": 1},
         "jobId": request.job_id,
         "workflowId": workflow_id,
         "workflowSnapshot": snapshot,
@@ -195,6 +203,24 @@ def _prune_missing_optional_assets(
 
 class ComfyUIVideoGenerationProvider:
     progress_callback = None
+    _allow_unknown_submission = False
+    _retry_stop = False
+
+    def set_recovery_context(self, context: dict[str, Any]) -> None:
+        self._allow_unknown_submission = context.get("submissionState") in {"sending", "uncertain"}
+        self._retry_stop = bool(context.get("stopRequested"))
+
+    async def _submission_state(self, state: str) -> None:
+        self._allow_unknown_submission = state in {"sending", "uncertain"}
+        if self.progress_callback:
+            await self.progress_callback({
+                "submissionState": state,
+                "stage": {
+                    "sending": "正在提交生成请求",
+                    "uncertain": "提交回执未确认，正在查询原任务（不会重复生成）",
+                    "accepted": "服务器已接收任务",
+                }[state],
+            })
 
     def set_progress_callback(self, callback):
         self.progress_callback = callback
@@ -242,6 +268,12 @@ class ComfyUIVideoGenerationProvider:
         self.use_bridge_assets = use_bridge_assets
         self.frozen_workflow_id: str | None = None
         self.workflow_snapshot: dict[str, Any] | None = None
+        self.bridge_agreement: dict[str, Any] | None = None
+        self.require_bridge_agreement = False
+
+    @property
+    def bridge_prefix(self) -> str:
+        return self.bridge_agreement["apiPrefix"] if self.bridge_agreement else "/shotmill/v1"
 
     def capture_profile(self, request: VideoGenerationRequest) -> dict[str, Any]:
         base_url = self.base_url_getter() if self.base_url_getter is not None else self.base_url
@@ -249,6 +281,7 @@ class ComfyUIVideoGenerationProvider:
             raise ProviderUnavailableError("请先配置 ComfyUI 地址。")
         return {
             "version": 2,
+            "requireBridgeAgreement": True,
             "providerId": self.id,
             "baseUrl": base_url.rstrip("/"),
             "workflowId": self._load_workflow_id(request),
@@ -273,6 +306,9 @@ class ComfyUIVideoGenerationProvider:
             coordinator=self.coordinator,
         )
         provider.frozen_workflow_id = profile["workflowId"]
+        provider.require_bridge_agreement = profile.get("requireBridgeAgreement") is True
+        if profile.get("bridgeAgreement") is not None:
+            provider.bridge_agreement = checked_bridge_agreement(profile["bridgeAgreement"])
         if profile.get("workflowSnapshot") is not None:
             provider.workflow_snapshot = checked_workflow_snapshot(
                 profile["workflowSnapshot"],
@@ -329,7 +365,7 @@ class ComfyUIVideoGenerationProvider:
         if snapshot is not None:
             workflow = {"inputs": snapshot["inputs"], "executable": True}
         else:
-            response = await client.get(f"{base_url}/shotmill/v1/workflows")
+            response = await client.get(f"{base_url}{self.bridge_prefix}/workflows")
             response.raise_for_status()
             payload = response.json()
             workflows = payload.get("workflows") if isinstance(payload, dict) else None
@@ -465,22 +501,24 @@ class ComfyUIVideoGenerationProvider:
         uploaded: dict[str, str] = {}
         for media in request.assets:
             safe_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", media.asset_id).strip("._")
-            filename = f"{safe_id or 'asset'}{media.path.suffix.lower()}"
-            content = media.path.read_bytes()
-            response = await client.post(
-                f"{base_url}/shotmill/v1/assets",
-                data={"asset_id": media.asset_id, "role": media.role or ""},
-                files={
-                    "file": (
-                        filename,
-                        content,
-                        media.mime_type or "application/octet-stream",
-                    )
-                },
-            )
+            filename = f"{safe_id or 'asset'}{media.file_suffix}"
+            with media.path.open("rb") as content:
+                checksum = hashlib.file_digest(content, "sha256").hexdigest()
+                content.seek(0)
+                response = await client.post(
+                    f"{base_url}{self.bridge_prefix}/assets",
+                    data={"asset_id": media.asset_id, "role": media.role or "", "sha256": checksum},
+                    files={"file": (
+                        filename, content, media.mime_type or "application/octet-stream",
+                    )},
+                )
             response.raise_for_status()
             payload = response.json()
             bridge_asset = payload.get("asset") if isinstance(payload, dict) else None
+            if not isinstance(bridge_asset, dict) or bridge_asset.get("sha256") != checksum:
+                raise ShotMillError(
+                    "COMFYUI_UPLOAD_CHECKSUM_MISMATCH", "上传文件校验失败，未提交生成。", 502,
+                )
             remote_name = (
                 bridge_asset.get("relativePath")
                 if isinstance(bridge_asset, dict)
@@ -505,27 +543,91 @@ class ComfyUIVideoGenerationProvider:
         items: list[dict[str, Any]],
     ) -> list[GeneratedOutput]:
         outputs: list[GeneratedOutput] = []
-        for index, item in enumerate(items):
-            if not isinstance(item, dict) or not item.get("filename"):
-                continue
-            media_response = await client.get(
-                f"{base_url}/shotmill/v1/results/{job_id}/files/{index}"
-            )
-            media_response.raise_for_status()
-            outputs.append(
-                GeneratedOutput(
-                    filename=str(item["filename"]),
-                    content=media_response.content,
-                    content_type=media_response.headers.get("content-type"),
-                    metadata={
-                        "source": "shotmill_bridge",
-                        "jobId": job_id,
-                        "relativePath": item.get("relativePath", ""),
-                        "nodeId": item.get("nodeId", ""),
-                    },
+        with ExitStack() as pending:
+            for index, item in enumerate(items):
+                if not isinstance(item, dict) or not item.get("filename"):
+                    continue
+                content = pending.enter_context(tempfile.TemporaryFile(mode="w+b"))
+                media_response, _ = await self._read_remote(
+                    client,
+                    f"{base_url}{self.bridge_prefix}/results/{job_id}/files/{index}",
+                    sink=content,
                 )
-            )
+                media_response.raise_for_status()
+                checksum = media_response.extensions["shotmill_download_sha256"]
+                content.seek(0)
+                advertised_checksum = media_response.headers.get("x-content-sha256")
+                if self.bridge_agreement is not None and advertised_checksum is None:
+                    raise ShotMillError(
+                        "COMFYUI_DOWNLOAD_CHECKSUM_MISSING",
+                        "服务器未按任务契约提供结果摘要，未保存该结果，请检查 Bridge。", 502,
+                    )
+                if advertised_checksum is not None and advertised_checksum != checksum:
+                    raise ShotMillError(
+                        "COMFYUI_DOWNLOAD_CHECKSUM_MISMATCH",
+                        "生成结果传输校验失败，未保存该结果，请检查服务器文件后重试。",
+                        502,
+                    )
+                outputs.append(
+                    GeneratedOutput(
+                        filename=str(item["filename"]),
+                        content=content,
+                        content_type=media_response.headers.get("content-type"),
+                        metadata={
+                            "source": "shotmill_bridge",
+                            "sha256": checksum,
+                            "transferVerified": advertised_checksum is not None,
+                            "jobId": job_id,
+                            "relativePath": item.get("relativePath", ""),
+                            "nodeId": item.get("nodeId", ""),
+                        },
+                    )
+                )
+            # On success ownership passes to VideoGenerationResponse's consumer.
+            pending.pop_all()
         return outputs
+
+    async def _read_remote(
+        self, client: httpx.AsyncClient, url: str, *, sink: BinaryIO | None = None
+    ):
+        """Retry observation/download only. Losing a laptop connection never cancels work."""
+        offline_since = None
+        delay = self.poll_interval_seconds
+        while True:
+            try:
+                if sink is None:
+                    response = await client.get(url)
+                else:
+                    sink.seek(0)
+                    sink.truncate()
+                    digest = hashlib.sha256()
+                    async with client.stream("GET", url) as response:
+                        if response.is_success:
+                            async for chunk in response.aiter_bytes(1024 * 1024):
+                                sink.write(chunk)
+                                digest.update(chunk)
+                            response.extensions["shotmill_download_sha256"] = digest.hexdigest()
+                if response.status_code in {429, 502, 503, 504}:
+                    response.raise_for_status()
+            except (httpx.NetworkError, httpx.TimeoutException, httpx.RemoteProtocolError,
+                    httpx.HTTPStatusError):
+                if offline_since is None:
+                    offline_since = time.monotonic()
+                    if self.progress_callback:
+                        await self.progress_callback({
+                            "connectionState": "reconnecting",
+                            "stage": "连接中断，等待重连（服务器任务不受影响）",
+                            "remainingSeconds": None,
+                        })
+                await asyncio.sleep(delay)
+                delay = min(15.0, delay * 2)
+                continue
+            offline_seconds = time.monotonic() - offline_since if offline_since is not None else 0
+            if offline_since is not None and self.progress_callback:
+                await self.progress_callback({
+                    "connectionState": "connected", "stage": "已重连，正在同步原任务",
+                })
+            return response, offline_seconds
 
     async def validate(self, request: VideoGenerationRequest) -> dict[str, Any]:
         base_url = self.base_url_getter() if self.base_url_getter is not None else self.base_url
@@ -533,6 +635,14 @@ class ComfyUIVideoGenerationProvider:
             raise ProviderUnavailableError("请先配置 ComfyUI 地址。")
         try:
             async with httpx.AsyncClient(timeout=5.0, transport=self.transport) as client:
+                if self.require_bridge_agreement and self.bridge_agreement is None:
+                    health = await client.get(f"{base_url.rstrip('/')}/terryflow/v1/health")
+                    if health.status_code in {404, 405}:
+                        raise ShotMillError(
+                            "BRIDGE_INCOMPATIBLE", "请更新 Bridge 后再提交新任务。", 422,
+                        )
+                    health.raise_for_status()
+                    self.bridge_agreement = negotiate_bridge(health.json())
                 workflow_id = self._load_workflow_id(request)
                 await self._validate_workflow_inputs(
                     client, base_url.rstrip("/"), workflow_id, request
@@ -540,7 +650,7 @@ class ComfyUIVideoGenerationProvider:
                 snapshot = self.workflow_snapshot
                 if snapshot is None:
                     response = await client.get(
-                        f"{base_url.rstrip('/')}/shotmill/v1/workflows/snapshot",
+                        f"{base_url.rstrip('/')}{self.bridge_prefix}/workflows/snapshot",
                         params={"workflowId": workflow_id},
                     )
                     if response.status_code == 404:
@@ -575,7 +685,7 @@ class ComfyUIVideoGenerationProvider:
                     numeric_values=numeric_inputs,
                 )
                 preflight = await client.post(
-                    f"{base_url.rstrip('/')}/shotmill/v1/workflows/validate",
+                    f"{base_url.rstrip('/')}{self.bridge_prefix}/workflows/validate",
                     json=_bridge_payload(
                         request,
                         workflow_id,
@@ -601,7 +711,11 @@ class ComfyUIVideoGenerationProvider:
                 validation = preflight.json()
                 if not isinstance(validation, dict) or validation.get("ok") is not True:
                     raise ValueError("invalid preflight response")
-                return {"workflowSnapshot": snapshot}
+                return {
+                    "workflowSnapshot": snapshot,
+                    **({"bridgeAgreement": deepcopy(self.bridge_agreement)}
+                       if self.bridge_agreement is not None else {}),
+                }
         except httpx.HTTPError as exc:
             raise ProviderUnavailableError("无法检查 ComfyUI 工作流，请确认服务连接。") from exc
         except (ValueError, TypeError) as exc:
@@ -616,10 +730,10 @@ class ComfyUIVideoGenerationProvider:
         job_id: str,
         prompt_id: str | None = None,
     ) -> VideoGenerationResponse:
-        from .progress import StepProgress, watch_progress
-
         monitor = None
         if self.progress_callback and prompt_id:
+            from .progress import StepProgress, watch_progress
+
             graph = (self.workflow_snapshot or {}).get("prompt", {})
             monitor = asyncio.create_task(
                 watch_progress(
@@ -639,8 +753,48 @@ class ComfyUIVideoGenerationProvider:
 
     async def _poll_bridge_job(self, client, base_url, job_id, prompt_id):
         started = time.monotonic()
-        while time.monotonic() - started < self.timeout_seconds:
-            response = await client.get(f"{base_url}/shotmill/v1/jobs/{job_id}")
+        unknown_delay = max(0.1, self.poll_interval_seconds)
+        stop_delay = unknown_delay
+        next_stop = 0.0
+        while True:
+            if self._retry_stop and time.monotonic() >= next_stop:
+                try:
+                    await self.stop(job_id)
+                except (httpx.HTTPError, ShotMillError, ValueError) as exc:
+                    if self.progress_callback:
+                        await self.progress_callback({
+                            "stage": "停止尚未确认，正在重试原任务停止请求",
+                            "stopError": str(exc),
+                        })
+                    next_stop = time.monotonic() + stop_delay
+                    stop_delay = min(15.0, stop_delay * 2)
+                else:
+                    self._retry_stop = False
+            # Observe first after waking from sleep; a completed remote job must
+            # still be collected even when the laptop's wall time jumped ahead.
+            response, offline_seconds = await self._read_remote(
+                client, f"{base_url}{self.bridge_prefix}/jobs/{job_id}"
+            )
+            started += offline_seconds
+            if self._retry_stop:
+                started = time.monotonic()
+            if self._allow_unknown_submission or self._retry_stop:
+                try:
+                    receipt = response.json() if response.is_success else None
+                except ValueError:
+                    receipt = None
+                if isinstance(receipt, dict) and receipt.get("status") == "cancelled":
+                    raise ShotMillError("GENERATION_CANCELLED", "服务器已确认取消任务。", 409)
+                if not (
+                    isinstance(receipt, dict)
+                    and receipt.get("status") in {"queued", "running", "completed", "failed"}
+                    and (receipt.get("promptId") or receipt.get("prompt_id"))
+                ):
+                    await asyncio.sleep(unknown_delay)
+                    unknown_delay = min(15.0, unknown_delay * 2)
+                    started = time.monotonic()
+                    continue
+                await self._submission_state("accepted")
             if response.status_code == 404:
                 raise ShotMillError(
                     "SHOTMILL_BRIDGE_JOB_NOT_FOUND",
@@ -668,6 +822,8 @@ class ComfyUIVideoGenerationProvider:
                     "生成服务找不到原视频任务，请检查运行记录。",
                     502,
                 )
+            if state.get("status") == "cancelled":
+                raise ShotMillError("GENERATION_CANCELLED", "服务器已确认取消任务。", 409)
             if state.get("status") == "failed":
                 raise ShotMillError(
                     "SHOTMILL_BRIDGE_JOB_FAILED",
@@ -675,6 +831,18 @@ class ComfyUIVideoGenerationProvider:
                     502,
                 )
             if state.get("status") == "completed":
+                remote_id = state.get("promptId") or state.get("prompt_id") or prompt_id
+                if not remote_id:
+                    raise ShotMillError(
+                        "SHOTMILL_BRIDGE_INVALID_RESPONSE",
+                        "原视频任务缺少生成记录标识。",
+                        502,
+                    )
+                if self.progress_callback:
+                    await self.progress_callback({
+                        "remoteState": "completed", "collectionState": "downloading",
+                        "stage": "服务器已完成，正在下载结果", "remainingSeconds": None,
+                    })
                 outputs = await self._fetch_bridge_outputs(
                     client,
                     base_url,
@@ -687,29 +855,37 @@ class ComfyUIVideoGenerationProvider:
                         "ShotMill IO Bridge completed without downloadable outputs",
                         502,
                     )
-                remote_id = state.get("promptId") or state.get("prompt_id") or prompt_id
-                if not remote_id:
-                    raise ShotMillError(
-                        "SHOTMILL_BRIDGE_INVALID_RESPONSE",
-                        "原视频任务缺少生成记录标识。",
-                        502,
-                    )
-                return VideoGenerationResponse(str(remote_id), tuple(outputs))
+                result = VideoGenerationResponse(str(remote_id), tuple(outputs))
+                try:
+                    if self.progress_callback:
+                        await self.progress_callback({
+                            "collectionState": "downloaded", "stage": "下载完成，正在保存本地结果",
+                        })
+                    return result
+                except BaseException:
+                    result.close()
+                    raise
+            if time.monotonic() - started >= self.timeout_seconds:
+                raise ShotMillError(
+                    "SHOTMILL_BRIDGE_TIMEOUT",
+                    "Timed out waiting for ShotMill IO Bridge generation",
+                    504,
+                )
             await asyncio.sleep(self.poll_interval_seconds)
-        raise ShotMillError(
-            "SHOTMILL_BRIDGE_TIMEOUT",
-            "Timed out waiting for ShotMill IO Bridge generation",
-            504,
-        )
 
     async def stop(self, job_id: str) -> None:
         base = self.base_url_getter() if self.base_url_getter else self.base_url
         async with httpx.AsyncClient(timeout=15, transport=self.transport) as client:
-            response = await client.get(f"{base}/shotmill/v1/jobs/{job_id}")
+            response = await client.post(
+                f"{base}{self.bridge_prefix}/jobs/{job_id}/cancel-submission"
+            )
+            if response.status_code in {404, 405}:
+                # Older bridges can only stop an already identified remote task.
+                response = await client.get(f"{base}{self.bridge_prefix}/jobs/{job_id}")
             response.raise_for_status()
             state = response.json()
             remote = state.get("promptId") or state.get("prompt_id")
-            if state.get("status") in {"completed", "failed"}:
+            if state.get("status") in {"completed", "failed", "cancelled"}:
                 return
             if not remote:
                 raise ShotMillError("STOP_NOT_READY", "任务尚在准备，请稍后重试停止。", 409)
@@ -718,10 +894,17 @@ class ComfyUIVideoGenerationProvider:
             deleted.raise_for_status()
             interrupted = await client.post(f"{base}/interrupt", json={"prompt_id": remote})
             interrupted.raise_for_status()
+            # We now know which original submission was admitted and targeted.
+            # Do not keep treating its removed queue entry as an unknown receipt.
+            await self._submission_state("accepted")
 
     async def resume(self, job_id: str) -> VideoGenerationResponse:
         # Only observe the persisted logical job and download its original outputs.
         # No upload, workflow validation, model unloading or resubmission is allowed here.
+        if self.require_bridge_agreement and self.bridge_agreement is None:
+            raise ShotMillError(
+                "BRIDGE_AGREEMENT_MISSING", "任务通信契约缺失，不能安全恢复。", 409,
+            )
         base_url = self.base_url_getter() if self.base_url_getter is not None else self.base_url
         if not base_url:
             raise ProviderUnavailableError("请先配置 ComfyUI 地址。")
@@ -730,6 +913,45 @@ class ComfyUIVideoGenerationProvider:
                 return await self._collect_bridge_job(client, base_url.rstrip("/"), job_id)
         except httpx.HTTPError as exc:
             raise ProviderUnavailableError(f"ComfyUI request failed: {exc}") from exc
+
+    async def _submit_once(self, client: httpx.AsyncClient, url: str, payload: dict) -> str | None:
+        # Persist this observation before bytes leave the process. A lost receipt
+        # must survive shutdown without granting permission to submit a new job.
+        await self._submission_state("sending")
+        try:
+            submit = await client.post(url, json=payload)
+            if submit.is_client_error and submit.status_code not in {408, 429}:
+                try:
+                    rejection = submit.json()
+                    if (
+                        submit.status_code == 409
+                        and isinstance(rejection, dict)
+                        and rejection.get("error") == "submission_cancelled"
+                    ):
+                        raise ShotMillError(
+                            "GENERATION_CANCELLED", "服务器已确认取消任务。", 409,
+                        )
+                    details = json.dumps(rejection, ensure_ascii=False)
+                except ValueError:
+                    details = submit.text
+                raise ShotMillError(
+                    "SHOTMILL_BRIDGE_SUBMISSION_REJECTED",
+                    f"Bridge 拒绝生成请求（{submit.status_code}）：{details[:12000]}",
+                    422,
+                )
+            submit.raise_for_status()
+            submitted = submit.json()
+            prompt_id = (
+                submitted.get("promptId") or submitted.get("prompt_id")
+                if isinstance(submitted, dict) else None
+            )
+            if not prompt_id:
+                raise ValueError("Missing submission receipt")
+        except (httpx.HTTPError, ValueError):
+            await self._submission_state("uncertain")
+            return None
+        await self._submission_state("accepted")
+        return str(prompt_id)
 
     async def generate(self, request: VideoGenerationRequest) -> VideoGenerationResponse:
         if self.frozen_workflow_id is None:
@@ -741,6 +963,10 @@ class ComfyUIVideoGenerationProvider:
                 "WORKFLOW_SNAPSHOT_MISSING",
                 "视频任务缺少工作流内容快照，请重新提交生成。",
                 409,
+            )
+        if self.require_bridge_agreement and self.bridge_agreement is None:
+            raise ShotMillError(
+                "BRIDGE_AGREEMENT_MISSING", "任务缺少通信契约，请重新提交生成。", 409,
             )
         base_url = self.base_url_getter() if self.base_url_getter is not None else self.base_url
         base_url = base_url.rstrip("/") if base_url else None
@@ -769,9 +995,10 @@ class ComfyUIVideoGenerationProvider:
                     await self.coordinator.prepare("video", client, base_url)
                     coordinator_acquired = True
                 asset_values = await self._upload_assets(client, request, base_url)
-                submit = await client.post(
-                    f"{base_url}/shotmill/v1/jobs",
-                    json={
+                prompt_id = await self._submit_once(
+                    client,
+                    f"{base_url}{self.bridge_prefix}/jobs",
+                    {
                         **_bridge_payload(
                             request,
                             workflow_id,
@@ -783,31 +1010,11 @@ class ComfyUIVideoGenerationProvider:
                         "assetValues": asset_values,
                     },
                 )
-                if submit.is_client_error:
-                    try:
-                        details = json.dumps(submit.json(), ensure_ascii=False)
-                    except ValueError:
-                        details = submit.text
-                    raise ShotMillError(
-                        "SHOTMILL_BRIDGE_SUBMISSION_REJECTED",
-                        f"Bridge 拒绝生成请求（{submit.status_code}）：{details[:12000]}",
-                        422,
-                    )
-                submit.raise_for_status()
-                submitted = submit.json()
-                prompt_id = submitted.get("promptId") or submitted.get("prompt_id")
-                if not prompt_id:
-                    raise ShotMillError(
-                        "SHOTMILL_BRIDGE_INVALID_RESPONSE",
-                        "ShotMill IO Bridge did not return promptId",
-                        502,
-                    )
-
                 return await self._collect_bridge_job(
                     client,
                     base_url,
                     request.job_id,
-                    str(prompt_id),
+                    prompt_id,
                 )
         except ShotMillError:
             raise

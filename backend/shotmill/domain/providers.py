@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, BinaryIO, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +23,12 @@ class ResolvedMedia:
     media_type: str
     path: Path
     mime_type: str | None = None
+    original_filename: str | None = None
+
+    @property
+    def file_suffix(self) -> str:
+        """Provider-facing format comes from logical metadata, not blob addressing."""
+        return Path(self.original_filename or self.path.name).suffix.lower()
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +90,7 @@ class VideoGenerationRequest:
 @dataclass(frozen=True, slots=True)
 class GeneratedOutput:
     filename: str
-    content: bytes
+    content: bytes | BinaryIO
     content_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -94,10 +100,23 @@ class VideoGenerationResponse:
     provider_job_id: str
     outputs: tuple[GeneratedOutput, ...]
 
+    def close(self) -> None:
+        """The consumer owns output streams after a successful provider return."""
+        for output in self.outputs:
+            if not isinstance(output.content, bytes):
+                output.content.close()
+
 
 @runtime_checkable
 class ProgressReportingVideoProvider(Protocol):
     def set_progress_callback(self, callback) -> None: ...
+
+
+@runtime_checkable
+class RecoveryContextVideoProvider(Protocol):
+    """Restore provider-owned execution observations without changing Job inputs."""
+
+    def set_recovery_context(self, context: dict[str, Any]) -> None: ...
 
 
 @runtime_checkable

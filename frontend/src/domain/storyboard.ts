@@ -62,6 +62,7 @@ export type ProjectAsset = {
   checksum: string;
   originalFilename?: string;
   sourceFile?: File;
+  importSource?: { kind: "asset" | "result" | "archive"; id: string };
 };
 
 export type ResolvedTaskAssetSnapshot = Readonly<TaskAssetBinding & {

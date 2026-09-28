@@ -375,6 +375,8 @@ class SqlAlchemyContextRepository:
                     target_task_id=link.target_task_id,
                     kind=link.kind,
                     source_result_id=link.source_result_id,
+                    source_deleted_at=link.source_deleted_at,
+                    source_task_title=link.source_task_title,
                     stale=link.stale,
                     created_at=link.created_at,
                 )

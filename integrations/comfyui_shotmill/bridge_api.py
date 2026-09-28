@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import math
@@ -15,14 +16,19 @@ import folder_paths
 import execution
 from server import PromptServer
 from .canvas_compiler import compile_canvas, prune_to_outputs
+from .application_contracts import contract_catalogue, resolve_application_contract
+from .media_upload import store_upload
+from .terminal_receipts import install_completion_recorder, read_receipt
 
 
 PREFIX = "/shotmill/v1"
-PACKAGE_VERSION = "0.4.0"
+FLOW_PREFIX = "/terryflow/v1"
+PACKAGE_VERSION = "0.5.1"
 ASSET_INDEX = Path(folder_paths.get_input_directory()) / "shotmill" / "assets.json"
 RESULT_ROOT = Path(folder_paths.get_output_directory()) / "shotmill" / "results"
 WORKFLOW_ROOT = Path(folder_paths.base_path) / "user" / "default" / "workflows"
 JOB_INDEX = Path(folder_paths.get_output_directory()) / "shotmill" / "jobs.json"
+RECEIPT_ROOT = Path(folder_paths.get_output_directory()) / "shotmill" / "receipts"
 NATIVE_SAVE_NODES = {
     "SaveImage",
     "SaveAnimatedWEBP",
@@ -47,8 +53,8 @@ INPUT_LOADERS = {
 BUS_PACK_TYPES = {"TerryXuWireBusPack", "TerryXuWirelessBusPack"}
 BUS_UNPACK_TYPES = {"TerryXuWireBusUnpack", "TerryXuWirelessBusUnpack"}
 BUS_TYPE = "TERRY_WIRE_BUS"
-BRIDGE_IN_TYPES = {"ShotMillIOBridgeIn", "ShotMill.IOBridgeIn"}
-BRIDGE_OUT_TYPES = {"ShotMillIOBridgeOut", "ShotMill.IOBridgeOut"}
+BRIDGE_IN_TYPES = {"TerryFlowBridgeIn", "ShotMillIOBridgeIn", "ShotMill.IOBridgeIn"}
+BRIDGE_OUT_TYPES = {"TerryFlowBridgeOut", "ShotMillIOBridgeOut", "ShotMill.IOBridgeOut"}
 LEGACY_BRIDGE_TYPES = {"ShotMillIOBridge", "ShotMill.IOBridge"}
 LAST_WORKLOAD_KIND: str | None = None
 
@@ -300,6 +306,7 @@ def _bind_input_markers(
     prompt: dict[str, dict[str, Any]], payload: dict[str, Any], raw: dict[str, Any] | None = None
 ) -> dict[str, str]:
     """Replace the file value of existing loader nodes behind Bridge In markers."""
+    contract = resolve_application_contract(payload)
     assets = payload.get("assets") if isinstance(payload.get("assets"), list) else []
     asset_values = payload.get("assetValues") if isinstance(payload.get("assetValues"), dict) else {}
     bound_media = {}
@@ -396,17 +403,7 @@ def _bind_input_markers(
                     inputs[name] = [loader_id, 0]
                 else:
                     inputs.pop(name, None)
-                    if receiver.get("class_type") == "GetVideoComponents" and name == "video":
-                        decoder_id = str(target.get("targetNodeId"))
-                        for consumer in prompt.values():
-                            if consumer.get("class_type") != "MiniMaxH3ReferenceToVideo":
-                                continue
-                            consumer_inputs = consumer.get("inputs", {})
-                            for port, value in list(consumer_inputs.items()):
-                                if (port.startswith(("ref_videos.", "ref_video_audios."))
-                                    and isinstance(value, list) and len(value) == 2
-                                    and str(value[0]) == decoder_id):
-                                    consumer_inputs.pop(port)
+                    contract.disconnect_optional(prompt, receiver, name, str(target.get("targetNodeId")))
         if expected_type in {"INT", "FLOAT", "BOOLEAN"}:
             target = targets[0] if targets else {}
             port_id = f"{target.get('targetNodeId', '')}:{target.get('name', '')}:{loader_id}"
@@ -458,73 +455,12 @@ def _bind_input_markers(
         connect_targets(True)
     if remaining_numeric:
         raise ValueError(f"Unknown numeric input ports: {sorted(remaining_numeric)}")
-    _adapt_h3_reference_labels(prompt, assigned_records)
+    contract.adapt_references(prompt, assigned_records)
     return bound_media
 
 
-def _adapt_h3_reference_labels(
-    prompt: dict[str, dict[str, Any]], assigned_records: list[tuple[dict[str, Any], Any]]
-) -> None:
-    """H3 enumerates present references, not physical Autogrow socket suffixes."""
-    import re
-
-    by_node: dict[str, dict[str, dict[int, str]]] = {}
-    pattern = re.compile(r"(?:^|\.)(ref_image|ref_video_audio|ref_video|ref_audio)_(\d+)$")
-    for record, asset in assigned_records:
-        targets = list(record.get("targets", []))
-        for target in list(targets):
-            decoder_id = str(target.get("targetNodeId"))
-            if prompt.get(decoder_id, {}).get("class_type") == "GetVideoComponents":
-                for consumer_id, consumer in prompt.items():
-                    for name, value in consumer.get("inputs", {}).items():
-                        if value == [decoder_id, 0]:
-                            targets.append({"targetNodeId": consumer_id, "name": name})
-        for target in targets:
-            node_id = str(target.get("targetNodeId"))
-            if prompt.get(node_id, {}).get("class_type") != "MiniMaxH3ReferenceToVideo":
-                continue
-            match = pattern.search(str(target.get("name") or ""))
-            if match:
-                group = by_node.setdefault(node_id, {}).setdefault(match[1], {})
-                if isinstance(asset, dict):
-                    group[int(match[2])] = str(asset.get("reference") or "")
-
-    for node_id, groups in by_node.items():
-        mapping: dict[str, str] = {}
-        counts = {"Picture": 0, "Video": 0, "Audio": 0}
-
-        def label(reference: str, kind: str) -> None:
-            counts[kind] += 1
-            value = f"<{kind} {counts[kind]}>"
-            if reference in mapping and mapping[reference] != value:
-                raise ValueError("H3 reference is assigned to multiple input slots")
-            mapping[reference] = value
-
-        for _, reference in sorted(groups.get("ref_image", {}).items()):
-            label(reference, "Picture")
-        videos = groups.get("ref_video", {})
-        soundtracks = groups.get("ref_video_audio", {})
-        if set(soundtracks) - set(videos):
-            raise ValueError("H3 video soundtrack requires the paired reference video")
-        for index, reference in sorted(videos.items()):
-            if index in soundtracks:
-                label(soundtracks[index], "Audio")
-            label(reference, "Video")
-        for _, reference in sorted(groups.get("ref_audio", {}).items()):
-            label(reference, "Audio")
-        inputs = prompt[node_id].setdefault("inputs", {})
-        text = inputs.get("prompt")
-        if isinstance(text, list) and len(text) == 2:
-            text = prompt.get(str(text[0]), {}).get("inputs", {}).get("value")
-        if not isinstance(text, str):
-            if any(old != new for old, new in mapping.items()):
-                raise ValueError("H3 sparse references require a Bridge text input to remap prompt labels")
-            continue
-        missing = set(re.findall(r"<(?:Picture|Video|Audio)\s+\d+>", text)) - set(mapping)
-        if missing:
-            raise ValueError(f"H3 prompt references empty input slots: {', '.join(sorted(missing))}")
-        # One substitution pass avoids collisions such as Picture 3 -> 2 -> 1.
-        inputs["prompt"] = re.sub(r"<(?:Picture|Video|Audio)\s+\d+>", lambda match: mapping.get(match[0], match[0]), text)
+def _adapt_h3_reference_labels(prompt: dict, assigned_records: list) -> None:
+    resolve_application_contract({}).adapt_references(prompt, assigned_records)
 
 
 def _bridge_markers(raw: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1215,7 +1151,14 @@ def _inspect(path: Path) -> dict[str, Any] | None:
 
 
 async def _health(_: web.Request) -> web.Response:
-    return web.json_response({"ok": True, "version": PACKAGE_VERSION, "package": "ComfyUI-ShotMill"})
+    return web.json_response({
+        "ok": True, "version": PACKAGE_VERSION, "package": "ComfyUI-TerryFlowBridge",
+        "protocolVersions": [1], "applicationContracts": contract_catalogue(),
+        "capabilities": {"workflowSnapshot": True, "preflight": True, "idempotentSubmit": True,
+                         "assetUpload": True, "resultDownload": True, "resultSha256": True,
+                         "cancelSubmission": True, "durableCompletion": True,
+                         "authentication": False},
+    })
 
 
 async def _workflows(_: web.Request) -> web.Response:
@@ -1229,39 +1172,16 @@ async def _workflows(_: web.Request) -> web.Response:
 
 
 async def _upload_asset(request: web.Request) -> web.Response:
-    reader = await request.multipart()
-    asset_id = ""
-    role = ""
-    filename = "asset.bin"
-    content = b""
-    async for field in reader:
-        if field.name == "asset_id":
-            asset_id = (await field.text()).strip()
-        elif field.name == "role":
-            role = (await field.text()).strip()
-        elif field.name == "file" and field.filename:
-            filename = _safe_name(field.filename, "asset.bin")
-            content = await field.read()
-    if not asset_id or not content:
-        return web.json_response({"ok": False, "error": "asset_id and file are required"}, status=400)
-    digest = hashlib.sha256(content).hexdigest()
-    target_dir = Path(folder_paths.get_input_directory()) / "shotmill" / "assets" / _safe_name(asset_id, "asset")
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / filename
-    target.write_bytes(content)
-    index = _load_index(ASSET_INDEX)
-    items = index.setdefault("assets", {})
-    item = {
-        "assetId": asset_id,
-        "role": role,
-        "filename": filename,
-        "relativePath": target.relative_to(Path(folder_paths.get_input_directory())).as_posix(),
-        "sha256": digest,
-        "size": len(content),
-    }
-    items[asset_id] = item
-    _save_index(ASSET_INDEX, index)
-    return web.json_response({"ok": True, "asset": item})
+    try:
+        item = await store_upload(
+            await request.multipart(), Path(folder_paths.get_input_directory()), _safe_name,
+        )
+        index = _load_index(ASSET_INDEX)
+        index.setdefault("assets", {})[item["assetId"]] = item
+        _save_index(ASSET_INDEX, index)
+        return web.json_response({"ok": True, "asset": item})
+    except ValueError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
 
 async def _assets(_: web.Request) -> web.Response:
@@ -1315,6 +1235,8 @@ def _job_state(job_id: str) -> dict[str, Any]:
     item = index.get("jobs", {}).get(job_id) if isinstance(index.get("jobs"), dict) else None
     if not isinstance(item, dict):
         return {"ok": False, "jobId": job_id, "status": "not_found", "results": []}
+    if item.get("submissionState") == "cancelled":
+        return {"ok": True, "jobId": job_id, "status": "cancelled", "results": []}
     cached = item.get("terminalState")
     if isinstance(cached, dict) and cached.get("status") in {"completed", "failed"}:
         return {**cached, "results": [
@@ -1325,8 +1247,10 @@ def _job_state(job_id: str) -> dict[str, Any]:
     queue = PromptServer.instance.prompt_queue
     # Snapshot live work first; history then catches a completion between the reads.
     running, pending = queue.get_current_queue()
-    history = queue.get_history(prompt_id=prompt_id)
-    entry = history.get(prompt_id) if isinstance(history, dict) else None
+    entry = read_receipt(RECEIPT_ROOT, job_id, prompt_id)
+    if entry is None:
+        history = queue.get_history(prompt_id=prompt_id)
+        entry = history.get(prompt_id) if isinstance(history, dict) else None
     if not isinstance(entry, dict):
         state = "not_found"
         if any(row[1] == prompt_id for row in running):
@@ -1380,24 +1304,11 @@ def _check_dynamic_choices(node_id: str, schema: dict, values: dict, prefix: str
 
 
 def _bind_parameter_selectors(prompt: dict, params: Any) -> None:
-    if not isinstance(params, dict):
-        raise ValueError("params must be an object")
-    for node in prompt.values():
-        kind = node.get("class_type")
-        inputs = node.setdefault("inputs", {})
-        if kind == "ShotMillResolutionSelector" and "resolution" in params:
-            value = params["resolution"]
-            if value not in {"480p", "720p", "1080p"}:
-                raise ValueError("Unsupported resolution")
-            inputs["resolution"] = value
-        elif kind == "ShotMillDurationSelector" and "durationSeconds" in params:
-            value = params["durationSeconds"]
-            if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not 0 < value <= 60:
-                raise ValueError("Invalid durationSeconds")
-            inputs["seconds"] = value
+    resolve_application_contract({}).bind_parameters(prompt, params)
 
 
 def _execution_graph(payload: dict[str, Any], job_id: str) -> tuple[dict, dict, dict]:
+    contract = resolve_application_contract(payload)
     workflow_id = str(payload.get("workflowId") or "").replace("\\", "/").strip("/")
     bound_media = {}
     if isinstance(payload.get("prompt"), dict):
@@ -1412,7 +1323,7 @@ def _execution_graph(payload: dict[str, Any], job_id: str) -> tuple[dict, dict, 
             prompt, raw = _load_prompt(workflow_id)
         prompt = _replace_values(prompt, payload)
         bound_media = _bind_input_markers(prompt, payload, raw)
-        _bind_parameter_selectors(prompt, payload.get("params", {}))
+        contract.bind_parameters(prompt, payload.get("params", {}))
         _rewrite_custom_saves(prompt, raw, job_id)
         _rewrite_native_saves(prompt, job_id)
     PromptServer.instance.node_replace_manager.apply_replacements(prompt)
@@ -1481,6 +1392,7 @@ async def _validate_preflight(prompt: dict, bound_media: dict[str, str]) -> tupl
 async def _validate_workflow(request: web.Request) -> web.Response:
     try:
         payload = await request.json()
+        _normalise_contract(payload, request)
         if not isinstance(payload.get("workflowSnapshot"), dict) or "prompt" in payload:
             raise ValueError("workflowSnapshot is required for preflight")
         # Derive deferred loaders from actual Bridge binding, never from a
@@ -1505,7 +1417,56 @@ async def _validate_workflow(request: web.Request) -> web.Response:
 async def _create_job(request: web.Request) -> web.Response:
     try:
         payload = await request.json()
-        job_id = _safe_name(str(payload.get("jobId") or ""), "job")
+        _normalise_contract(payload, request)
+        server = PromptServer.instance
+        if not hasattr(server, "_terryflow_submit_lock"):
+            server._terryflow_submit_lock = asyncio.Lock()
+        async with server._terryflow_submit_lock:
+            return await _create_job_locked(payload)
+    except (ValueError, TypeError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+def _normalise_contract(payload: dict, request: web.Request) -> None:
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be an object")
+    contract = resolve_application_contract(payload, legacy=not getattr(request, "path", "").startswith("/terryflow/"))
+    payload["applicationContract"] = {"name": contract.name, "version": contract.version}
+
+
+def _submission_index() -> dict[str, Any]:
+    index = json.loads(JOB_INDEX.read_text(encoding="utf-8")) if JOB_INDEX.exists() else {}
+    if not isinstance(index, dict) or not isinstance(index.get("jobs", {}), dict):
+        raise ValueError("invalid Bridge job index; repair it before submitting")
+    return index
+
+
+async def _create_job_locked(payload: dict[str, Any]) -> web.Response:
+    try:
+        if not isinstance(payload, dict):
+            raise ValueError("job payload must be an object")
+        job_id = str(payload.get("jobId") or "")
+        if not job_id or job_id != _safe_name(job_id, "job"):
+            raise ValueError("jobId must be a nonempty safe identifier")
+        digest = _snapshot_digest({key: value for key, value in payload.items() if key != "clientId"})
+        # A damaged index must never be treated as an empty index: that would
+        # permit repeating work whose previous receipt has become unreadable.
+        index = _submission_index()
+        existing = index.get("jobs", {}).get(job_id)
+        if existing is not None:
+            if isinstance(existing, dict) and existing.get("submissionState") == "cancelled":
+                return web.json_response(
+                    {"ok": False, "error": "submission_cancelled", "jobId": job_id}, status=409
+                )
+            if not isinstance(existing, dict) or existing.get("requestSha256") != digest:
+                return web.json_response({"ok": False, "error": "job_id_conflict", "jobId": job_id}, status=409)
+            state = _job_state(job_id)
+            if state.get("status") == "not_found":
+                return web.json_response({
+                    "ok": False, "error": "submission_state_unknown", "jobId": job_id,
+                    "promptId": existing.get("promptId"),
+                }, status=409)
+            return web.json_response({**state, "replayed": True})
         workflow_id = str(payload.get("workflowId") or "").replace("\\", "/").strip("/")
         prompt, raw, _ = _execution_graph(payload, job_id)
         server = PromptServer.instance
@@ -1518,20 +1479,30 @@ async def _create_job(request: web.Request) -> web.Response:
         number = server.number
         server.number += 1
         extra_data = {
+            "terryflow_job_id": job_id,
             "client_id": str(payload.get("clientId") or "shotmill"),
             "extra_pnginfo": {"workflow": raw},
             "create_time": int(time.time() * 1000),
         }
-        server.prompt_queue.put(
-            (number, prompt_id, prompt, extra_data, valid[2], {})
-        )
-        index = _load_index(JOB_INDEX)
+        # Validation awaited; reload to preserve terminal states written by
+        # concurrent status reads while ComfyUI was validating this graph.
+        index = _submission_index()
         index.setdefault("jobs", {})[job_id] = {
             "jobId": job_id,
             "promptId": prompt_id,
             "workflowId": workflow_id,
             "createdAt": int(time.time()),
+            "requestSha256": digest,
+            "applicationContract": payload["applicationContract"],
+            "submissionState": "prepared",
         }
+        # Reserve the logical identity durably before making work executable.
+        # If interrupted here, later requests report uncertainty, not resubmit.
+        _save_index(JOB_INDEX, index)
+        server.prompt_queue.put(
+            (number, prompt_id, prompt, extra_data, valid[2], {})
+        )
+        index["jobs"][job_id]["submissionState"] = "queued"
         _save_index(JOB_INDEX, index)
         return web.json_response(
             {"ok": True, "jobId": job_id, "promptId": prompt_id, "status": "queued"}
@@ -1541,6 +1512,42 @@ async def _create_job(request: web.Request) -> web.Response:
     except (ValueError, json.JSONDecodeError) as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
     except Exception as exc:  # pragma: no cover - ComfyUI runtime boundary
+        return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+
+async def _cancel_submission(request: web.Request) -> web.Response:
+    """Fence late submissions; never claim an already admitted job has stopped."""
+    try:
+        job_id = str(request.match_info["job_id"])
+        if not job_id or job_id != _safe_name(job_id, "job"):
+            raise ValueError("jobId must be a nonempty safe identifier")
+        server = PromptServer.instance
+        if not hasattr(server, "_terryflow_submit_lock"):
+            server._terryflow_submit_lock = asyncio.Lock()
+        async with server._terryflow_submit_lock:
+            index = _submission_index()
+            existing = index.get("jobs", {}).get(job_id)
+            if existing is not None:
+                if not isinstance(existing, dict):
+                    raise ValueError("invalid Bridge job receipt")
+                state = _job_state(job_id)
+                if state.get("status") != "not_found":
+                    return web.json_response(state)
+                # Even a prepared receipt may have been queued before a crash
+                # prevented the queued-state write. Missing history proves nothing.
+                return web.json_response({
+                    "ok": False, "error": "submission_state_unknown", "jobId": job_id,
+                }, status=409)
+            index.setdefault("jobs", {})[job_id] = {
+                **(existing or {}), "jobId": job_id, "submissionState": "cancelled",
+            }
+            _save_index(JOB_INDEX, index)
+            return web.json_response({
+                "ok": True, "jobId": job_id, "status": "cancelled", "results": [],
+            })
+    except (ValueError, TypeError) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=500)
 
 
@@ -1561,7 +1568,10 @@ async def _result_file(request: web.Request) -> web.StreamResponse:
         raise web.HTTPNotFound()
     state = _job_state(job_id)
     try:
-        result = state.get("results", [])[int(request.match_info["index"])]
+        result_index = int(request.match_info["index"])
+        if result_index < 0:
+            raise ValueError("Negative result index")
+        result = state.get("results", [])[result_index]
     except (IndexError, ValueError, TypeError):
         raise web.HTTPNotFound()
     if not isinstance(result, dict):
@@ -1570,19 +1580,30 @@ async def _result_file(request: web.Request) -> web.StreamResponse:
     candidate = (root / str(result.get("subfolder") or "") / str(result.get("filename") or "")).resolve()
     if root not in candidate.parents or not candidate.is_file():
         raise web.HTTPNotFound()
-    return web.FileResponse(candidate)
+    def fingerprint():
+        with candidate.open("rb") as source:
+            digest = hashlib.sha256()
+            while chunk := source.read(1024 * 1024):
+                digest.update(chunk)
+            return digest.hexdigest()
+
+    checksum = await asyncio.to_thread(fingerprint)
+    return web.FileResponse(candidate, headers={"X-Content-SHA256": checksum})
 
 
 def register_routes() -> None:
+    install_completion_recorder(PromptServer.instance.prompt_queue, RECEIPT_ROOT)
     routes = PromptServer.instance.routes
-    routes.get(f"{PREFIX}/health")(_health)
-    routes.get(f"{PREFIX}/workflows")(_workflows)
-    routes.get(f"{PREFIX}/workflows/snapshot")(_workflow_snapshot)
-    routes.post(f"{PREFIX}/workflows/validate")(_validate_workflow)
-    routes.post(f"{PREFIX}/assets")(_upload_asset)
-    routes.get(f"{PREFIX}/assets")(_assets)
-    routes.post(f"{PREFIX}/runtime/prepare")(_prepare_runtime)
-    routes.post(f"{PREFIX}/jobs")(_create_job)
-    routes.get(f"{PREFIX}/jobs/{{job_id}}")(_job)
-    routes.get(f"{PREFIX}/results/{{job_id}}")(_result_metadata)
-    routes.get(f"{PREFIX}/results/{{job_id}}/files/{{index}}")(_result_file)
+    for prefix in (PREFIX, FLOW_PREFIX):
+        routes.get(f"{prefix}/health")(_health)
+        routes.get(f"{prefix}/workflows")(_workflows)
+        routes.get(f"{prefix}/workflows/snapshot")(_workflow_snapshot)
+        routes.post(f"{prefix}/workflows/validate")(_validate_workflow)
+        routes.post(f"{prefix}/assets")(_upload_asset)
+        routes.get(f"{prefix}/assets")(_assets)
+        routes.post(f"{prefix}/runtime/prepare")(_prepare_runtime)
+        routes.post(f"{prefix}/jobs")(_create_job)
+        routes.post(f"{prefix}/jobs/{{job_id}}/cancel-submission")(_cancel_submission)
+        routes.get(f"{prefix}/jobs/{{job_id}}")(_job)
+        routes.get(f"{prefix}/results/{{job_id}}")(_result_metadata)
+        routes.get(f"{prefix}/results/{{job_id}}/files/{{index}}")(_result_file)

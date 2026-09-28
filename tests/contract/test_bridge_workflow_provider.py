@@ -87,8 +87,10 @@ def test_h3_video_reference_through_native_decoder_is_recognized(bridge_graph):
     assert prompt["h3"]["inputs"]["prompt"] == "Continue the ending of <Video 1>."
 
 
-def test_bridge_validation_error_preserves_node_details(bridge_snapshot):
+def test_bridge_validation_error_preserves_node_details(bridge_snapshot, bridge_health):
     def handler(request):
+        if request.url.path == "/terryflow/v1/health":
+            return httpx.Response(200, json=bridge_health)
         if request.url.path.endswith("/workflows/validate"):
             return httpx.Response(200, json={"ok": True})
         if request.url.path.endswith("/workflows/snapshot"):
@@ -125,8 +127,33 @@ def test_bridge_validation_error_preserves_node_details(bridge_snapshot):
     assert "model" in str(caught.value)
 
 
+def test_result_download_provides_digest_and_rejects_negative_index(bridge_graph, tmp_path):
+    content = b"original-result"
+    (tmp_path / "clip.mp4").write_bytes(content)
+    bridge_graph.update({
+        "JOB_INDEX": "unused",
+        "_safe_name": lambda value, fallback: value,
+        "_load_index": lambda _: {"jobs": {"job": {}}},
+        "_job_state": lambda _: {"results": [{"filename": "clip.mp4"}]},
+        "folder_paths": SimpleNamespace(get_output_directory=lambda: str(tmp_path)),
+        "web": SimpleNamespace(
+            HTTPNotFound=LookupError,
+            FileResponse=lambda path, **kwargs: SimpleNamespace(path=path, **kwargs),
+        ),
+    })
+    response = asyncio.run(bridge_graph["_result_file"](
+        SimpleNamespace(match_info={"job_id": "job", "index": "0"})
+    ))
+    assert response.headers["X-Content-SHA256"] == hashlib.sha256(content).hexdigest()
+    assert response.path.read_bytes() == content
+    with pytest.raises(LookupError):
+        asyncio.run(bridge_graph["_result_file"](
+            SimpleNamespace(match_info={"job_id": "job", "index": "-1"})
+        ))
+
+
 @pytest.fixture
-def bridge_graph():
+def bridge_graph(tmp_path):
     # Exercise the production graph helpers without importing the GPU server.
     path = Path(__file__).parents[2] / "integrations/comfyui_shotmill/bridge_api.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -153,7 +180,28 @@ def bridge_graph():
     )
     compiler = importlib.util.module_from_spec(compiler_spec)
     compiler_spec.loader.exec_module(compiler)
+    contracts_spec = importlib.util.spec_from_file_location(
+        "bridge_application_contracts", path.with_name("application_contracts.py")
+    )
+    contracts = importlib.util.module_from_spec(contracts_spec)
+    contracts_spec.loader.exec_module(contracts)
+    uploads_spec = importlib.util.spec_from_file_location(
+        "bridge_media_upload", path.with_name("media_upload.py")
+    )
+    uploads = importlib.util.module_from_spec(uploads_spec)
+    uploads_spec.loader.exec_module(uploads)
+    receipts_spec = importlib.util.spec_from_file_location(
+        "bridge_terminal_receipts", path.with_name("terminal_receipts.py")
+    )
+    receipts = importlib.util.module_from_spec(receipts_spec)
+    receipts_spec.loader.exec_module(receipts)
     scope = {
+        "read_receipt": receipts.read_receipt,
+        "RECEIPT_ROOT": tmp_path / "receipts",
+        "store_upload": uploads.store_upload,
+        "resolve_application_contract": contracts.resolve_application_contract,
+        "contract_catalogue": contracts.contract_catalogue,
+        "asyncio": asyncio,
         "Any": Any,
         "compile_canvas": compiler.compile_canvas,
         "math": math,
@@ -163,6 +211,331 @@ def bridge_graph():
     }
     exec(compile(tree, str(path), "exec"), scope)
     return scope
+
+
+def test_bridge_health_advertises_compatible_execution_guarantees(bridge_graph):
+    from shotmill.providers.video_generation.bridge_contract import negotiate_bridge
+
+    bridge_graph["PACKAGE_VERSION"] = "0.5.0"
+    bridge_graph["web"] = SimpleNamespace(json_response=lambda data: data)
+    health = asyncio.run(bridge_graph["_health"](None))
+    agreement = negotiate_bridge(health)
+    assert agreement["applicationContract"] == {"name": "shotmill.video", "version": 1}
+    assert health["capabilities"]["authentication"] is False
+
+
+@pytest.fixture
+def bridge_submission(bridge_graph, tmp_path):
+    queued = []
+    web = SimpleNamespace(json_response=lambda data, status=200: SimpleNamespace(
+        status=status, text=json.dumps(data),
+    ))
+
+    async def validate(*_args):
+        await asyncio.sleep(0)
+        return True, None, ["out"], {}
+
+    queue = SimpleNamespace(
+        put=queued.append, get_current_queue=lambda: ([], queued),
+        get_history=lambda **_: {},
+    )
+    bridge_graph.update({
+        "re": re, "uuid": uuid, "time": time, "web": web,
+        "JOB_INDEX": tmp_path / "jobs.json",
+        "execution": SimpleNamespace(validate_prompt=validate),
+        "PromptServer": SimpleNamespace(instance=SimpleNamespace(number=0, prompt_queue=queue)),
+        "_execution_graph": lambda payload, job: ({"out": {"class_type": "Test"}}, {}, {}),
+    })
+
+    async def submit(payload):
+        async def body():
+            return payload
+        return await bridge_graph["_create_job"](SimpleNamespace(json=body))
+
+    return bridge_graph, queued, submit
+
+
+def test_bridge_idempotent_concurrent_submission(bridge_submission):
+    _, queued, submit = bridge_submission
+
+    async def run():
+        return await asyncio.gather(*[
+            submit({"jobId": "job-1", "finalPrompt": "same"}) for _ in range(3)
+        ])
+
+    responses = asyncio.run(run())
+    assert all(response.status == 200 for response in responses)
+    assert len(queued) == 1
+    assert len({json.loads(response.text)["promptId"] for response in responses}) == 1
+
+
+def test_cancel_unknown_submission_fences_late_requests_and_survives_index_reload(
+    bridge_submission,
+):
+    scope, queued, submit = bridge_submission
+
+    async def run():
+        request = SimpleNamespace(match_info={"job_id": "job-late"})
+        first = await scope["_cancel_submission"](request)
+        second = await scope["_cancel_submission"](request)
+        late = await submit({"jobId": "job-late", "finalPrompt": "late request"})
+        return first, second, late
+
+    first, second, late = asyncio.run(run())
+    assert json.loads(first.text)["status"] == "cancelled"
+    assert json.loads(second.text)["status"] == "cancelled"
+    assert late.status == 409
+    assert json.loads(late.text)["error"] == "submission_cancelled"
+    assert queued == []
+    assert scope["_job_state"]("job-late")["status"] == "cancelled"
+    assert scope["_submission_index"]()["jobs"]["job-late"]["submissionState"] == "cancelled"
+
+
+def test_cancel_existing_submission_does_not_claim_running_work_is_cancelled(bridge_submission):
+    scope, queued, submit = bridge_submission
+
+    async def run():
+        original = await submit({"jobId": "job-existing"})
+        cancelled = await scope["_cancel_submission"](
+            SimpleNamespace(match_info={"job_id": "job-existing"})
+        )
+        return original, cancelled
+
+    original, cancelled = asyncio.run(run())
+    assert json.loads(cancelled.text)["status"] == "queued"
+    assert json.loads(cancelled.text)["promptId"] == json.loads(original.text)["promptId"]
+    assert len(queued) == 1
+
+
+def test_cancel_fence_write_failure_never_reports_success(bridge_submission):
+    scope, _, _ = bridge_submission
+
+    def fail(*args):
+        raise OSError("disk full")
+
+    scope["_save_index"] = fail
+    response = asyncio.run(scope["_cancel_submission"](
+        SimpleNamespace(match_info={"job_id": "job"})
+    ))
+    assert response.status == 500
+
+
+@pytest.mark.parametrize("receipt_state", ["prepared", "queued"])
+def test_cancel_missing_history_is_not_proof_of_cancellation(bridge_submission, receipt_state):
+    scope, _, _ = bridge_submission
+    scope["_save_index"](scope["JOB_INDEX"], {"jobs": {"job": {
+        "jobId": "job", "promptId": "original", "submissionState": receipt_state,
+    }}})
+    response = asyncio.run(scope["_cancel_submission"](
+        SimpleNamespace(match_info={"job_id": "job"})
+    ))
+    assert response.status == 409
+    assert json.loads(response.text)["error"] == "submission_state_unknown"
+    assert scope["_submission_index"]()["jobs"]["job"]["submissionState"] == receipt_state
+
+
+def test_cancel_waits_for_inflight_validation(bridge_submission):
+    scope, queued, submit = bridge_submission
+
+    async def run():
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def validate(*args):
+            entered.set()
+            await release.wait()
+            return True, None, ["out"], {}
+
+        scope["execution"].validate_prompt = validate
+        submission = asyncio.create_task(submit({"jobId": "job"}))
+        await entered.wait()
+        cancellation = asyncio.create_task(scope["_cancel_submission"](
+            SimpleNamespace(match_info={"job_id": "job"})
+        ))
+        await asyncio.sleep(0)
+        assert not cancellation.done()
+        release.set()
+        return await submission, await cancellation
+
+    submitted, cancelled = asyncio.run(run())
+    assert submitted.status == 200
+    assert json.loads(cancelled.text)["status"] == "queued"
+    assert len(queued) == 1
+
+
+def test_bridge_idempotent_changed_payload_rejected(bridge_submission):
+    _, queued, submit = bridge_submission
+
+    async def run():
+        await submit({"jobId": "job-1", "finalPrompt": "original"})
+        return await submit({"jobId": "job-1", "finalPrompt": "changed"})
+
+    response = asyncio.run(run())
+    assert response.status == 409
+    assert len(queued) == 1
+
+
+def test_bridge_idempotent_index_failure_does_not_enqueue(bridge_submission):
+    scope, queued, submit = bridge_submission
+
+    def fail(*_args):
+        raise OSError("disk full")
+
+    scope["_save_index"] = fail
+    assert asyncio.run(submit({"jobId": "job-1"})).status == 500
+    assert queued == []
+
+
+def test_bridge_idempotent_prepared_identity_is_not_resubmitted(bridge_submission):
+    scope, queued, submit = bridge_submission
+
+    def fail_put(_item):
+        raise RuntimeError("queue unavailable")
+
+    scope["PromptServer"].instance.prompt_queue.put = fail_put
+
+    async def run():
+        first = await submit({"jobId": "job-1"})
+        scope["PromptServer"].instance.prompt_queue.put = queued.append
+        second = await submit({"jobId": "job-1"})
+        return first, second
+
+    first, second = asyncio.run(run())
+    assert first.status == 500
+    assert second.status == 409
+    assert json.loads(second.text)["error"] == "submission_state_unknown"
+    assert queued == []
+
+
+def test_bridge_idempotent_recovers_lost_receipt_after_enqueue(bridge_submission):
+    scope, queued, submit = bridge_submission
+    save = scope["_save_index"]
+    calls = 0
+
+    def fail_second(path, value):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("receipt write failed")
+        save(path, value)
+
+    scope["_save_index"] = fail_second
+
+    async def run():
+        first = await submit({"jobId": "job-1"})
+        second = await submit({"jobId": "job-1"})
+        return first, second
+
+    first, second = asyncio.run(run())
+    assert first.status == 500
+    assert second.status == 200
+    assert len(queued) == 1
+    assert json.loads(second.text)["promptId"] == queued[0][1]
+
+
+def test_bridge_idempotent_corrupt_index_blocks_submission(bridge_submission):
+    scope, queued, submit = bridge_submission
+    scope["JOB_INDEX"].write_text("broken", encoding="utf-8")
+    response = asyncio.run(submit({"jobId": "job-1"}))
+    assert response.status >= 400
+    assert queued == []
+    assert scope["JOB_INDEX"].read_text(encoding="utf-8") == "broken"
+
+
+def test_flow_endpoint_requires_explicit_supported_contract(bridge_submission):
+    scope, queued, _ = bridge_submission
+
+    async def run(declaration):
+        async def body():
+            return {"jobId": "flow-job", **declaration}
+        return await scope["_create_job"](SimpleNamespace(json=body, path="/terryflow/v1/jobs"))
+
+    for declaration in ({}, {"applicationContract": {"name": "unknown", "version": 1}},
+                        {"applicationContract": {"name": "generic", "version": 2}}):
+        assert asyncio.run(run(declaration)).status == 400
+    assert queued == []
+    response = asyncio.run(run({"applicationContract": {"name": "generic", "version": 1}}))
+    assert response.status == 200
+    receipt = json.loads(scope["JOB_INDEX"].read_text(encoding="utf-8"))["jobs"]["flow-job"]
+    assert receipt["applicationContract"] == {"name": "generic", "version": 1}
+
+
+def test_generic_contract_does_not_change_shotmill_video_fields(bridge_graph):
+    generic = bridge_graph["resolve_application_contract"]({
+        "applicationContract": {"name": "generic", "version": 1},
+    })
+    shotmill = bridge_graph["resolve_application_contract"]({
+        "applicationContract": {"name": "shotmill.video", "version": 1},
+    })
+    prompt = {
+        "resolution": {
+            "class_type": "ShotMillResolutionSelector", "inputs": {"resolution": "720p"},
+        },
+        "h3": {"class_type": "MiniMaxH3ReferenceToVideo", "inputs": {"prompt": "Use <Picture 3>."}},
+    }
+    assignments = [(
+        {"targets": [{"targetNodeId": "h3", "name": "ref_image_2"}]}, {"reference": "<Picture 3>"},
+    )]
+    original = json.loads(json.dumps(prompt))
+    generic.bind_parameters(prompt, {"resolution": "480p"})
+    generic.adapt_references(prompt, assignments)
+    assert prompt == original
+    shotmill.bind_parameters(prompt, {"resolution": "480p"})
+    shotmill.adapt_references(prompt, assignments)
+    assert prompt["resolution"]["inputs"]["resolution"] == "480p"
+    assert prompt["h3"]["inputs"]["prompt"] == "Use <Picture 1>."
+
+
+def test_flow_markers_are_recognised_without_requiring_legacy_node_names(bridge_graph):
+    assert bridge_graph["_bridge_kind"]({"class_type": "TerryFlowBridgeIn"}) == "input"
+    assert bridge_graph["_bridge_kind"]({"class_type": "TerryFlowBridgeOut"}) == "output"
+
+
+def test_bridge_upload_never_overwrites_a_queued_jobs_input(bridge_graph, tmp_path):
+    bridge_graph.update({
+        "re": re,
+        "folder_paths": SimpleNamespace(get_input_directory=lambda: str(tmp_path)),
+        "ASSET_INDEX": tmp_path / "assets.json",
+        "web": SimpleNamespace(json_response=lambda data, status=200: SimpleNamespace(
+            status=status, data=data,
+        )),
+    })
+
+    async def upload(content):
+        class Field:
+            def __init__(self, name, value, filename=None):
+                self.name, self.value, self.filename = name, value, filename
+                self.done = False
+
+            async def text(self):
+                return self.value
+
+            async def read(self):
+                return self.value
+
+            async def read_chunk(self, size=65536):
+                if self.done:
+                    return b''
+                self.done = True
+                return self.value
+
+        async def fields():
+            yield Field('asset_id', 'same-asset')
+            yield Field('file', content, 'same.mp4')
+
+        async def multipart():
+            return fields()
+
+        response = await bridge_graph['_upload_asset'](SimpleNamespace(multipart=multipart))
+        assert response.status == 200
+        return response.data['asset']
+
+    first = asyncio.run(upload(b'first-content'))
+    second = asyncio.run(upload(b'changed-content'))
+    assert first['relativePath'] != second['relativePath']
+    assert (tmp_path / first['relativePath']).read_bytes() == b'first-content'
+    assert (tmp_path / second['relativePath']).read_bytes() == b'changed-content'
+    repeated = asyncio.run(upload(b'first-content'))
+    assert repeated['relativePath'] == first['relativePath']
 
 
 def test_bridge_frozen_graph_survives_deleted_workflow_and_submission(

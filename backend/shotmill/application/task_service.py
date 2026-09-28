@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from shotmill.application.context_duration import previous_video_duration
+from shotmill.application.lifecycle_service import in_lifecycle_scope, require_writable
 from shotmill.domain.entities import ContextLink, Task, TaskAssetBinding, new_id, utcnow
 from shotmill.domain.enums import PromptSource, TaskState
 from shotmill.domain.repositories import UnitOfWork
@@ -146,6 +147,11 @@ class TaskService:
 
     def _replace_context(self, uow: UnitOfWork, task: Task, previous: Task | None) -> None:
         mode = task.generation_params.get("contextMode", "不承接")
+        if mode != "不承接" and any(
+            link.source_deleted_at is not None for link in uow.contexts.list_by_target(task.id)
+        ):
+            # Editing unrelated fields must not silently bind a different predecessor.
+            return
         if mode == "不承接" or previous is None:
             uow.contexts.replace_for_target(task.id, [])
             return
@@ -167,9 +173,11 @@ class TaskService:
 
     def create(self, project_id: str, data: SaveTaskData) -> Task:
         with self.uow_factory() as uow:
+            uow.reserve_write()
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project)
             tasks = uow.tasks.list_by_project(project_id)
             order = uow.tasks.next_display_order(project_id)
             previous = self._previous_task(tasks, order)
@@ -239,9 +247,14 @@ class TaskService:
         if any(value not in {"visual", "text"} for value in values.values()):
             raise ShotMillError("INVALID_VIEW_MODE", "Invalid prompt view mode", 422)
         with self.uow_factory() as uow:
+            uow.reserve_write()
             task = uow.tasks.get(task_id)
             if task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project, task)
             uow.tasks.update_editor_preference(task_id, values)
             return {
                 "user_view_mode": values.get("user_view_mode", task.user_view_mode),
@@ -250,9 +263,14 @@ class TaskService:
 
     def update(self, project_id: str, task_id: str, data: SaveTaskData) -> Task:
         with self.uow_factory() as uow:
+            uow.reserve_write()
             task = uow.tasks.get(task_id)
             if task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project, task)
             if task.state in {TaskState.QUEUED, TaskState.RUNNING}:
                 raise ConflictError("TASK_BUSY", "Running or queued task cannot be edited")
             if data.revision is not None and data.revision != task.revision:
@@ -315,14 +333,25 @@ class TaskService:
 
     def reorder(self, project_id: str, task_ids: list[str]) -> None:
         with self.uow_factory() as uow:
+            uow.reserve_write()
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project)
             current = uow.tasks.list_by_project(project_id)
-            if {item.id for item in current} != set(task_ids) or len(current) != len(task_ids):
+            active = [task for task in current if in_lifecycle_scope(task, "active")]
+            if {item.id for item in active} != set(task_ids) or len(active) != len(task_ids):
                 raise ShotMillError(
                     "INVALID_TASK_ORDER",
-                    "Task order must contain every project task exactly once",
+                    "Task order must contain every active project task exactly once",
                     422,
                 )
-            uow.tasks.reorder(project_id, task_ids)
+            reordered = iter(task_ids)
+            full_order = [
+                next(reordered) if in_lifecycle_scope(task, "active") else task.id
+                for task in current
+            ]
+            uow.tasks.reorder(project_id, full_order)
             project = uow.projects.get(project_id)
             if project is not None:
                 project.updated_at = utcnow()

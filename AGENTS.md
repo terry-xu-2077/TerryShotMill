@@ -168,6 +168,13 @@ ShotMill 是面向 AI 视频生产流程的素材生成平台，不是剪辑器�
 - 禁止删除、跳过或弱化有效测试来规避失败。
 - 无法执行的验收必须明确报告原因和未验证风险。
 
+## Bridge 源码归属
+
+- Bridge 的唯一开发仓库为 `G:/AIGC/ComfyUI-TerryFlowBridge`，远端为 `https://github.com/terry-xu-2077/ComfyUI-TerryFlowBridge.git`。
+- `integrations/comfyui_shotmill/` 是离线合同测试使用的固定版本快照，不在此维护独立改动。先在独立仓库修改、测试并提交，再整体同步快照和 `integrations/terryflow-bridge.lock.json`。
+- 依赖升级按 `integrations/README.md` 执行；运行快照完整性、Provider 和后端验收。不得仅修改摘要掩盖未经验证的源码变更。
+- 本地提交、远端发布、运行部署与真实 ComfyUI/LAN 验收是不同状态，不得互相替代。
+
 ## Windows 本地规则
 
 - 本地命令使用 PowerShell 7，并在中文或文本读写前设置 UTF-8。

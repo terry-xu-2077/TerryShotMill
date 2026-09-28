@@ -7,7 +7,8 @@ from datetime import datetime
 from time import perf_counter
 from typing import Any
 
-from shotmill.domain.entities import AiPromptRevision, new_id, utcnow
+from shotmill.application.lifecycle_service import require_writable
+from shotmill.domain.entities import AiPromptRevision, Asset, new_id, utcnow
 from shotmill.domain.enums import PromptSource, TaskState
 from shotmill.domain.providers import (
     PromptAIProvider,
@@ -146,6 +147,7 @@ class PromptEnhancementService:
         expected_task_revision: int | None = None,
         force_ai_source: bool = True,
         provider_profile_snapshot: dict[str, Any] | None = None,
+        media_snapshot: list[dict] | None = None,
     ) -> AiPromptRevision:
         return await self._enhance(
             project_id,
@@ -166,6 +168,7 @@ class PromptEnhancementService:
             force_ai_source=force_ai_source,
             provider_profile_snapshot=provider_profile_snapshot,
             context_is_snapshot=True,
+            media_snapshot=media_snapshot,
         )
 
     async def _enhance(
@@ -186,6 +189,7 @@ class PromptEnhancementService:
         force_ai_source: bool = False,
         provider_profile_snapshot: dict[str, Any] | None = None,
         context_is_snapshot: bool = False,
+        media_snapshot: list[dict] | None = None,
     ) -> AiPromptRevision:
         clean_prompt = user_prompt.strip()
         if not clean_prompt:
@@ -203,9 +207,22 @@ class PromptEnhancementService:
             if task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
 
+            require_writable(project, task)
             resolved: list[ResolvedMedia] = []
-            for requested in media:
-                asset = uow.assets.get(requested.asset_id)
+            for index, requested in enumerate(media):
+                frozen = media_snapshot[index] if media_snapshot is not None else {}
+                if context_is_snapshot and frozen.get("projectRelativePath"):
+                    if frozen["assetId"] != requested.asset_id:
+                        raise ValueError("Snapshot media identity mismatch")
+                    asset = Asset(
+                        id=requested.asset_id, project_id=project_id,
+                        name=frozen["originalFilename"],
+                        original_filename=frozen["originalFilename"],
+                        project_relative_path=frozen["projectRelativePath"],
+                        media_type=frozen["mediaType"],
+                    )
+                else:
+                    asset = uow.assets.get(requested.asset_id)
                 if asset is None or asset.project_id != project_id:
                     raise NotFoundError("ASSET_NOT_FOUND", f"Asset not found: {requested.asset_id}")
                 resolved.append(
@@ -280,6 +297,10 @@ class PromptEnhancementService:
             current = uow.tasks.get(task_id)
             if current is None or current.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project, current)
             if expected_task_revision is not None and current.revision != expected_task_revision:
                 raise ShotMillError(
                     "PROMPT_JOB_STALE",
@@ -333,6 +354,7 @@ class PromptEnhancementService:
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
 
+            require_writable(project)
             resolved: list[ResolvedMedia] = []
             for requested in media:
                 asset = uow.assets.get(requested.asset_id)
@@ -409,9 +431,14 @@ class PromptEnhancementService:
 
     def select_revision(self, project_id: str, task_id: str, revision_id: str) -> AiPromptRevision:
         with self.uow_factory() as uow:
+            uow.reserve_write()
             task = uow.tasks.get(task_id)
             if task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project, task)
             revision = uow.prompt_revisions.get(revision_id)
             if revision is None or revision.task_id != task_id:
                 raise NotFoundError("PROMPT_REVISION_NOT_FOUND", "Prompt revision not found")

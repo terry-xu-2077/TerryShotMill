@@ -1,0 +1,43 @@
+import { expect, test } from "@playwright/test";
+import { createProject, importImage, openProject } from "./helpers";
+
+test("cross-project assets stay staged until save and become independent copies", async ({ page }) => {
+  const source = await createProject(page, "资产来源");
+  const target = await createProject(page, "资产目标");
+  await importImage(page, source.id, "来源图片");
+  await openProject(page, target.title);
+  const config = page.getByRole("dialog", { name: "项目配置", exact: true });
+  const picker = page.getByRole("dialog", { name: "从项目或归档导入", exact: true });
+  const stage = async () => {
+    await config.getByRole("button", { name: "资产管理", exact: true }).click();
+    await config.getByRole("button", { name: "从项目导入", exact: true }).click();
+    const checkbox = page.getByRole("checkbox", { name: `选择 ${source.title} · 来源图片 · 项目资产` });
+    await picker.locator("label").filter({ has: checkbox }).click();
+    await picker.getByRole("button", { name: "加入项目草稿" }).click();
+    await expect(picker).toBeHidden();
+    await expect(config.getByText("待导入：保存时复制为独立资产。")).toBeVisible();
+  };
+  await page.getByRole("button", { name: "项目配置", exact: true }).click();
+  await stage();
+  await config.getByRole("button", { name: "取消", exact: true }).click();
+  expect((await (await page.request.get(`/api/v1/projects/${target.id}/assets`)).json()).items).toEqual([]);
+  await page.getByRole("button", { name: "项目配置", exact: true }).click();
+  await config.getByRole("textbox", { name: "项目标题" }).fill("保留的配置草稿");
+  await stage();
+  await stage();
+  await expect(config.locator(".project-asset-row-v2")).toHaveCount(1);
+  await config.getByRole("textbox", { name: "资产名", exact: true }).fill("目标重命名");
+  await config.getByRole("button", { name: "项目信息", exact: true }).click();
+  await expect(config.getByRole("textbox", { name: "项目标题" })).toHaveValue("保留的配置草稿");
+  await config.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(config).toBeHidden();
+  const imported = (await (await page.request.get(`/api/v1/projects/${target.id}/assets`)).json()).items;
+  expect(imported).toHaveLength(1);
+  expect(imported[0].name).toBe("目标重命名");
+  expect(imported[0].provenance.projectId).toBe(source.id);
+  expect((await page.request.post(`/api/v1/projects/${source.id}/lifecycle`, { data: { action: "trash" } })).ok()).toBeTruthy();
+  expect((await page.request.post(`/api/v1/projects/${source.id}/permanent-delete`, { data: { confirmed: true, archiveResults: false } })).ok()).toBeTruthy();
+  const copy = await page.request.get(`/media/${target.id}/${imported[0].projectRelativePath}`);
+  expect(copy.ok()).toBeTruthy();
+  expect((await copy.body()).toString()).toBe("e2e-image-bytes");
+});

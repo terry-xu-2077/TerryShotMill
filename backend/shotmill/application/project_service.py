@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 
+from shotmill.application.lifecycle_service import require_writable
 from shotmill.domain.entities import Asset, Project, new_id, utcnow
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import NotFoundError, ShotMillError
@@ -47,9 +48,11 @@ class ProjectService:
         cover: dict | None = None,
     ) -> Project:
         with self.uow_factory() as uow:
+            uow.reserve_write()
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            require_writable(project)
             if title is not None:
                 clean_title = title.strip()
                 if not clean_title:
@@ -96,7 +99,7 @@ class ProjectService:
                 original_filename="video-frame.png", project_relative_path=frame,
                 media_type="image", category="reference",
                 hash=hashlib.sha256(
-                    self.storage.resolve(project_id, frame).read_bytes()
+                    self.storage.resolve_read(project_id, frame).read_bytes()
                 ).hexdigest(),
             ))
         return identifier

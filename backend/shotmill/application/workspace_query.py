@@ -5,6 +5,7 @@ from dataclasses import replace
 
 from shotmill.application.context_duration import previous_video_duration
 from shotmill.application.continuation_risks import continuation_risks, continuation_status
+from shotmill.application.lifecycle_service import LifecycleScope, in_lifecycle_scope
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import NotFoundError
 from shotmill.frontend_adapter.mapper import (
@@ -18,6 +19,7 @@ from shotmill.frontend_adapter.mapper import (
 )
 from shotmill.frontend_adapter.models import (
     AssetReferenceItem,
+    MissingReferenceView,
     ProjectAssetView,
     ProjectRuntimeView,
     ProjectSettingsView,
@@ -37,16 +39,26 @@ class WorkspaceQuery:
         self.uow_factory = uow_factory
         self.storage = storage
 
+    @staticmethod
+    def _missing_references(uow: UnitOfWork, task_id: str) -> list[MissingReferenceView]:
+        return [MissingReferenceView(
+            source_task_id=link.source_task_id,
+            source_task_title=link.source_task_title or "已删除任务",
+            source_result_id=link.source_result_id, kind=link.kind,
+        ) for link in uow.contexts.list_by_target(task_id) if link.source_deleted_at is not None]
+
     def _results(self, uow: UnitOfWork, task_id: str):
         return [
             result_with_preview(result, self.storage)
             for result in uow.results.list_by_task(task_id)
         ]
 
-    def list_projects(self) -> list[ProjectSummary]:
+    def list_projects(self, scope: LifecycleScope = "active") -> list[ProjectSummary]:
         with self.uow_factory() as uow:
             items: list[ProjectSummary] = []
             for project in uow.projects.list():
+                if not in_lifecycle_scope(project, scope):
+                    continue
                 tasks = uow.tasks.list_by_project(project.id)
                 results_by_task = {task.id: self._results(uow, task.id) for task in tasks}
                 items.append(
@@ -127,12 +139,15 @@ class WorkspaceQuery:
                 automatic_cover_url=automatic,
             )
 
-    def workspace(self, project_id: str) -> ProjectWorkspaceView:
+    def workspace(
+        self, project_id: str, scope: LifecycleScope = "active"
+    ) -> ProjectWorkspaceView:
         with self.uow_factory() as uow:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
             tasks = uow.tasks.list_by_project(project_id)
+            tasks = [task for task in tasks if in_lifecycle_scope(task, scope)]
             active_prompt_task_ids = uow.prompt_jobs.active_task_ids_by_project(project_id)
             active_video_task_ids = uow.jobs.active_task_ids_by_project(project_id)
             asset_previews = {
@@ -150,6 +165,7 @@ class WorkspaceQuery:
                 for task in tasks
             ]
             for summary in summaries:
+                summary.missing_references = self._missing_references(uow, summary.id)
                 summary.generation_status_note = continuation_status(
                     uow, next(task for task in tasks if task.id == summary.id)
                 )
@@ -167,9 +183,12 @@ class WorkspaceQuery:
                     revisions,
                     uow.prompt_jobs.list_by_task(summary.id),
                 )
-            runtime = self._runtime(uow, project_id, tasks)
+            runtime = self._runtime(uow, project_id, uow.tasks.list_by_project(project_id))
             return ProjectWorkspaceView(
-                project=WorkspaceProject(id=project.id, title=project.title),
+                project=WorkspaceProject(
+                    id=project.id, title=project.title,
+                    archived_at=project.archived_at, deleted_at=project.deleted_at,
+                ),
                 tasks=summaries,
                 runtime=runtime,
             )
@@ -263,6 +282,7 @@ class WorkspaceQuery:
                 },
             )
             revisions = uow.prompt_revisions.list_by_task(task_id)
+            summary.missing_references = self._missing_references(uow, task_id)
             summary.generation_warnings = continuation_risks(uow, task)
             summary.latest_prompt_revision_id = (
                 max(revisions, key=lambda revision: revision.created_at).id if revisions else None

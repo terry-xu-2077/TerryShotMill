@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -26,14 +27,16 @@ def setup_task(client):
     ([], "SHOTMILL_WORKFLOW_NOT_REGISTERED"),
     ([{"id": "w.json", "executable": False, "inputs": []}], "SHOTMILL_WORKFLOW_NOT_EXECUTABLE"),
 ])
-def test_provider_preflight_rejects_before_queue_or_upload(client, catalog, code):
+def test_provider_preflight_rejects_before_queue_or_upload(client, catalog, code, bridge_health):
     project_id, task_id, route = setup_task(client)
     requests = []
 
     def handler(request):
         requests.append((request.method, request.url.path))
         assert request.method == "GET"
-        assert request.url.path == "/shotmill/v1/workflows"
+        if request.url.path == "/terryflow/v1/health":
+            return httpx.Response(200, json=bridge_health)
+        assert request.url.path == "/terryflow/v1/workflows"
         return httpx.Response(200, json={"workflows": catalog})
 
     service = client.app.state.container.generation_service
@@ -47,7 +50,9 @@ def test_provider_preflight_rejects_before_queue_or_upload(client, catalog, code
     response = client.post(f"{route}/tasks/{task_id}/generation", json={})
     assert response.status_code == 422, response.text
     assert response.json()["error"]["code"] == code
-    assert len(requests) == 2
+    assert requests == [
+        ("GET", "/terryflow/v1/health"), ("GET", "/terryflow/v1/workflows"),
+    ] * 2
     with service.uow_factory() as uow:
         assert uow.jobs.list_by_task(task_id) == []
 
@@ -115,7 +120,9 @@ def test_batch_submission_allows_review_invalidation_after_provider_validation(c
 
 
 @pytest.mark.parametrize("missing_file", [False, True])
-def test_media_mismatch_and_missing_files_are_rejected_in_preflight(client, missing_file):
+def test_media_mismatch_and_missing_files_are_rejected_in_preflight(
+    client, missing_file, bridge_health,
+):
     project_id, task_id, route = setup_task(client)
     upload = client.post(f"{route}/assets", files={
         "file": ("test.png", b"image-bytes", "image/png"),
@@ -136,6 +143,8 @@ def test_media_mismatch_and_missing_files_are_rejected_in_preflight(client, miss
     def handler(request):
         requests.append(request.method)
         assert request.method == "GET"
+        if request.url.path == "/terryflow/v1/health":
+            return httpx.Response(200, json=bridge_health)
         return httpx.Response(200, json={"workflows": [{
             "id": "w.json", "inputs": [{"type": "VIDEO"}], "executable": True,
         }]})
@@ -151,7 +160,7 @@ def test_media_mismatch_and_missing_files_are_rejected_in_preflight(client, miss
         else "SHOTMILL_WORKFLOW_INPUT_TYPE_MISMATCH"
     )
     assert result["skipped"][0]["code"] == expected
-    assert requests == ([] if missing_file else ["GET"])
+    assert requests == ([] if missing_file else ["GET", "GET"])
     with service.uow_factory() as uow:
         assert uow.jobs.list_by_task(task_id) == []
 
@@ -172,7 +181,7 @@ def test_preflight_checks_capability_duration_without_starting_generation(client
 
 
 def test_queued_video_keeps_validated_endpoint_and_workflow_after_settings_change(
-    client, bridge_snapshot,
+    client, bridge_snapshot, bridge_health,
 ):
     _, task_id, route = setup_task(client)
     service = client.app.state.container.generation_service
@@ -189,6 +198,8 @@ def test_queued_video_keeps_validated_endpoint_and_workflow_after_settings_chang
 
     def handler(request):
         assert request.url.host == "original.test"
+        if request.url.path == "/terryflow/v1/health":
+            return httpx.Response(200, json=bridge_health)
         if request.url.path.endswith("/workflows/validate"):
             assert current["workflow"] == Path("workflows/group/w.json")
             assert json.loads(request.content)["numericInputs"] == {"7:frames:2": 145}
@@ -206,7 +217,10 @@ def test_queued_video_keeps_validated_endpoint_and_workflow_after_settings_chang
             submitted.append(json.loads(request.content))
             return httpx.Response(200, json={"promptId": "remote-job"})
         if "/files/" in request.url.path:
-            return httpx.Response(200, content=b"result", headers={"content-type": "image/png"})
+            return httpx.Response(200, content=b"result", headers={
+                "content-type": "image/png",
+                "x-content-sha256": hashlib.sha256(b"result").hexdigest(),
+            })
         return httpx.Response(200, json={
             "status": "completed", "results": [{"filename": "result.png"}],
         })
@@ -244,7 +258,9 @@ def test_queued_video_keeps_validated_endpoint_and_workflow_after_settings_chang
 @pytest.mark.parametrize(
     "failure", ["unsupported", "compile", "corrupt", "ports_changed", "malformed_response"],
 )
-def test_workflow_capture_failure_never_queues_or_uploads(client, bridge_snapshot, failure):
+def test_workflow_capture_failure_never_queues_or_uploads(
+    client, bridge_snapshot, failure, bridge_health,
+):
     _, task_id, route = setup_task(client)
     service = client.app.state.container.generation_service
     ports = [{"type": "INT", "targetNodeId": "7", "targetPort": "frames", "sourceNodeId": "2"}]
@@ -258,6 +274,8 @@ def test_workflow_capture_failure_never_queues_or_uploads(client, bridge_snapsho
     def handler(request):
         requests.append(request.url.path)
         assert request.method == "GET", "preflight must not upload or submit"
+        if request.url.path == "/terryflow/v1/health":
+            return httpx.Response(200, json=bridge_health)
         if request.url.path.endswith("/workflows"):
             return httpx.Response(200, json={"workflows": [{"id": "w.json", "inputs": ports}]})
         assert request.url.path.endswith("/workflows/snapshot")
@@ -285,23 +303,29 @@ def test_workflow_capture_failure_never_queues_or_uploads(client, bridge_snapsho
     assert response.json()["error"]["code"] == expected[failure]
     if failure == "compile":
         assert "42" in response.text
-    assert requests == ["/shotmill/v1/workflows", "/shotmill/v1/workflows/snapshot"]
+    assert requests == [
+        "/terryflow/v1/health", "/terryflow/v1/workflows", "/terryflow/v1/workflows/snapshot",
+    ]
     with service.uow_factory() as uow:
         assert uow.jobs.list_by_task(task_id) == []
 
 
-def test_native_preflight_rejects_missing_model_before_job_creation(client, bridge_snapshot):
+def test_native_preflight_rejects_missing_model_before_job_creation(
+    client, bridge_snapshot, bridge_health,
+):
     _, task_id, route = setup_task(client)
     service = client.app.state.container.generation_service
     calls = []
 
     def handler(request):
         calls.append(request.url.path)
+        if request.url.path == "/terryflow/v1/health":
+            return httpx.Response(200, json=bridge_health)
         if request.url.path.endswith("/workflows"):
             return httpx.Response(200, json={"workflows": [{"id": "w.json", "inputs": []}]})
         if request.url.path.endswith("/workflows/snapshot"):
             return httpx.Response(200, json={"snapshot": bridge_snapshot()})
-        assert request.url.path == "/shotmill/v1/workflows/validate"
+        assert request.url.path == "/terryflow/v1/workflows/validate"
         body = json.loads(request.content)
         assert body["workflowSnapshot"]["workflowId"] == "w.json"
         assert body["finalPrompt"] == "雨夜码头"
@@ -323,6 +347,6 @@ def test_native_preflight_rejects_missing_model_before_job_creation(client, brid
     assert "42" in response.text and "model.safetensors" in response.text
     assert "所选模型或选项不可用" in response.text
     assert "nodeErrors" not in response.text
-    assert calls[-1] == "/shotmill/v1/workflows/validate"
+    assert calls[-1] == "/terryflow/v1/workflows/validate"
     with service.uow_factory() as uow:
         assert uow.jobs.list_by_task(task_id) == []

@@ -54,9 +54,14 @@ test("long folder titles and descriptions never stretch cards or the page", asyn
     const folder = page.getByRole("button", { name: `打开项目 ${project.title}`, exact: true });
     const geometry = await folder.evaluate(el => {
       const front = el.querySelector(".project-folder-front")!;
+      const title = el.querySelector("h2")!;
+      const titleStyle = getComputedStyle(title);
       return { card: el.getBoundingClientRect().width, front: front.getBoundingClientRect().width,
         overflow: document.querySelector(".project-home-collection")!.scrollWidth > innerWidth,
-        titleOverflow: getComputedStyle(el.querySelector("h2")!).textOverflow,
+        titleClamp: titleStyle.webkitLineClamp,
+        titleOverflow: titleStyle.overflow,
+        titleHeight: title.getBoundingClientRect().height,
+        titleLineHeight: parseFloat(titleStyle.lineHeight),
         descriptionOverflow: getComputedStyle(el.querySelector(".project-folder-description")!).textOverflow };
     });
     expect(geometry.front).toBeLessThanOrEqual(geometry.card);
@@ -65,7 +70,9 @@ test("long folder titles and descriptions never stretch cards or the page", asyn
     // Negative X rotation brings the upper edge forward: wider top, narrower bottom.
     expect(await page.evaluate(transform => new DOMMatrixReadOnly(transform).m23, panelTransform)).toBeLessThan(0);
     expect(geometry.overflow).toBe(false);
-    expect(geometry.titleOverflow).toBe("ellipsis");
+    expect(geometry.titleClamp).toBe("2");
+    expect(geometry.titleOverflow).toBe("hidden");
+    expect(geometry.titleHeight).toBeLessThanOrEqual(geometry.titleLineHeight * 2 + 1);
     expect(geometry.descriptionOverflow).toBe("ellipsis");
     await expect(folder).toHaveClass(/is-empty/);
     await expect(page.locator(".project-folder-grid > :first-child")).toHaveText("新建项目");

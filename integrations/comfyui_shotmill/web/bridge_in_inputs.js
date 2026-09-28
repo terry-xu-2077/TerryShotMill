@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 
-const BRIDGE_IN_TYPE = "ShotMillIOBridgeIn";
+const BRIDGE_IN_TYPES = new Set(["TerryFlowBridgeIn", "ShotMillIOBridgeIn"]);
 const EMPTY_TYPE = "*";
 
 function nodeType(node) {
@@ -8,7 +8,7 @@ function nodeType(node) {
 }
 
 function isBridgeIn(node) {
-  return nodeType(node) === BRIDGE_IN_TYPE;
+  return BRIDGE_IN_TYPES.has(nodeType(node));
 }
 
 function inputName(index) {
@@ -76,10 +76,10 @@ function normalizeInputSlots(node) {
 }
 
 app.registerExtension({
-  name: "ShotMill.BridgeInInputs",
+  name: "TerryFlow.BridgeInInputs",
 
   beforeRegisterNodeDef(nodeTypeClass, nodeData) {
-    if (nodeData?.name !== BRIDGE_IN_TYPE) return;
+    if (!BRIDGE_IN_TYPES.has(nodeData?.name)) return;
 
     const originalCreated = nodeTypeClass.prototype.onNodeCreated;
     nodeTypeClass.prototype.onNodeCreated = function () {

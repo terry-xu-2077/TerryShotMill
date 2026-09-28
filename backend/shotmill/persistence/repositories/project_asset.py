@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,19 @@ class SqlAlchemyProjectRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def get_transfer_requirements(self, project_id: str) -> list[dict]:
+        row = self.session.get(models.ProjectModel, project_id)
+        if row is None:
+            raise KeyError(project_id)
+        return deepcopy(row.transfer_requirements)
+
+    def set_transfer_requirements(self, project_id: str, requirements: list[dict]) -> None:
+        row = self.session.get(models.ProjectModel, project_id)
+        if row is None:
+            raise KeyError(project_id)
+        row.transfer_requirements = deepcopy(requirements)
+        self.session.flush()
+
     def list(self) -> list[Project]:
         rows = self.session.scalars(
             select(models.ProjectModel).order_by(models.ProjectModel.updated_at.desc())
@@ -22,6 +37,12 @@ class SqlAlchemyProjectRepository:
         row = self.session.get(models.ProjectModel, project_id)
         return project_from_model(row) if row else None
 
+    def delete(self, project_id: str) -> None:
+        self.session.execute(
+            delete(models.ProjectModel).where(models.ProjectModel.id == project_id)
+        )
+        self.session.flush()
+
     def add(self, project: Project) -> Project:
         self.session.add(
             models.ProjectModel(
@@ -30,6 +51,8 @@ class SqlAlchemyProjectRepository:
                 description=project.description,
                 use_description_for_ai_prompt=project.use_description_for_ai_prompt,
                 cover_asset_id=project.cover_asset_id,
+                archived_at=project.archived_at,
+                deleted_at=project.deleted_at,
                 created_at=project.created_at,
                 updated_at=project.updated_at,
             )
@@ -45,6 +68,8 @@ class SqlAlchemyProjectRepository:
         row.description = project.description
         row.use_description_for_ai_prompt = project.use_description_for_ai_prompt
         row.cover_asset_id = project.cover_asset_id
+        row.archived_at = project.archived_at
+        row.deleted_at = project.deleted_at
         row.updated_at = project.updated_at
         self.session.flush()
         return project
@@ -82,6 +107,7 @@ class SqlAlchemyAssetRepository:
                 duration=asset.duration,
                 hash=asset.hash,
                 thumbnail_path=asset.thumbnail_path,
+                provenance=asset.provenance,
                 created_at=asset.created_at,
                 updated_at=asset.updated_at,
             )

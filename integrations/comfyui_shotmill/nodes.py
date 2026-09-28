@@ -109,13 +109,25 @@ class ShotMillDurationSelector:
         return (length * frame_multiple + frame_offset, fps)
 
 
+class TerryFlowBridgeIn(ShotMillIOBridgeIn):
+    CATEGORY = "TerryFlow/Bridge"
+
+
+class TerryFlowBridgeOut(ShotMillIOBridgeOut):
+    CATEGORY = "TerryFlow/Bridge"
+
+
 NODE_CLASS_MAPPINGS = {
+    "TerryFlowBridgeIn": TerryFlowBridgeIn,
+    "TerryFlowBridgeOut": TerryFlowBridgeOut,
     "ShotMillResolutionSelector": ShotMillResolutionSelector,
     "ShotMillDurationSelector": ShotMillDurationSelector,
     "ShotMillIOBridgeIn": ShotMillIOBridgeIn,
     "ShotMillIOBridgeOut": ShotMillIOBridgeOut,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "TerryFlowBridgeIn": "Terry Flow Bridge In",
+    "TerryFlowBridgeOut": "Terry Flow Bridge Out",
     "ShotMillResolutionSelector": "ShotMill Bridge 分辨率选择器",
     "ShotMillDurationSelector": "ShotMill Bridge 秒数选择器",
     "ShotMillIOBridgeIn": "ShotMill IO Bridge In",

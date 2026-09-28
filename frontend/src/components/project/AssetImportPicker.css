@@ -1,0 +1,8 @@
+.asset-import-picker { display: grid; gap: 12px; min-width: 0; }
+.asset-import-picker > p { margin: 0; color: var(--sm-text-muted); }
+.asset-import-candidates { max-height: min(48vh, 420px); overflow-y: auto; }
+.asset-import-candidate { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+.asset-import-candidate > img { width: 60px; height: 44px; object-fit: cover; border-radius: var(--sm-radius-sm); }
+.asset-import-description { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.asset-import-description > span, .asset-import-description > time { color: var(--sm-text-muted); }
+.asset-import-picker > footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }

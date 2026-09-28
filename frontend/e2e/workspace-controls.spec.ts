@@ -63,6 +63,10 @@ test("single generation submits only the current task, and select-all generation
   await expect(queue).toHaveCount(0);
   expect(checks[1]).toEqual([first.id, second.id]);
   expect(submissions[1]).toEqual([first.id, second.id]);
+  await expect(page.getByRole("button", { name: "生成视频", exact: true })).toBeEnabled();
+  for (const checkbox of await page.getByRole("checkbox", { name: /^选择任务/ }).all()) {
+    await expect(checkbox).toBeChecked();
+  }
 });
 
 test("queue respects multi-selection and excludes tasks with execution errors", async ({ page }) => {

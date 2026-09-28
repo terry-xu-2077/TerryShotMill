@@ -3,6 +3,17 @@ from pathlib import Path
 from scripts import verify
 
 
+def test_frontend_stages_use_direct_node_without_command_shell():
+    scripts = ["typescript/bin/tsc", "vitest/vitest.mjs", "vite/bin/vite.js"]
+    for stage, script in zip(verify.FRONTEND_STAGES, scripts, strict=True):
+        assert Path(stage.command[0]).stem.lower() == "node"
+        assert Path(stage.command[1]) == verify.FRONTEND / "node_modules" / script
+        assert stage.cwd == verify.FRONTEND
+    assert "-b" in verify.FRONTEND_STAGES[0].command
+    assert "run" in verify.FRONTEND_STAGES[1].command
+    assert "build" in verify.FRONTEND_STAGES[2].command
+
+
 def test_optional_pytest_stage_only_exists_when_keyword_has_matching_tests(
     tmp_path: Path, monkeypatch
 ) -> None:

@@ -17,11 +17,13 @@ import type { DirectorProject } from "./projectTypes";
 import { Dialog } from "../../ui/overlay";
 import type { ProjectCoverSelection } from "../../gateways/projectGateway";
 import { ProjectCoverEditor } from "./ProjectCoverEditor";
+import { AssetImportPicker } from "./AssetImportPicker";
 
 type ProjectConfigTab = "info" | "assets";
 type ProjectSettingsPatch = Pick<DirectorProject, "title" | "description" | "useDescriptionForAiPrompt"> & { cover?: ProjectCoverSelection };
 
 type Props = {
+  onOpenTaskTrash?: () => void;
   open: boolean;
   project: DirectorProject;
   onClose: () => void;
@@ -96,7 +98,7 @@ function AssetPreview({
   return (
     <div className="project-asset-detail">
       <div ref={previewRef} className={`project-asset-preview is-${asset.mediaType}`}>
-        {asset.mediaType === "image" && source ? (
+        {asset.importSource ? (asset.previewUrl ? <img src={asset.previewUrl} alt={asset.name} /> : <div className="project-asset-preview-empty">保存后可预览完整资产</div>) : asset.mediaType === "image" && source ? (
           <button type="button" className="project-asset-image-button" aria-label={`放大 ${asset.name}`} onClick={() => setImageOpen(true)}><img src={source} alt={asset.name} /></button>
         ) : asset.mediaType === "video" ? (
           <video controls preload="metadata" poster={asset.previewUrl} src={asset.mediaUrl || asset.projectRelativePath} />
@@ -110,7 +112,7 @@ function AssetPreview({
           <div className="project-asset-preview-empty">暂无预览</div>
         )}
 
-        {asset.mediaType === "video" && (
+        {asset.mediaType === "video" && !asset.importSource && (
           <button type="button" className="project-asset-fullscreen" aria-label="全屏查看资产" title="全屏查看" onClick={requestFullscreen}>
             <Maximize2 size={15} />
           </button>
@@ -122,6 +124,7 @@ function AssetPreview({
       </Dialog>}
 
       <section className="project-asset-meta" aria-label="资产信息">
+        {asset.importSource && <p>待导入：保存时复制为独立资产。</p>}
         <div className="project-asset-editable-meta">
           <label className="project-asset-name-field">
             <span>资产名</span>
@@ -160,7 +163,8 @@ function AssetPreview({
   );
 }
 
-export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
+export function ProjectConfigPanel({ open, project, onClose, onSave, onOpenTaskTrash }: Props) {
+  const [importPickerOpen, setImportPickerOpen] = useState(false);
   const [tab, setTab] = useState<ProjectConfigTab>("info");
   const [title, setTitle] = useState(project.title);
   const [description, setDescription] = useState(project.description);
@@ -263,7 +267,7 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
   };
 
   return (
-    <Dialog open={open} size="wide" icon="configure" title="项目配置" onClose={close}>
+    <><Dialog open={open} size="wide" icon="configure" title="项目配置" onClose={close}>
       <div className="project-config-dialog project-config-dialog-v2">
         <nav className="project-config-tabs" aria-label="项目配置分类">
           <div className="project-config-tab-slot">
@@ -308,6 +312,7 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
                 <header>
                   <div><strong>项目资产</strong><span>{assets.length} 项</span></div>
                   <Button onClick={() => inputRef.current?.click()}><Upload size={14} /> 添加资产</Button>
+                  <Button onClick={() => setImportPickerOpen(true)}>从项目导入</Button>
                   <input
                     ref={inputRef}
                     hidden
@@ -372,11 +377,22 @@ export function ProjectConfigPanel({ open, project, onClose, onSave }: Props) {
         </section>
 
         <footer className="project-config-actions">
+          {onOpenTaskTrash && <Button disabled={saving} onClick={onOpenTaskTrash}>任务回收站</Button>}
           {saveError && <span className="project-config-save-error" role="alert">{saveError}</span>}
           <Button disabled={saving} onClick={close}>取消</Button>
           <Button variant="accent" disabled={saving || !title.trim()} onClick={() => void save()}>{saving ? "保存中…" : "保存"}</Button>
         </footer>
       </div>
     </Dialog>
+    {open && importPickerOpen && <AssetImportPicker projectId={project.id} onClose={() => setImportPickerOpen(false)} onSelect={items => {
+      const incoming: ProjectAsset[] = items.filter(item => !assets.some(asset =>
+        asset.importSource?.kind === item.kind && asset.importSource.id === item.id)).map(item => ({
+        id: `asset-import-${crypto.randomUUID()}`, name: item.name, mediaType: item.mediaType,
+        category: "reference", tags: [], checksum: "", projectRelativePath: "",
+        previewUrl: item.previewUrl ?? undefined, importSource: { kind: item.kind, id: item.id },
+      }));
+      setAssets(current => [...current, ...incoming]);
+      setSelectedAssetId(incoming[0]?.id ?? selectedAssetId);
+    }} />}</>
   );
 }

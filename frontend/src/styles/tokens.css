@@ -1,4 +1,5 @@
-:root, :root[data-tc-mode="light"] {
+:root,
+:root[data-tc-mode="light"] {
   color-scheme: light;
   font-family: Inter, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   font-synthesis: none;
@@ -13,7 +14,7 @@
   --sm-warning: #956513;
   --sm-surface-base-weight: 12%;
   --sm-surface-mix: white;
-  --sm-bg: color-mix(in srgb, var(--tc-base) 16%, white);
+  --sm-bg: color-mix(in srgb, var(--tc-base) 20%, white);
 }
 
 :root[data-tc-mode="dark"] {
@@ -31,7 +32,8 @@
   --sm-bg: var(--tc-base);
 }
 
-:root[data-tc-mode], :root {
+:root[data-tc-mode],
+:root {
   --tc-text: var(--tc-text-main);
   --tc-text-muted: color-mix(in srgb, var(--tc-text-main) 70%, var(--sm-bg));
   --tc-text-subtle: color-mix(in srgb, var(--tc-text-main) 70%, var(--sm-bg));
@@ -76,23 +78,74 @@
   --sm-radius: 16px;
   --sm-radius-lg: 16px;
   --sm-shadow: 0 24px 72px var(--sm-shadow-color), inset 0 1px 0 var(--sm-glass-edge);
-  --sm-ease: cubic-bezier(.22,1,.36,1);
+  --sm-ease: cubic-bezier(.22, 1, .36, 1);
   --sm-fast: 200ms var(--sm-ease);
   --sm-enter: 300ms var(--sm-ease);
 
 }
 
-* { box-sizing: border-box; letter-spacing: 0; }
-/* One theme-aware scrollbar treatment, including existing long lists and text areas. */
-* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--sm-text-muted) 44%, transparent) transparent; }
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--sm-text-muted) 44%, transparent); background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { background-color: var(--sm-text-muted); }
-::-webkit-scrollbar-corner { background: transparent; }
-html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
-body { background: var(--sm-bg); color: var(--sm-text); overflow: hidden; }
-.theme-switch { display: flex; align-items: center; flex: 0 0 auto; width: 80px; --tc-accent: var(--sm-text-muted); }
+* {
+  box-sizing: border-box;
+  letter-spacing: 0;
+}
 
-button, input { font: inherit; }
-button { color: inherit; }
+/* One theme-aware scrollbar treatment, including existing long lists and text areas. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--sm-text-muted) 44%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sm-text-muted) 44%, transparent);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--sm-text-muted);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--sm-bg);
+  color: var(--sm-text);
+  overflow: hidden;
+}
+
+.theme-switch {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: 80px;
+  --tc-accent: var(--sm-text-muted);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
