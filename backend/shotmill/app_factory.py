@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from shotmill.api import (
@@ -16,11 +15,10 @@ from shotmill.api import (
     comfyui,
     events,
     generation,
-    lifecycle,
     project_transfer,
     projects,
     prompt_enhancements,
-    result_archive,
+    removal,
     results,
     shared_media,
     tasks,
@@ -29,7 +27,6 @@ from shotmill.application.container import build_container
 from shotmill.config import Settings, settings
 from shotmill.domain.providers import PromptAIProvider, VideoGenerationProvider
 from shotmill.errors import ShotMillError
-from shotmill.persistence.migrations import upgrade_database
 
 
 def create_app(
@@ -48,18 +45,14 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         selected_settings.data_root.mkdir(parents=True, exist_ok=True)
-        selected_settings.projects_root.mkdir(parents=True, exist_ok=True)
-        if selected_settings.auto_migrate:
-            upgrade_database(selected_settings.database_url)
+        container.project_documents.load_recent()
         await run_in_threadpool(container.project_export_service.recover_abandoned)
         await container.prompt_enhancement_queue.start()
         await container.generation_queue.start()
-        await container.cleanup_worker.start()
         try:
             yield
         finally:
             await run_in_threadpool(container.project_export_downloads.close)
-            await container.cleanup_worker.stop()
             await container.generation_queue.stop()
             await container.prompt_enhancement_queue.stop()
             container.engine.dispose()
@@ -102,8 +95,7 @@ def create_app(
     for router in (
         projects.router,
         project_transfer.router,
-        lifecycle.router,
-        result_archive.router,
+        removal.router,
         application_settings.router,
         assets.router,
         tasks.router,
@@ -117,11 +109,6 @@ def create_app(
         application.include_router(router, prefix="/api/v1")
 
     application.include_router(shared_media.router)
-    application.mount(
-        "/media",
-        StaticFiles(directory=str(selected_settings.projects_root), check_dir=False),
-        name="media",
-    )
     return application
 
 

@@ -1,4 +1,5 @@
 import io
+import hashlib
 import json
 import stat
 import zipfile
@@ -19,9 +20,9 @@ def test_roundtrip_deduplicates_bytes_and_removes_private_staging(tmp_path):
         "assets/reference.mp4": source, "outputs/history.mp4": source,
     })
     with zipfile.ZipFile(package) as archive:
-        assert len(archive.namelist()) == 2
+        assert len(archive.namelist()) == 3
     with open_project_package(package, staging_parent=tmp_path) as staged:
-        assert staged.records == {"title": "迁移项目"}
+        assert staged.document == {"title": "迁移项目"}
         assert staged.files["assets/reference.mp4"].read_bytes() == source.read_bytes()
         assert staged.files["outputs/history.mp4"] == staged.files["assets/reference.mp4"]
         path = staged.files["outputs/history.mp4"]
@@ -46,15 +47,21 @@ def archive_with(manifest, entries=()):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("project.shotmill", b"{}\n")
         for name, content in entries:
             archive.writestr(name, content)
     return buffer
 
 
+def manifest_with(files):
+    return {"format": "shotmill-package", "version": 2,
+            "projectSha256": hashlib.sha256(b"{}\n").hexdigest(), "files": files}
+
+
 def test_import_rejects_unknown_version_extra_members_and_case_collisions(tmp_path):
-    base = {"format": "shotmill-project", "version": 1, "records": {}, "files": []}
+    base = manifest_with([])
     packages = [
-        archive_with({**base, "version": 2}),
+        archive_with({**base, "version": 3}),
         archive_with(base, [("../outside", b"x")]),
         archive_with(base, [("MANIFEST.JSON", b"{}")]),
     ]
@@ -67,9 +74,9 @@ def test_import_rejects_unknown_version_extra_members_and_case_collisions(tmp_pa
 
 def test_corrupt_content_is_rejected_without_leaking_staging(tmp_path):
     digest = "0" * 64
-    manifest = {"format": "shotmill-project", "version": 1, "records": {}, "files": [
+    manifest = manifest_with([
         {"path": "assets/test.txt", "sha256": digest, "size": 3},
-    ]}
+    ])
     package = archive_with(manifest, [(f"blobs/{digest}", b"bad")])
     with pytest.raises(ValueError, match="checksum"):
         with open_project_package(package, staging_parent=tmp_path):
@@ -112,14 +119,15 @@ def test_export_detects_source_changed_between_hash_and_copy(tmp_path, monkeypat
 
 
 @pytest.mark.parametrize("raw", [
-    b'{"format":"shotmill-project","version":1,"version":1,"records":{},"files":[]}',
-    b'{"format":"shotmill-project","version":true,"records":{},"files":[]}',
-    b'{"format":"shotmill-project","version":1,"records":{"value":NaN},"files":[]}',
+    b'{"format":"shotmill-package","version":2,"version":2,"files":[]}',
+    b'{"format":"shotmill-package","version":true,"files":[]}',
+    b'{"format":"shotmill-package","version":2,"projectSha256":NaN,"files":[]}',
 ])
 def test_import_rejects_ambiguous_json(raw):
     package = io.BytesIO()
     with zipfile.ZipFile(package, "w") as archive:
         archive.writestr("manifest.json", raw)
+        archive.writestr("project.shotmill", b"{}\n")
     with pytest.raises(ValueError):
         with open_project_package(package):
             pytest.fail("must not accept ambiguous manifest")
@@ -168,10 +176,10 @@ def test_import_rejects_file_directory_collision_before_staging(tmp_path):
     import hashlib
 
     digest = hashlib.sha256(b"1234").hexdigest()
-    manifest = {"format": "shotmill-project", "version": 1, "records": {}, "files": [
+    manifest = manifest_with([
         {"path": name, "sha256": digest, "size": 4}
         for name in ["assets/A/frame.png", "assets/a"]
-    ]}
+    ])
     package = archive_with(manifest, [(f"blobs/{digest}", b"1234")])
     with pytest.raises(ValueError, match="collision"):
         with open_project_package(package, staging_parent=tmp_path):
@@ -187,7 +195,7 @@ def test_export_capacity_counts_shared_objects_once(tmp_path):
         "assets/a": source, "assets/b": source,
     }, limits=PackageLimits(max_total_bytes=4))
     with zipfile.ZipFile(package) as archive:
-        assert len(archive.namelist()) == 2
+        assert len(archive.namelist()) == 3
     with pytest.raises(ValueError, match="total size"):
         write_project_package(io.BytesIO(), {}, {"assets/a": source},
                               limits=PackageLimits(max_total_bytes=3))
@@ -197,9 +205,9 @@ def test_import_capacity_counts_shared_objects_once_and_limits_references(tmp_pa
     import hashlib
 
     digest = hashlib.sha256(b"1234").hexdigest()
-    manifest = {"format": "shotmill-project", "version": 1, "records": {}, "files": [
+    manifest = manifest_with([
         {"path": name, "sha256": digest, "size": 4} for name in ["assets/a", "assets/b"]
-    ]}
+    ])
     package = archive_with(manifest, [(f"blobs/{digest}", b"1234")])
     with open_project_package(
         package, staging_parent=tmp_path, limits=PackageLimits(max_total_bytes=4),
@@ -207,7 +215,7 @@ def test_import_capacity_counts_shared_objects_once_and_limits_references(tmp_pa
         assert staged.files["assets/a"] == staged.files["assets/b"]
     with pytest.raises(ValueError, match="Too many package files"):
         with open_project_package(
-            package, staging_parent=tmp_path, limits=PackageLimits(max_entries=2),
+            package, staging_parent=tmp_path, limits=PackageLimits(max_entries=3),
         ):
             pytest.fail("logical references must still have a count limit")
     assert list(tmp_path.iterdir()) == []

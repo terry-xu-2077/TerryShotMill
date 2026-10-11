@@ -68,6 +68,48 @@ class TerminalReceiptTests(unittest.TestCase):
             self.assertEqual(state["results"][0]["relativePath"], "original/clip.mp4")
             self.assertEqual(json.loads(index.read_text(encoding="utf-8"))["jobs"]["job-1"]["terminalState"], state)
 
+    def test_server_restart_marks_only_unfinished_admitted_jobs_failed(self):
+        module = load()
+        source = Path(__file__).resolve().parents[1] / "bridge_api.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        tree.body = [node for node in tree.body if
+                     isinstance(node, ast.ImportFrom) and node.module == "__future__"
+                     or isinstance(node, ast.FunctionDef) and node.name in {
+                         "_job_state", "_history_results", "_load_index", "_save_index"}]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = root / "jobs.json"
+            index.write_text(json.dumps({"jobs": {
+                "interrupted": {"promptId": "p1", "submissionState": "queued",
+                                "serverSessionId": "old"},
+                "uncertain": {"promptId": "p2", "submissionState": "prepared",
+                              "serverSessionId": "old"},
+                "same-session": {"promptId": "p3", "submissionState": "queued",
+                                 "serverSessionId": "new"},
+                "completed": {"promptId": "p4", "submissionState": "queued",
+                              "serverSessionId": "old"},
+            }}), encoding="utf-8")
+            receipts = root / "receipts"
+            module.write_receipt(receipts, "completed", "p4", {
+                "outputs": {"save": {"videos": [{"filename": "clip.mp4", "type": "output"}]}},
+                "status": {"status_str": "success"},
+            })
+            queue = Queue()
+            queue.currently_running.clear()
+            scope = {
+                "json": json, "Path": Path, "JOB_INDEX": index,
+                "RECEIPT_ROOT": receipts, "read_receipt": module.read_receipt,
+                "SERVER_SESSION_ID": "new",
+                "PromptServer": SimpleNamespace(instance=SimpleNamespace(prompt_queue=queue)),
+            }
+            exec(compile(tree, str(source), "exec"), scope)
+            interrupted = scope["_job_state"]("interrupted")
+            self.assertEqual(interrupted["status"], "failed")
+            self.assertEqual(interrupted["error"]["code"], "server_exited")
+            self.assertEqual(scope["_job_state"]("uncertain")["status"], "not_found")
+            self.assertEqual(scope["_job_state"]("same-session")["status"], "not_found")
+            self.assertEqual(scope["_job_state"]("completed")["status"], "completed")
+
     def test_completion_survives_history_loss_without_polling(self):
         module = load()
         with tempfile.TemporaryDirectory() as directory:

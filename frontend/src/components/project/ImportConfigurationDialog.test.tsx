@@ -4,9 +4,9 @@ import { vi } from "vitest";
 import { OverlayProvider } from "../../ui/overlay";
 import { ImportConfigurationDialog } from "./ImportConfigurationDialog";
 
-function setup(readOnly = false) {
+function setup() {
   const gateway = {
-    pending: vi.fn().mockResolvedValue([{ taskId: "t", title: "任务", revision: 4, sourceConfigurationId: "same", readOnly }]),
+    pending: vi.fn().mockResolvedValue([{ taskId: "t", title: "任务", revision: 4, sourceConfigurationId: "same" }]),
     options: vi.fn().mockResolvedValue([{ value: "same", label: "本机工作流" }]),
     confirm: vi.fn().mockResolvedValue(undefined),
   };
@@ -37,9 +37,4 @@ it("requires refresh after uncertain confirmation rather than resending", async 
   await userEvent.click(screen.getByRole("button", { name: "刷新列表" }));
   expect(await screen.findByRole("status")).toHaveTextContent("没有待确认的任务");
   expect(gateway.confirm).toHaveBeenCalledOnce();
-});
-it("keeps archived and trashed tasks read-only", async () => {
-  setup(true);
-  expect(await screen.findByText("请先恢复任务并取消归档。")).toBeInTheDocument();
-  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
 });

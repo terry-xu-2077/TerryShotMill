@@ -35,7 +35,7 @@ DEFAULT_LIMITS = PackageLimits()
 
 @dataclass(frozen=True)
 class StagedProjectPackage:
-    records: dict
+    document: dict
     files: dict[str, Path]
 
 
@@ -69,12 +69,13 @@ def _check_path_tree(paths: Mapping[str, object]) -> None:
 
 
 def write_project_package(
-    target: BinaryIO, records: dict, files: Mapping[str, Path],
+    target: BinaryIO, document: dict, files: Mapping[str, Path],
     *, limits: PackageLimits = DEFAULT_LIMITS,
+    verified_fingerprints: Mapping[Path, tuple[str, int]] | None = None,
 ) -> None:
     """Caller owns the unpublished output and ensures sources belong to the project."""
-    if not isinstance(records, dict) or len(files) + 1 > limits.max_entries:
-        raise ValueError("Invalid records or too many package entries")
+    if not isinstance(document, dict) or len(files) + 2 > limits.max_entries:
+        raise ValueError("Invalid project document or too many package entries")
     seen: set[str] = set()
     for name in files:
         _portable_path(name)
@@ -83,8 +84,11 @@ def write_project_package(
         seen.add(name.casefold())
     _check_path_tree(files)
     manifest_files, blobs = [], {}
+    fingerprints: dict[Path, tuple[str, int]] = dict(verified_fingerprints or {})
     for name, source in files.items():
-        checksum, size = _fingerprint(source)
+        if source not in fingerprints:
+            fingerprints[source] = _fingerprint(source)
+        checksum, size = fingerprints[source]
         if size > limits.max_file_bytes:
             raise ValueError("Package file size limit exceeded")
         manifest_files.append({"path": name, "sha256": checksum, "size": size})
@@ -92,13 +96,19 @@ def write_project_package(
     # Logical aliases share one physical object in the application-wide library.
     if sum(size for _, size in blobs.values()) > limits.max_total_bytes:
         raise ValueError("Package total size limit exceeded")
+    project_bytes = (json.dumps(document, ensure_ascii=False, allow_nan=False,
+                                separators=(",", ":")) + "\n").encode("utf-8")
+    if len(project_bytes) > limits.max_manifest_bytes:
+        raise ValueError("Project document size limit exceeded")
     manifest = json.dumps({
-        "format": "shotmill-project", "version": 1, "records": records, "files": manifest_files,
+        "format": "shotmill-package", "version": 2,
+        "projectSha256": hashlib.sha256(project_bytes).hexdigest(), "files": manifest_files,
     }, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
     if len(manifest) > limits.max_manifest_bytes:
         raise ValueError("Package manifest size limit exceeded")
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
         archive.writestr("manifest.json", manifest)
+        archive.writestr("project.shotmill", project_bytes)
         for checksum, (source, expected_size) in blobs.items():
             digest, size = hashlib.sha256(), 0
             with source.open("rb") as incoming, archive.open(
@@ -143,24 +153,34 @@ def open_project_package(
             names.add(info.filename.casefold())
             if info.flag_bits & 1 or stat.S_ISLNK(info.external_attr >> 16):
                 raise ValueError("Encrypted or symlink ZIP member")
-            if info.filename != "manifest.json" and not re.fullmatch(
+            if info.filename not in {"manifest.json", "project.shotmill"} and not re.fullmatch(
                 r"blobs/[0-9a-f]{64}", info.filename,
             ):
                 raise ValueError("Unexpected ZIP member")
-        if "manifest.json" not in archive.namelist():
-            raise ValueError("Missing project manifest")
+        if not {"manifest.json", "project.shotmill"} <= set(archive.namelist()):
+            raise ValueError("Missing project manifest or document")
         if archive.getinfo("manifest.json").file_size > limits.max_manifest_bytes:
             raise ValueError("Package manifest size limit exceeded")
+        if archive.getinfo("project.shotmill").file_size > limits.max_manifest_bytes:
+            raise ValueError("Project document size limit exceeded")
         manifest = json.loads(
             archive.read("manifest.json"), object_pairs_hook=_unique_object,
             parse_constant=_reject_constant,
         )
-        if (not isinstance(manifest, dict) or manifest.get("format") != "shotmill-project"
-                or type(manifest.get("version")) is not int or manifest["version"] != 1
-                or not isinstance(manifest.get("records"), dict)
+        if (not isinstance(manifest, dict) or manifest.get("format") != "shotmill-package"
+                or type(manifest.get("version")) is not int or manifest["version"] != 2
+                or not isinstance(manifest.get("projectSha256"), str)
+                or not SHA256.fullmatch(manifest["projectSha256"])
                 or not isinstance(manifest.get("files"), list)):
             raise ValueError("Unsupported project package manifest")
-        if len(manifest["files"]) + 1 > limits.max_entries:
+        project_bytes = archive.read("project.shotmill")
+        if hashlib.sha256(project_bytes).hexdigest() != manifest["projectSha256"]:
+            raise ValueError("Project document checksum mismatch")
+        document = json.loads(project_bytes, object_pairs_hook=_unique_object,
+                              parse_constant=_reject_constant)
+        if not isinstance(document, dict):
+            raise ValueError("Invalid project document")
+        if len(manifest["files"]) + 2 > limits.max_entries:
             raise ValueError("Too many package files")
         paths: dict[str, str] = {}
         sizes: dict[str, int] = {}
@@ -182,7 +202,8 @@ def open_project_package(
         _check_path_tree(paths)
         if sum(sizes.values()) > limits.max_total_bytes:
             raise ValueError("Package total size limit exceeded")
-        expected = {"manifest.json", *(f"blobs/{checksum}" for checksum in sizes)}
+        expected = {"manifest.json", "project.shotmill",
+                    *(f"blobs/{checksum}" for checksum in sizes)}
         if set(archive.namelist()) != expected:
             raise ValueError("Missing or unreferenced package content")
         for checksum, size in sizes.items():
@@ -206,6 +227,6 @@ def open_project_package(
                         out.write(chunk)
                 if size != expected_size or digest.hexdigest() != checksum:
                     raise ValueError("Package file checksum mismatch")
-            yield StagedProjectPackage(manifest["records"], {
+            yield StagedProjectPackage(document, {
                 name: root / checksum for name, checksum in paths.items()
             })

@@ -5,7 +5,6 @@ from dataclasses import replace
 
 from shotmill.application.context_duration import previous_video_duration
 from shotmill.application.continuation_risks import continuation_risks, continuation_status
-from shotmill.application.lifecycle_service import LifecycleScope, in_lifecycle_scope
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import NotFoundError
 from shotmill.frontend_adapter.mapper import (
@@ -25,6 +24,7 @@ from shotmill.frontend_adapter.models import (
     ProjectSettingsView,
     ProjectSummary,
     ProjectWorkspaceView,
+    TimelineView,
     TaskEditorView,
     WorkspaceProject,
 )
@@ -53,12 +53,10 @@ class WorkspaceQuery:
             for result in uow.results.list_by_task(task_id)
         ]
 
-    def list_projects(self, scope: LifecycleScope = "active") -> list[ProjectSummary]:
+    def list_projects(self) -> list[ProjectSummary]:
         with self.uow_factory() as uow:
             items: list[ProjectSummary] = []
             for project in uow.projects.list():
-                if not in_lifecycle_scope(project, scope):
-                    continue
                 tasks = uow.tasks.list_by_project(project.id)
                 results_by_task = {task.id: self._results(uow, task.id) for task in tasks}
                 items.append(
@@ -131,6 +129,7 @@ class WorkspaceQuery:
                 id=project.id,
                 title=project.title,
                 description=project.description,
+                director=project.director,
                 use_description_for_ai_prompt=project.use_description_for_ai_prompt,
                 cover_asset_id=project.cover_asset_id,
                 cover_url=(
@@ -139,15 +138,12 @@ class WorkspaceQuery:
                 automatic_cover_url=automatic,
             )
 
-    def workspace(
-        self, project_id: str, scope: LifecycleScope = "active"
-    ) -> ProjectWorkspaceView:
+    def workspace(self, project_id: str) -> ProjectWorkspaceView:
         with self.uow_factory() as uow:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
             tasks = uow.tasks.list_by_project(project_id)
-            tasks = [task for task in tasks if in_lifecycle_scope(task, scope)]
             active_prompt_task_ids = uow.prompt_jobs.active_task_ids_by_project(project_id)
             active_video_task_ids = uow.jobs.active_task_ids_by_project(project_id)
             asset_previews = {
@@ -184,12 +180,19 @@ class WorkspaceQuery:
                     uow.prompt_jobs.list_by_task(summary.id),
                 )
             runtime = self._runtime(uow, project_id, uow.tasks.list_by_project(project_id))
+            placements = uow.story_structure.list_placements(project_id)
+            visible_ids = {task.id for task in tasks}
+            timelines = [TimelineView(
+                id=scene.id, title=scene.title or f"时间线 {scene.number}",
+                task_ids=[placement.task_id for placement in placements
+                          if placement.scene_id == scene.id and placement.task_id in visible_ids],
+            ) for scene in uow.story_structure.list_scenes(project_id)]
             return ProjectWorkspaceView(
                 project=WorkspaceProject(
                     id=project.id, title=project.title,
-                    archived_at=project.archived_at, deleted_at=project.deleted_at,
                 ),
                 tasks=summaries,
+                timelines=timelines,
                 runtime=runtime,
             )
 

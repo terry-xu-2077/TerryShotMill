@@ -1,7 +1,7 @@
 import { projectRequest, mapAsset, type BackendAsset } from "./projectGateway";
 import type { ProjectAsset } from "../domain/storyboard";
 
-export type ImportSource = { kind: "asset" | "result" | "archive"; id: string };
+export type ImportSource = { kind: "asset" | "result"; id: string };
 export type ImportCandidate = ImportSource & {
   name: string; sourceProjectId: string; sourceProjectTitle: string;
   mediaType: "image" | "video" | "audio"; previewUrl: string | null; createdAt: string;

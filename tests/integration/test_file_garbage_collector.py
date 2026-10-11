@@ -2,20 +2,31 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from dataclasses import replace
 from pathlib import Path
 from threading import Event
 from unittest.mock import Mock
 
 import pytest
 from shotmill.application.file_garbage_collector import FileGarbageCollector
-from shotmill.domain.entities import PromptEnhancementBatch, PromptEnhancementJob
-from shotmill.domain.enums import JobStatus
 from shotmill.errors import ConflictError
 from shotmill.persistence.repositories.files import SqlAlchemyFileRepository
-from test_batch_review_api import _task
+from test_batch_review_api import _project, _task
 from test_file_library import import_file, library  # noqa: F401
-from test_shared_result_archive import generated
+from test_prompt_batch_recovery import HeldQueue
+
+
+def generated(client):
+    container = client.app.state.container
+    service = container.generation_service
+    service.attach_queue(HeldQueue())
+    project = _project(client)["id"]
+    task = _task(client, project, "Output", "Generate")["id"]
+    response = client.post(f"/api/v1/projects/{project}/tasks/{task}/generation", json={})
+    assert response.status_code == 202
+    client.portal.call(service.execute, response.json()["id"])
+    with service.uow_factory() as uow:
+        result = uow.results.list_by_task(task)[0]
+    return container, project, task, result
 
 
 def test_collection_preserves_shared_owners_and_unregistered_files(library):  # noqa: F811
@@ -167,63 +178,6 @@ def test_real_generation_collection_window_blocks_reclaiming_reused_bytes(client
     assert inspected == [result.id]
     assert collector.collect_registered() == 0
     assert client.get(result.video_url).content == b"fake-video-bytes"
-
-
-@pytest.mark.parametrize("owner", ["result", "archive"])
-def test_inconsistent_business_reference_blocks_collection(client, owner):
-    container, project, task, result = generated(client)
-    factory = container.generation_service.uow_factory
-    archive = container.result_archive_service.archive_tasks(project, [task])[0]
-    file_path, _ = container.result_archive_service.file(archive.id, 0)
-    with factory() as uow:
-        uow.reserve_write()
-        uow.files.release_scope("project", project)
-        uow.files.release_scope("archive", archive.id)
-        if owner == "archive":
-            uow.projects.delete(project)
-        else:
-            uow.archived_results.delete(archive.id)
-    collector = FileGarbageCollector(factory, container.file_library.storage)
-    with pytest.raises(ConflictError) as error:
-        collector.collect_registered()
-    assert error.value.code == "FILE_REFERENCE_INCONSISTENT"
-    assert file_path.read_bytes() == b"fake-video-bytes"
-
-
-@pytest.mark.parametrize("kind", ["assets", "context", "execution", "prompt", "prompt_context"])
-@pytest.mark.parametrize("lifecycle", ["active", "archive", "trash"])
-def test_historical_media_blocks_collection_when_registration_is_missing(client, kind, lifecycle):
-    container, project, source_task, result = generated(client)
-    factory = container.generation_service.uow_factory
-    consumer = _task(client, project, "Historical consumer", "Prompt")["id"]
-    relative = result.video_url.removeprefix(f"/media/{project}/")
-    path = container.storage.resolve_read(project, relative)
-    media = [{"projectRelativePath": relative}]
-    with factory() as uow:
-        uow.reserve_write()
-        job = uow.jobs.list_by_task(source_task)[0]
-        if kind.startswith("prompt"):
-            uow.prompt_batches.add(PromptEnhancementBatch("audit-batch", project, "completed", 1))
-            uow.prompt_jobs.add(PromptEnhancementJob(
-                "audit-prompt", "audit-batch", project, consumer, JobStatus.COMPLETED,
-                {"media": media} if kind == "prompt" else {},
-                {"media": media} if kind == "prompt_context" else {}, {}, "minimax-h3",
-            ))
-        else:
-            uow.jobs.add(replace(
-                job, id="audit-history", task_id=consumer,
-                assets_snapshot=media if kind == "assets" else [],
-                context_snapshot={"media": media} if kind == "context" else {},
-                execution_context={"media": media} if kind == "execution" else None,
-            ))
-        uow.tasks.delete(source_task)
-        uow.files.release_scope("project", project)
-    if lifecycle != "active":
-        container.lifecycle_service.transition_tasks(project, [consumer], lifecycle)
-    with pytest.raises(ConflictError) as error:
-        FileGarbageCollector(factory, container.file_library.storage).collect_registered()
-    assert error.value.code == "FILE_REFERENCE_INCONSISTENT"
-    assert path.read_bytes() == b"fake-video-bytes"
 
 
 def test_process_exit_after_unlink_recovers_on_retry(library):  # noqa: F811

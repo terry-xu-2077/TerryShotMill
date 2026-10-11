@@ -1,6 +1,8 @@
 .project-import-dialog { display: grid; gap: 12px; min-width: 0; }
 .project-import-file { display: grid; gap: 8px; min-width: 0; }
 .project-import-input { min-width: 0; max-width: 100%; }
+.project-import-path-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.project-import-path-row input { flex: 1; min-width: 0; }
 .project-import-status, .project-import-notice, .project-import-error { margin: 0; overflow-wrap: anywhere; }
 .project-import-notice { color: var(--sm-text-muted); }
 .project-import-error { color: var(--sm-danger); }

@@ -33,11 +33,12 @@ it("uploads the original file with a browser-owned multipart boundary", async ()
   vi.stubGlobal("fetch", request);
   const file = new File(["zip"], "项目.zip", { type: "application/zip" });
   const abort = new AbortController();
-  expect(await projectTransferGateway.importPackage(file, abort.signal)).toEqual(outcome);
+  expect(await projectTransferGateway.importPackage(file, "G:\\Films\\Imported.shotmill", abort.signal)).toEqual(outcome);
   const [url, init] = request.mock.calls[0];
   expect(url).toBe("/api/v1/projects/import");
   expect(init.method).toBe("POST");
   expect(init.body.get("file")).toBe(file);
+  expect(init.body.get("path")).toBe("G:\\Films\\Imported.shotmill");
   expect(init.headers).toBeUndefined();
   expect(init.signal).toBe(abort.signal);
 });
@@ -47,7 +48,7 @@ it("preserves backend failure messages and never automatically retries an import
     code: "PROJECT_PACKAGE_INVALID", message: "项目包损坏或格式不受支持。",
   } }), { status: 422 }));
   vi.stubGlobal("fetch", request);
-  await expect(projectTransferGateway.importPackage(new File(["bad"], "bad.zip")))
+  await expect(projectTransferGateway.importPackage(new File(["bad"], "bad.zip"), "G:\\Films\\Imported.shotmill"))
     .rejects.toMatchObject({ code: "PROJECT_PACKAGE_INVALID", message: "项目包损坏或格式不受支持。" });
   expect(request).toHaveBeenCalledTimes(1);
 });

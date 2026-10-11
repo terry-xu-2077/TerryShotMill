@@ -48,13 +48,12 @@ export function ImportConfigurationDialog({ projectId, gateway, onClose }: {
             <strong className="import-configuration-copy">{item.title}</strong>
             {item.sourceConfigurationId && <span className="import-configuration-copy">原配置：{item.sourceConfigurationId}</span>}
           </div>
-          {item.readOnly ? <p className="import-configuration-copy">请先恢复任务并取消归档。</p>
-            : <div className="import-configuration-actions">
+          <div className="import-configuration-actions">
               <div className="import-configuration-select"><Select ariaLabel={`${item.title}的本机工作流`}
                 value={selected[item.taskId] ?? ""} options={[{ value: "", label: "选择本机工作流" }, ...options]}
                 disabled={busy || !options.length} onChange={value => setSelected(current => ({ ...current, [item.taskId]: value }))} /></div>
               <Button disabled={busy || !selected[item.taskId]} onClick={() => void confirm(item)}>确认配置</Button>
-            </div>}
+            </div>
         </div>)}
       </div>}
       <footer className="import-configuration-footer">

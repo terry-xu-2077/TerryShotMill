@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { LifecycleGateway, LifecycleScope } from "../../gateways/lifecycleGateway";
+import type { LifecycleGateway } from "../../gateways/lifecycleGateway";
 import { readOnlyProjectGateway } from "../../gateways/readOnlyProjectGateway";
 import type { TaskSummary } from "../../gateways/projectGateway";
 import type { ProjectAsset } from "../../domain/storyboard";
@@ -11,7 +11,7 @@ import "./ProjectReadOnly.css";
 export function ProjectReadOnlyBrowser({ projectId, title, lifecycle, onClose }: {
   projectId: string; title: string; lifecycle: LifecycleGateway; onClose: () => void;
 }) {
-  const [scope, setScope] = useState<LifecycleScope | "assets">("active");
+  const [scope, setScope] = useState<"tasks" | "assets">("tasks");
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [assets, setAssets] = useState<ProjectAsset[]>([]);
   const [task, setTask] = useState<TaskSummary | null>(null);
@@ -27,7 +27,7 @@ export function ProjectReadOnlyBrowser({ projectId, title, lifecycle, onClose }:
         const items = await readOnlyProjectGateway.assets(projectId);
         if (!cancelled) setAssets(items);
       } else {
-        const workspace = await lifecycle.getWorkspace(projectId, scope);
+        const workspace = await lifecycle.getWorkspace(projectId);
         if (!cancelled) setTasks(workspace.tasks);
       }
     };
@@ -38,10 +38,8 @@ export function ProjectReadOnlyBrowser({ projectId, title, lifecycle, onClose }:
   return <>
     <Dialog open icon="history" title={`只读项目 · ${title}`} onClose={onClose}>
       <div className="project-readonly-browser">
-        <p>这里只查看和下载；编辑或生成前，请恢复项目并取消归档。</p>
         <SegmentedControl value={scope} ariaLabel="只读项目内容" options={[
-          { value: "active", label: "任务" }, { value: "archived", label: "归档任务" },
-          { value: "trash", label: "回收站" }, { value: "assets", label: "资产" },
+          { value: "tasks", label: "任务" }, { value: "assets", label: "资产" },
         ]} onChange={setScope} />
         {loading && <p role="status">正在加载…</p>}
         {error && <div role="alert">{error}<Button onClick={() => setAttempt(value => value + 1)}>重试</Button></div>}

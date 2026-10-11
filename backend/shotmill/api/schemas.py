@@ -15,6 +15,7 @@ from shotmill.frontend_adapter.models import (
 
 class ProjectCreateRequest(ApiModel):
     title: str
+    path: str
     description: str = ""
     use_description_for_ai_prompt: bool = False
 
@@ -92,6 +93,7 @@ class ProjectPatchRequest(ApiModel):
     description: str | None = None
     use_description_for_ai_prompt: bool | None = None
     cover: ProjectCoverSelection | None = None
+    director: dict | None = None
 
 
 class AssetPatchRequest(ApiModel):
@@ -102,6 +104,7 @@ class AssetPatchRequest(ApiModel):
 
 class TaskSaveRequest(ApiModel):
     save_user_prompt_version: bool = False
+    timeline_id: str | None = None
     title: str
     summary: str = ""
     script_source: str = ""
@@ -114,6 +117,11 @@ class TaskSaveRequest(ApiModel):
     asset_bindings: list[TaskAssetRef] = []
     editor_preference: EditorPreference = EditorPreference()
     revision: int | None = None
+
+
+class TaskTimelinePatch(ApiModel):
+    start_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    duration_seconds: float = Field(ge=0.1, allow_inf_nan=False)
 
 
 class EditorPreferencePatch(ApiModel):

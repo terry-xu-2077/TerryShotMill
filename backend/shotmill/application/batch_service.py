@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 from shotmill.application.event_bus import ProjectEventBus
 from shotmill.application.generation_service import GenerationService
-from shotmill.application.lifecycle_service import in_lifecycle_scope, require_writable
 from shotmill.application.managed_queue import ManagedQueue
 from shotmill.application.prompt_enhancement_service import (
     EnhancementContextOptions,
@@ -185,8 +184,6 @@ class BatchProductionService:
         active_ids: set[str],
         single_input: SinglePromptInput | None = None,
     ) -> PromptBatchSkipped | None:
-        if not in_lifecycle_scope(task, "active"):
-            return PromptBatchSkipped(task.id, "read-only", "任务已归档或移入回收站")
         if task.id in active_ids:
             return PromptBatchSkipped(task.id, "busy", "正在增强或排队")
         if not cls._prompt_text(task, single_input):
@@ -202,7 +199,6 @@ class BatchProductionService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project)
             selected = self._selected_tasks(uow.tasks.list_by_project(project_id), task_ids)
             if task_ids and len(selected) != len(set(task_ids)):
                 raise NotFoundError("TASK_NOT_FOUND", "One or more tasks were not found")
@@ -234,13 +230,9 @@ class BatchProductionService:
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
             all_tasks = uow.tasks.list_by_project(project_id)
-            require_writable(project)
             selected = self._selected_tasks(all_tasks, task_ids)
             if task_ids and len(selected) != len(set(task_ids)):
                 raise NotFoundError("TASK_NOT_FOUND", "One or more tasks were not found")
-            if single_input is not None:
-                for task in selected:
-                    require_writable(project, task)
             active_prompt_task_ids = uow.prompt_jobs.active_task_ids_by_project(project_id)
             if single_input and any(task.id in active_prompt_task_ids for task in selected):
                 raise ShotMillError("TASK_PROMPT_BUSY", "任务正在增强，请等待当前增强完成。", 409)

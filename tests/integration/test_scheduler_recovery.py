@@ -445,7 +445,7 @@ def test_scheduler_recovers_twenty_video_jobs_in_order_with_partial_failure(clie
     async def fail_one(request):
         seen.append(request)
         if request.task_id == tasks[4]:
-            raise ProviderUnavailableError('one video failed')
+            raise RuntimeError('one video failed')
         return await original(request)
 
     provider.generate = fail_one
@@ -512,6 +512,85 @@ def test_scheduler_resumes_existing_remote_job_or_reports_interruption(
             assert after.error_code == 'GENERATION_INTERRUPTED'
         assert resume_calls == ([job_id] if resumable else [])
         assert not provider.requests  # never submit a second paid generation
+        if resumable:
+            with app.state.container.generation_service.uow_factory() as uow:
+                results = uow.results.list_by_task(task)
+                assert len(results) == 1
+                result_url = results[0].video_url
+            saved_path = app.state.container.storage.resolve_read(
+                project, result_url.removeprefix(f'/media/{project}/'),
+            )
+            assert saved_path.is_relative_to(app.state.container.project_documents.media_root(project))
+            assert saved_path.read_bytes() == b'existing-output'
+            assert restarted.get(result_url).content == b'existing-output'
+    if resumable:
+        def unexpected_resume(_job_id):
+            raise AssertionError('saved result must not query the server again')
+
+        provider.resume = unexpected_resume
+        reopened_app = create_app(client.app.state.container.settings,
+                                  prompt_provider=providers[0], video_provider=provider)
+        with TestClient(reopened_app) as reopened:
+            assert reopened_app.state.container.generation_service.get_job(job_id).status == JobStatus.COMPLETED
+            assert reopened.get(result_url).content == b'existing-output'
+            assert reopened.get(f'/api/v1/projects/{project}/workspace').json()['tasks'][0][
+                'resultCount'
+            ] == 1
+        assert resume_calls == [job_id]
+
+
+def test_confirmed_server_exit_fails_original_job_and_requires_manual_rerun(
+    client, monkeypatch,
+):
+    project = _project(client)['id']
+    task = _task(client, project, '中断镜头', '保留提示词')['id']
+    service = client.app.state.container.generation_service
+    service.attach_queue(HeldQueue())
+    job_id = _submit(client, project, task)
+    with service.uow_factory() as uow:
+        job = uow.jobs.get(job_id)
+        job.status = JobStatus.RUNNING
+        job.started_at = utcnow()
+        job.runtime_progress = {'submissionState': 'accepted'}
+        uow.jobs.update_runtime(job)
+        current = uow.tasks.get(task)
+        current.state = TaskState.RUNNING
+        uow.tasks.update(current)
+    original_prompt = service.get_job(job_id).final_prompt_snapshot
+    original_execution_provider = service._execution_provider
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        return httpx.Response(200, json={
+            'status': 'failed', 'promptId': 'original-remote',
+            'error': {'code': 'server_exited', 'reason': 'unknown'},
+        })
+
+    provider = ComfyUIVideoGenerationProvider(
+        'http://desktop', None, transport=httpx.MockTransport(handler),
+    )
+    monkeypatch.setattr(service, '_execution_provider', lambda _: provider)
+
+    async def recover():
+        await service.execute(job_id, recover=True)
+
+    client.portal.call(recover)
+    failed = service.get_job(job_id)
+    assert failed.status == JobStatus.FAILED
+    assert failed.error_code == 'GENERATION_SERVER_EXITED'
+    assert '退出原因未知' in failed.error_message
+    assert failed.final_prompt_snapshot == original_prompt
+    assert calls == [('GET', f'/shotmill/v1/jobs/{job_id}')]
+    workspace = client.get(f'/api/v1/projects/{project}/workspace').json()
+    assert workspace['tasks'][0]['generationStatusNote'] == '服务器退出 · 原因未知'
+    with service.uow_factory() as uow:
+        assert uow.tasks.get(task).state == TaskState.FAILED
+        assert uow.results.count_by_task(task) == 0
+    monkeypatch.setattr(service, '_execution_provider', original_execution_provider)
+    rerun = _submit(client, project, task)
+    assert rerun != job_id
+    assert service.get_job(job_id).status == JobStatus.FAILED
 
 
 @pytest.mark.parametrize('prompt_fails', [False, True])

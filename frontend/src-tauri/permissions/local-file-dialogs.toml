@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-local-file-dialogs"
+description = "Open project and asset file dialogs without reading file contents in the webview."
+commands.allow = ["choose_project_file", "choose_asset_files"]

@@ -63,11 +63,16 @@ def video_job_runtime(job: Job, title: str) -> RuntimeTaskItem:
         task_id=job.task_id,
         title=title,
         state=job.status.value,
+        retry_submission=(
+            job.status.value == "queued" and job.error_code == "GENERATION_SERVICE_OFFLINE"
+        ),
         status_note=(
             "用户停止"
             if job.error_code == "USER_STOPPED"
             else "正在停止"
             if job.status.value == "running" and (job.runtime_progress or {}).get("stopRequested")
+            else "服务器未响应"
+            if job.status.value == "queued" and job.error_code == "GENERATION_SERVICE_OFFLINE"
             else "等待上一任务结果"
             if job.status.value == "queued"
             and job.context_snapshot.get("dependency")

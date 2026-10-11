@@ -15,6 +15,7 @@ function setup(importPackage = vi.fn().mockResolvedValue(outcome), onChanged = v
 async function choose() {
   const file = new File(["package"], "project.zip", { type: "application/zip" });
   await userEvent.upload(screen.getByLabelText("项目 ZIP 包"), file);
+  await userEvent.type(screen.getByLabelText("导入后的工程文件位置"), "G:\\Films\\Imported.shotmill");
   return file;
 }
 
@@ -24,7 +25,7 @@ it("requires a file and refreshes once after successful import", async () => {
   const file = await choose();
   await userEvent.click(screen.getByRole("button", { name: "导入" }));
   expect(await screen.findByText("项目已导入")).toBeInTheDocument();
-  expect(api.importPackage).toHaveBeenCalledExactlyOnceWith(file);
+  expect(api.importPackage).toHaveBeenCalledExactlyOnceWith(file, "G:\\Films\\Imported.shotmill");
   expect(api.onChanged).toHaveBeenCalledOnce();
 });
 

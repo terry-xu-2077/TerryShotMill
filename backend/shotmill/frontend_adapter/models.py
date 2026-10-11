@@ -23,8 +23,6 @@ BatchItemState = Literal["queued", "running", "completed", "failed", "skipped", 
 
 
 class ProjectSummary(ApiModel):
-    archived_at: datetime | None = None
-    deleted_at: datetime | None = None
     created_at: datetime | None = None
     new_results: list[dict[str, str]] = Field(default_factory=list)
     generation_warnings: list[str] = Field(default_factory=list)
@@ -44,6 +42,7 @@ class ProjectSettingsView(ApiModel):
     id: str
     title: str
     description: str
+    director: dict = Field(default_factory=dict)
     use_description_for_ai_prompt: bool
     cover_asset_id: str | None = None
     cover_url: str | None = None
@@ -174,8 +173,6 @@ class MissingReferenceView(ApiModel):
 
 class TaskSummary(ApiModel):
     missing_references: list[MissingReferenceView] = Field(default_factory=list)
-    archived_at: datetime | None = None
-    deleted_at: datetime | None = None
     prompt_source: Literal["user", "ai"] = "user"
     generation_status_note: str | None = None
     generation_warnings: list[str] = Field(default_factory=list)
@@ -191,6 +188,7 @@ class TaskSummary(ApiModel):
     asset_count: int
     result_count: int
     duration_seconds: float
+    timeline_start_seconds: float | None = None
     generation_summary: GenerationSummary
     prompt_review_status: PromptReviewStatus = "not_ready"
     prompt_enhancement_status: str = "idle"
@@ -198,12 +196,14 @@ class TaskSummary(ApiModel):
     has_active_prompt_job: bool = False
     has_active_video_job: bool = False
     primary_result: PrimaryResultView | None = None
+    result_history: list[PrimaryResultView] = Field(default_factory=list)
     timing: TaskTiming = Field(default_factory=TaskTiming)
 
 
 class RuntimeTaskItem(ApiModel):
     status_note: str | None = None
     continuation_fallback: bool = False
+    retry_submission: bool = False
     paused: bool = False
     position: float | None = None
     id: str
@@ -238,8 +238,6 @@ class ProjectRuntimeSummary(ApiModel):
 class WorkspaceProject(ApiModel):
     id: str
     title: str
-    archived_at: datetime | None = None
-    deleted_at: datetime | None = None
 
 
 class ProjectRuntimeView(ApiModel):
@@ -250,7 +248,14 @@ class ProjectRuntimeView(ApiModel):
 class ProjectWorkspaceView(ApiModel):
     project: WorkspaceProject
     tasks: list[TaskSummary]
+    timelines: list["TimelineView"] = Field(default_factory=list)
     runtime: ProjectRuntimeSummary
+
+
+class TimelineView(ApiModel):
+    id: str
+    title: str
+    task_ids: list[str]
 
 
 class TaskAssetRef(ApiModel):
@@ -280,6 +285,7 @@ class GenerationSettings(ApiModel):
     context_start_seconds: float | None = None
     context_end_seconds: float | None = None
     context_duration_seconds: float | None = None
+    director: dict = Field(default_factory=dict)
 
 
 class EditorPreference(ApiModel):

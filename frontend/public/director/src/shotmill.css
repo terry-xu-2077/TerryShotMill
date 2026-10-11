@@ -1,0 +1,25 @@
+/* Keep TerryDirector's own editor geometry while filling the ShotMill work area. */
+body.td-embedded { padding: 0; overflow: hidden; background: var(--td-bg-app); }
+body.td-embedded #app { width: 100%; height: 100dvh; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+body.td-shotmill #app > .topbar {
+  display: none;
+}
+body.td-shotmill #missingCount { color: var(--td-status-danger); font-size: 11px; }
+body.td-shotmill .reference-tile.is-missing .reference-insert { border-color: var(--td-status-danger); }
+body.td-shotmill .reference-tile.is-missing .reference-cover { background: var(--td-bg-inset); }
+body.td-shotmill .reference-tile.is-missing .missing-asset-mark { color: var(--td-status-danger); font-size: 12px; font-weight: 600; }
+body.td-shotmill .reference-tile.is-missing .reference-tools [data-relink-asset] { color: var(--td-violet-highlight); }
+body.td-shotmill .reference-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); align-items: stretch; }
+body.td-shotmill .reference-tile { display: flex; flex-direction: column; }
+body.td-shotmill .reference-insert { flex: 1; }
+body.td-shotmill .reference-insert small {
+  display: -webkit-box;
+  height: 28px;
+  line-height: 14px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+body.td-shotmill .reference-tools { margin-top: 4px; }
+#demoPreviewControls { display: none; }

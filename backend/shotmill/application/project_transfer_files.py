@@ -15,6 +15,7 @@ from shotmill.media.project_package import _portable_path
 def collect_project_transfer_files(
     uow: UnitOfWork, source: ProjectTransferSource,
     library: FileLibrary, legacy: CleanupStorage,
+    *, verified_fingerprints: dict[Path, tuple[str, int]] | None = None,
 ) -> dict[str, Path]:
     """Keep source's transaction open until caller stages every file.
 
@@ -23,6 +24,7 @@ ZIP writer deduplicates physical content. Missing history must not be omitted.
 """
     project_id = source.project.id
     files: dict[str, Path] = {}
+    verified: set[str] = set()
 
     def add(relative: str) -> None:
         _portable_path(relative)
@@ -41,13 +43,17 @@ ZIP writer deduplicates physical content. Missing history must not be omitted.
             file = uow.files.get(reference.sha256) if reference else None
             if file is None:
                 raise ConflictError("PROJECT_TRANSFER_MEDIA_MISSING", "项目媒体缺失或损坏。")
-            try:
-                library.storage.verify(file)
-            except OSError as exc:
-                raise ConflictError(
-                    "PROJECT_TRANSFER_MEDIA_MISSING", "项目媒体缺失或损坏。",
-                ) from exc
+            if file.sha256 not in verified:
+                try:
+                    library.storage.verify(file)
+                except OSError as exc:
+                    raise ConflictError(
+                        "PROJECT_TRANSFER_MEDIA_MISSING", "项目媒体缺失或损坏。",
+                    ) from exc
+                verified.add(file.sha256)
             path = library.storage.resolve(file)
+            if verified_fingerprints is not None:
+                verified_fingerprints[path] = (file.sha256, file.size)
         else:
             path = legacy.resolve(project_id, relative)
         if not path.is_file():

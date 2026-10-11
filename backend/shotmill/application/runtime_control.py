@@ -48,6 +48,10 @@ class RuntimeControlService:
                 resume = action == "resume" and control.paused
                 control.paused = action == "pause"
                 uow.runtime_controls.save(control)
+                if resume and kind == "video" and job.error_code == "GENERATION_SERVICE_OFFLINE":
+                    job.error_code = None
+                    job.error_message = None
+                    uow.jobs.update_runtime(job)
             elif action == "remove":
                 control.hidden = True
                 control.paused = False

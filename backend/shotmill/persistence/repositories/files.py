@@ -57,7 +57,7 @@ class SqlAlchemyFileRepository:
         for value, limit in zip(identity, (32, 80, 32, 80, 240), strict=True):
             if not isinstance(value, str) or not value.strip() or len(value) > limit:
                 raise ValueError("Invalid logical file owner")
-        if reference.scope_kind not in {"project", "archive"}:
+        if reference.scope_kind != "project":
             raise ValueError("Unknown file reference scope")
         if self.get(reference.sha256) is None:
             raise ValueError("Cannot reference an unregistered file")
@@ -104,7 +104,7 @@ class SqlAlchemyFileRepository:
         )]
 
     def release_scope(self, scope_kind: str, scope_id: str) -> None:
-        if scope_kind not in {"project", "archive"} or not scope_id:
+        if scope_kind != "project" or not scope_id:
             raise ValueError("An exact file reference scope is required")
         self.session.execute(delete(FileReferenceModel).where(
             FileReferenceModel.scope_kind == scope_kind,

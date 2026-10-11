@@ -86,6 +86,7 @@ function taskSummary(project: DirectorProject, task: GenerationTask, index: numb
     assetCount: task.assetBindings.length,
     resultCount: results.length,
     durationSeconds: task.plannedDurationSeconds,
+    timelineStartSeconds: task.timelineStartSeconds,
     generationSummary: {
       resolution: String(task.generationParams.resolution ?? "1080p"),
       quality: String(task.generationParams.quality ?? "标准"),
@@ -95,6 +96,8 @@ function taskSummary(project: DirectorProject, task: GenerationTask, index: numb
       previewUrl: primary.previewUrl,
       videoUrl: primary.videoUrl,
     } : undefined,
+    resultHistory: results.map(result => ({ id: result.id, previewUrl: result.previewUrl,
+      videoUrl: result.videoUrl, durationSeconds: typeof result.metadata.durationSeconds === "number" ? result.metadata.durationSeconds : null })),
   };
 }
 
@@ -233,10 +236,14 @@ export class MockProjectGateway implements ProjectGateway {
     return this.projects.map(summary);
   }
 
-  async createProject(input: { title: string }) {
+  async createProject(input: { title: string; path: string }) {
     const project = makeEmptyProject(input.title);
     this.projects.push(project);
     return summary(project);
+  }
+
+  async openProjectFile(_path: string) {
+    return summary(this.projects[0]);
   }
 
   async updateProject(projectId: string, input: Partial<ProjectSettings>) {
@@ -246,6 +253,7 @@ export class MockProjectGateway implements ProjectGateway {
     if (typeof input.useDescriptionForAiPrompt === "boolean") {
       project.useDescriptionForAiPrompt = input.useDescriptionForAiPrompt;
     }
+    if (input.director) project.director = input.director;
     return summary(project);
   }
 
@@ -256,6 +264,7 @@ export class MockProjectGateway implements ProjectGateway {
       title: project.title,
       description: project.description,
       useDescriptionForAiPrompt: project.useDescriptionForAiPrompt,
+      director: project.director,
     };
   }
 
@@ -266,6 +275,8 @@ export class MockProjectGateway implements ProjectGateway {
     return {
       project: { id: project.id, title: project.title },
       tasks: tasks.map((task, index) => taskSummary(project, task, index)),
+      timelines: project.snapshot.scenes.map(scene => ({ id: scene.id, title: scene.title,
+        taskIds: listTasksInStoryOrder(project.snapshot, scene.id).map(task => task.id) })),
       runtime: {
         activeTaskId: running?.id,
         activeTaskTitle: running?.title,
@@ -296,10 +307,30 @@ export class MockProjectGateway implements ProjectGateway {
   async createTask(projectId: string, input: SaveTaskInput) {
     const project = this.project(projectId);
     const task = taskFromInput(`task-${Date.now()}`, project.snapshot.tasks.length + 1, input);
-    const firstScene = project.snapshot.scenes[0];
+    const firstScene = project.snapshot.scenes.find(scene => scene.id === input.timelineId) ?? project.snapshot.scenes[0];
     if (!firstScene) throw new Error("Project has no scene");
     project.snapshot = insertTaskAfter(project.snapshot, task, firstScene.id);
     return taskSummary(project, task, project.snapshot.tasks.length - 1);
+  }
+
+  async createTimeline(projectId: string, title: string) {
+    const project = this.project(projectId);
+    const id = `timeline-${Date.now()}`;
+    project.snapshot.scenes.push({ id, number: String(project.snapshot.scenes.length + 1), title,
+      summary: "", orderKey: String(project.snapshot.scenes.length + 1).padStart(6, "0"),
+      location: "", timeOfDay: "", notes: "" });
+    return { id, title, taskIds: [] };
+  }
+
+  async renameTimeline(projectId: string, timelineId: string, title: string) {
+    const scene = this.project(projectId).snapshot.scenes.find(item => item.id === timelineId);
+    if (scene) scene.title = title;
+  }
+
+  async deleteTimeline(projectId: string, timelineId: string) {
+    const project = this.project(projectId);
+    if (project.snapshot.taskPlacements.some(item => item.sceneId === timelineId)) throw new Error("时间线中仍有片段");
+    project.snapshot.scenes = project.snapshot.scenes.filter(item => item.id !== timelineId);
   }
 
   async updateTask(projectId: string, taskId: string, input: SaveTaskInput) {
@@ -329,6 +360,16 @@ export class MockProjectGateway implements ProjectGateway {
     return taskSummary(project, updated, tasks.indexOf(updated));
   }
 
+  async updateTaskTimeline(projectId: string, taskId: string, input: { startSeconds: number | null; durationSeconds: number }) {
+    const project = this.project(projectId);
+    const task = project.snapshot.tasks.find(item => item.id === taskId);
+    if (!task) throw new Error(`Unknown task: ${taskId}`);
+    task.timelineStartSeconds = input.startSeconds;
+    task.plannedDurationSeconds = input.durationSeconds;
+    const tasks = orderedTasks(project);
+    return taskSummary(project, task, tasks.indexOf(task));
+  }
+
   async listAssets(projectId: string) {
     return structuredClone(this.project(projectId).snapshot.assets);
   }
@@ -342,6 +383,19 @@ export class MockProjectGateway implements ProjectGateway {
       previewUrl: file.type.startsWith("audio/") ? undefined : URL.createObjectURL(file),
       checksum: `mock-${file.size}-${file.lastModified}`,
       originalFilename: file.name,
+    };
+    this.project(projectId).snapshot.assets.push(asset);
+    return asset;
+  }
+
+  async importLocalAsset(projectId: string, path: string, input: AssetPatch) {
+    const filename = path.split(/[\\/]/).at(-1) || path;
+    const asset = {
+      id: `asset-${Date.now()}`, ...input,
+      mediaType: /\.(mp4|mov|mkv|webm)$/i.test(filename) ? "video" as const
+        : /\.(wav|mp3|flac|m4a)$/i.test(filename) ? "audio" as const : "image" as const,
+      projectRelativePath: `external/asset/${Date.now()}/content`,
+      checksum: "", originalFilename: filename,
     };
     this.project(projectId).snapshot.assets.push(asset);
     return asset;

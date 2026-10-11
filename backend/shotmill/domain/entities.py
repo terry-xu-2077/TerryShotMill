@@ -21,10 +21,9 @@ class Project:
     id: str
     title: str
     description: str = ""
+    director: dict[str, Any] = field(default_factory=dict)
     use_description_for_ai_prompt: bool = False
     cover_asset_id: str | None = None
-    archived_at: datetime | None = None
-    deleted_at: datetime | None = None
     created_at: datetime = field(default_factory=utcnow)
     updated_at: datetime = field(default_factory=utcnow)
 
@@ -90,6 +89,7 @@ class Task:
     prompt_source: PromptSource = PromptSource.USER
     generation_params: dict[str, Any] = field(default_factory=dict)
     planned_duration_seconds: float = 6.0
+    timeline_start_seconds: float | None = None
     state: TaskState = TaskState.DRAFT
     progress: float | None = None
     primary_result_id: str | None = None
@@ -101,8 +101,6 @@ class Task:
     user_view_mode: str = "visual"
     ai_view_mode: str = "visual"
     asset_bindings: list[TaskAssetBinding] = field(default_factory=list)
-    archived_at: datetime | None = None
-    deleted_at: datetime | None = None
     created_at: datetime = field(default_factory=utcnow)
     updated_at: datetime = field(default_factory=utcnow)
 
@@ -180,34 +178,6 @@ class AiPromptRevision:
     elapsed_seconds: float | None = None
     previous_task_summary_snapshot: str | None = None
     created_at: datetime = field(default_factory=utcnow)
-
-
-@dataclass(slots=True)
-class ArchivedResult:
-    """Independent copy; source identifiers are provenance, not live references."""
-
-    id: str
-    source_result_id: str
-    source_project_id: str
-    source_project_title: str
-    source_task_id: str
-    source_task_title: str
-    source_job_id: str
-    generated_at: datetime
-    final_prompt: str
-    params: dict[str, Any]
-    files: list[dict[str, Any]]
-    result_metadata: dict[str, Any] = field(default_factory=dict)
-    archived_at: datetime = field(default_factory=utcnow)
-
-
-@dataclass(slots=True)
-class PendingFileCleanup:
-    id: str
-    project_id: str
-    paths: list[str]
-    created_at: datetime = field(default_factory=utcnow)
-    last_error: str | None = None
 
 
 @dataclass(slots=True)

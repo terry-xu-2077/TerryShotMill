@@ -57,6 +57,7 @@ BRIDGE_IN_TYPES = {"TerryFlowBridgeIn", "ShotMillIOBridgeIn", "ShotMill.IOBridge
 BRIDGE_OUT_TYPES = {"TerryFlowBridgeOut", "ShotMillIOBridgeOut", "ShotMill.IOBridgeOut"}
 LEGACY_BRIDGE_TYPES = {"ShotMillIOBridge", "ShotMill.IOBridge"}
 LAST_WORKLOAD_KIND: str | None = None
+SERVER_SESSION_ID = uuid.uuid4().hex
 
 
 def _safe_name(value: str, fallback: str) -> str:
@@ -1257,6 +1258,14 @@ def _job_state(job_id: str) -> dict[str, Any]:
             state = "running"
         elif any(row[1] == prompt_id for row in pending):
             state = "queued"
+        if (state == "not_found" and item.get("submissionState") == "queued"
+                and item.get("serverSessionId")
+                and item["serverSessionId"] != SERVER_SESSION_ID):
+            return {
+                "ok": False, "jobId": job_id, "promptId": prompt_id,
+                "status": "failed", "results": [],
+                "error": {"code": "server_exited", "reason": "unknown"},
+            }
         return {
             "ok": state != "not_found", "jobId": job_id, "promptId": prompt_id,
             "status": state, "results": [],
@@ -1495,6 +1504,7 @@ async def _create_job_locked(payload: dict[str, Any]) -> web.Response:
             "requestSha256": digest,
             "applicationContract": payload["applicationContract"],
             "submissionState": "prepared",
+            "serverSessionId": SERVER_SESSION_ID,
         }
         # Reserve the logical identity durably before making work executable.
         # If interrupted here, later requests report uncertainty, not resubmit.

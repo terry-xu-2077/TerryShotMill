@@ -20,7 +20,7 @@ def audit_file_references(uow: UnitOfWork, candidates: set[str]) -> None:
         if ref is None or uow.files.get(ref.sha256) is None:
             invalid()
 
-    # Repository lists include archived and trashed projects/tasks.
+    # Check the current project records before collecting shared files.
     for project in uow.projects.list():
         for asset in uow.assets.list_by_project(project.id):
             if asset.hash in candidates:
@@ -40,13 +40,3 @@ def audit_file_references(uow: UnitOfWork, candidates: set[str]) -> None:
                     prefix = f"/media/{project.id}/"
                     if path.startswith(prefix):
                         check_path(project.id, path[len(prefix):])
-    for archive in uow.archived_results.list():
-        for file in archive.files:
-            if file.get("storage") != "shared":
-                continue
-            ref = uow.files.get_reference(
-                "archive", archive.id, "result", archive.source_result_id, file.get("role"),
-            )
-            if (ref is None or ref.sha256 != file.get("sha256")
-                    or uow.files.get(ref.sha256) is None):
-                invalid()

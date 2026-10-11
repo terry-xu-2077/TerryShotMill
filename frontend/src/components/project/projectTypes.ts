@@ -1,6 +1,7 @@
 import type { StoryboardDomainSnapshot } from "../../domain/storyboard";
 
 export type DirectorProject = {
+  director?: Record<string, unknown>;
   readOnly?: boolean;
   taskMissingReferences?: Record<string, boolean>;
   taskGenerationNotes?: Record<string, string | null>;

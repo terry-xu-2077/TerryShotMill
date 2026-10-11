@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
-import type { GenerationTask, ProjectAsset } from "./domain/storyboard";
+import type { GenerationTask } from "./domain/storyboard";
 import {
   httpProjectGateway,
   type ProjectGateway,
@@ -18,13 +19,10 @@ import {
   taskSaveInput,
 } from "./gateways/projectGatewayMapper";
 import { ProjectWorkspace } from "./components/project/ProjectWorkspace";
-import { CreateProjectDialog, ProjectHome } from "./components/project/ProjectHome";
+import { CreateProjectDialog, OpenProjectDialog, ProjectHome } from "./components/project/ProjectHome";
 import type { DirectorProject } from "./components/project/projectTypes";
 import { BridgeStatus } from "./components/project/BridgeStatus";
 import { ProjectLifecycleBrowser } from "./components/project/ProjectLifecycleBrowser";
-import { ResultArchiveBrowser } from "./components/project/ResultArchiveBrowser";
-import { resultArchiveGateway } from "./gateways/resultArchiveGateway";
-import { assetTransferGateway } from "./gateways/assetTransferGateway";
 import { projectTransferGateway } from "./gateways/projectTransferGateway";
 import { ProjectImportDialog } from "./components/project/ProjectImportDialog";
 
@@ -37,20 +35,19 @@ type AppProps = {
 };
 
 export function App({ gateway = httpProjectGateway, lifecycle = defaultLifecycleGateway }: AppProps) {
-  const importedAssets = useRef(new WeakMap<File, ProjectAsset>());
-  const importedSources = useRef(new Map<string, ProjectAsset>());
-  const removedAssets = useRef(new Set<string>());
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [currentProject, setCurrentProject] = useState<DirectorProject | null>(null);
   const [promptReviewItems, setPromptReviewItems] = useState<PromptReviewItem[]>([]);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [openProjectFileDialog, setOpenProjectFileDialog] = useState(false);
   const [importProjectOpen, setImportProjectOpen] = useState(false);
   const [projectManagementOpen, setProjectManagementOpen] = useState(false);
-  const [resultArchiveOpen, setResultArchiveOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [applicationSettings, setApplicationSettings] = useState<ApplicationSettings>();
   const loadBridgeStatus = useCallback((signal?: AbortSignal) => gateway.getComfyUIStatus(signal), [gateway]);
+  const chooseProjectFile = useCallback(async (save: boolean) =>
+    isTauri() ? invoke<string | null>("choose_project_file", { save }) : null, []);
   const bridgeStatus = <BridgeStatus load={loadBridgeStatus} address={applicationSettings?.comfyui.baseUrl} />;
 
   const refreshProjects = useCallback(async () => {
@@ -133,53 +130,9 @@ export function App({ gateway = httpProjectGateway, lifecycle = defaultLifecycle
     await Promise.all([loadProject(currentProject.id), refreshProjects()]);
   }, [currentProject, loadProject, refreshProjects]);
 
-  const saveProjectConfiguration = async (
-    settings: Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt" | "cover">,
-    assets: ProjectAsset[],
-  ) => {
+  const saveProjectConfiguration = async (settings: Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt" | "cover">) => {
     if (!currentProject) return;
-    const previousAssets = currentProject.snapshot.assets;
-    const nextIds = new Set(assets.filter((asset) => !asset.sourceFile && !asset.importSource).map((asset) => asset.id));
-    const retained = assets.filter((asset) => !asset.sourceFile && !asset.importSource);
-    const added = assets.filter((asset) => asset.sourceFile);
-
-    const importedIds = new Map<string, string>();
-    const pendingSources = assets.filter(asset => asset.importSource && !importedSources.current.has(asset.id));
-    if (pendingSources.length) {
-      const copied = await assetTransferGateway.importSources(currentProject.id, pendingSources.map(asset => asset.importSource!));
-      pendingSources.forEach((asset, index) => importedSources.current.set(asset.id, copied[index]));
-    }
-    for (const asset of assets.filter(item => item.importSource)) {
-      const imported = importedSources.current.get(asset.id)!;
-      importedIds.set(asset.id, imported.id);
-      retained.push({ ...asset, id: imported.id });
-    }
-    for (const asset of added) {
-      let uploaded = importedAssets.current.get(asset.sourceFile!);
-      if (!uploaded) {
-        uploaded = await gateway.importAsset(currentProject.id, asset.sourceFile!, {
-          name: asset.name, category: asset.category, tags: asset.tags,
-        });
-        importedAssets.current.set(asset.sourceFile!, uploaded);
-      }
-      importedIds.set(asset.id, uploaded.id);
-    }
-    const cover = settings.cover?.assetId ? { ...settings.cover, assetId: importedIds.get(settings.cover.assetId) ?? settings.cover.assetId } : settings.cover;
-    for (const id of importedIds.values()) nextIds.add(id);
-    const removed = previousAssets.filter((asset) => !nextIds.has(asset.id));
-    await gateway.updateProject(currentProject.id, { ...settings, ...(cover ? { cover } : {}) });
-    await Promise.all([
-      ...removed.map(async (asset) => {
-        if (removedAssets.current.has(asset.id)) return;
-        await gateway.deleteAsset(currentProject.id, asset.id);
-        removedAssets.current.add(asset.id);
-      }),
-      ...retained.map((asset) => gateway.updateAsset(currentProject.id, asset.id, {
-        name: asset.name,
-        category: asset.category,
-        tags: asset.tags,
-      })),
-    ]);
+    await gateway.updateProject(currentProject.id, settings);
     await reloadCurrentProject();
   };
 
@@ -203,16 +156,25 @@ export function App({ gateway = httpProjectGateway, lifecycle = defaultLifecycle
               setLoadError(error instanceof Error ? error.message : "项目加载失败");
             });
           }}
-          onCreateProject={() => setCreateProjectOpen(true)}
+          onCreateProject={() => { setLoadError(""); setCreateProjectOpen(true); }}
+          onOpenProjectFile={() => {
+            if (isTauri()) {
+              void chooseProjectFile(false).then(path => {
+                if (!path) return;
+                void gateway.openProjectFile(path).then(async project => {
+                  await refreshProjects();
+                  await loadProject(project.id);
+                }).catch(error => setLoadError(error instanceof Error ? error.message : "工程文件打开失败"));
+              });
+            } else { setLoadError(""); setOpenProjectFileDialog(true); }
+          }}
           onImportProject={() => setImportProjectOpen(true)}
           onManageProjects={() => setProjectManagementOpen(true)}
-          onOpenResultArchive={() => setResultArchiveOpen(true)}
         />
         {importProjectOpen && <ProjectImportDialog gateway={projectTransferGateway}
+          onBrowsePath={isTauri() ? () => chooseProjectFile(true) : undefined}
           onClose={() => { setImportProjectOpen(false); void refreshProjects(); }}
           onChanged={async () => { setProjects(await gateway.listProjects()); }} />}
-        {resultArchiveOpen && <ResultArchiveBrowser gateway={resultArchiveGateway} projects={projects}
-          onClose={() => { setResultArchiveOpen(false); void refreshProjects(); }} />}
         {projectManagementOpen && <ProjectLifecycleBrowser gateway={lifecycle}
           onClose={() => setProjectManagementOpen(false)} onChanged={async () => {
             setProjects(await gateway.listProjects());
@@ -220,8 +182,10 @@ export function App({ gateway = httpProjectGateway, lifecycle = defaultLifecycle
         <CreateProjectDialog
           open={createProjectOpen}
           onClose={() => setCreateProjectOpen(false)}
-          onCreate={(title) => {
-            void gateway.createProject({ title }).then(async (project) => {
+          error={loadError}
+          onBrowsePath={isTauri() ? () => chooseProjectFile(true) : undefined}
+          onCreate={(title, path) => {
+            void gateway.createProject({ title, path }).then(async (project) => {
               setCreateProjectOpen(false);
               await refreshProjects();
               await loadProject(project.id);
@@ -230,6 +194,17 @@ export function App({ gateway = httpProjectGateway, lifecycle = defaultLifecycle
             });
           }}
         />
+        <OpenProjectDialog open={openProjectFileDialog}
+          onClose={() => setOpenProjectFileDialog(false)}
+          error={loadError}
+          onBrowsePath={isTauri() ? () => chooseProjectFile(false) : undefined}
+          onOpen={path => {
+            void gateway.openProjectFile(path).then(async project => {
+              setOpenProjectFileDialog(false);
+              await refreshProjects();
+              await loadProject(project.id);
+            }).catch(error => setLoadError(error instanceof Error ? error.message : "工程文件打开失败"));
+          }} />
       </>
     );
   }
@@ -266,7 +241,10 @@ export function App({ gateway = httpProjectGateway, lifecycle = defaultLifecycle
         await gateway.updateTask(currentProject.id, task.id, taskSaveInput(task));
         await reloadCurrentProject();
       }}
+      gateway={gateway}
+      onRefreshProject={reloadCurrentProject}
       onSaveProjectConfiguration={saveProjectConfiguration}
+      onChooseLocalFiles={isTauri() ? () => invoke<string[]>("choose_asset_files") : undefined}
       onEnhancePrompt={(request) => gateway.enhancePrompt(currentProject.id, request)}
       onBatchEnhancePrompts={async (request) => {
         const response = await batchReviewGateway.batchEnhancePrompts(currentProject.id, request);

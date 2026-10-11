@@ -1,6 +1,5 @@
 import pytest
 from shotmill.application.project_export_service import ProjectExportService
-from shotmill.application.project_transfer_decode import decode_project_transfer_records
 from shotmill.media.project_package import PackageLimits, open_project_package
 from test_batch_review_api import _project, _task
 from test_prompt_batch_recovery import HeldQueue
@@ -9,7 +8,7 @@ from test_prompt_batch_recovery import HeldQueue
 def exporter(container):
     return ProjectExportService(
         container.generation_service.uow_factory, container.file_library,
-        container.storage.projects_root,
+        container.project_documents, container.storage,
     )
 
 
@@ -21,11 +20,11 @@ def test_export_service_produces_complete_private_zip_and_cleans_after_download(
     with exporter(container).prepare(project) as path:
         assert path.is_file()
         with path.open("rb") as stream, open_project_package(stream) as package:
-            assert package.records["schemaVersion"] == 1
-            assert package.records["project"]["id"] == project
-            assert package.records["tasks"][0]["id"] == task
-            assert package.records["tasks"][0]["user_prompt"] == "Original prompt"
-            assert package.files[asset.project_relative_path].read_bytes() == b"image"
+            assert package.document["version"] == 2
+            assert package.document["projectId"] == project
+            assert package.document["tables"]["generation_tasks"][0]["id"] == task
+            assert package.document["tables"]["generation_tasks"][0]["user_prompt"] == "Original prompt"
+            assert package.files[f"project.files/{asset.project_relative_path}"].read_bytes() == b"image"
         with container.generation_service.uow_factory() as uow:
             uow.reserve_write()  # Export no longer holds the database during download.
             assert uow.projects.get(project) is not None
@@ -71,10 +70,9 @@ def test_export_actual_completed_generation_history(client):
     client.portal.call(generation.execute, job_id)
     with exporter(container).prepare(project) as path:
         with path.open("rb") as stream, open_project_package(stream) as package:
-            assert package.records["jobs"][0]["id"] == job_id
-            assert package.records["jobs"][0]["status"] == "completed"
-            assert decode_project_transfer_records(package.records).source.jobs[0].id == job_id
-            assert package.records["results"]
-            for result in package.records["results"]:
+            assert package.document["tables"]["jobs"][0]["id"] == job_id
+            assert package.document["tables"]["jobs"][0]["status"] == "completed"
+            assert package.document["tables"]["results"]
+            for result in package.document["tables"]["results"]:
                 relative = result["video_url"].removeprefix(f"/media/{project}/")
-                assert package.files[relative].read_bytes()
+                assert package.files[f"project.files/{relative}"].read_bytes()

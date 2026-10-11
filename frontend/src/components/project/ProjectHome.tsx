@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, Plus } from "lucide-react";
+import { Check, FolderOpen, Plus } from "lucide-react";
 import { BrandPlaceholder } from "../../ui/branding/BrandPlaceholder";
 import { BrandLogo } from "../../ui/branding/BrandLogo";
 import { TaskNewResults, useViewedResults } from "./TaskNewResults";
@@ -9,19 +9,20 @@ import { Button } from "../../ui/primitives";
 import { Dialog } from "../../ui/overlay";
 import { ThemeSwitch } from "../../ui/ThemeSwitch";
 
-export function ProjectHome({ bridgeStatus, projects, loading = false, error = "", onRetry, onOpenProject, onCreateProject, onManageProjects, onOpenResultArchive, onImportProject }: {
+export function ProjectHome({ bridgeStatus, projects, loading = false, error = "", onRetry, onOpenProject, onCreateProject, onOpenProjectFile, onManageProjects, onImportProject }: {
   bridgeStatus?: ReactNode;
   projects: ProjectSummary[]; loading?: boolean; error?: string; onRetry?: () => void;
   onOpenProject: (projectId: string) => void; onCreateProject: () => void;
+  onOpenProjectFile?: () => void;
   onManageProjects?: () => void;
-  onOpenResultArchive?: () => void;
   onImportProject?: () => void;
 }) {
   const { unread } = useViewedResults();
   return <main className="project-home" aria-label="项目首页">
     <header className="project-home-title"><h1><BrandLogo />Terry导演工作台</h1>{bridgeStatus}<ThemeSwitch /></header>
     <div className="project-home-collection">
-      <header className="project-collection-heading"><h2>项目</h2><span className="project-home-count">{projects.length} 个项目</span>{onImportProject && <Button onClick={onImportProject}>导入项目</Button>}{onOpenResultArchive && <Button onClick={onOpenResultArchive}>生成结果归档</Button>}{onManageProjects && <Button onClick={onManageProjects}>项目管理</Button>}</header>
+      <header className="project-collection-heading"><h2>项目</h2><span className="project-home-count">{projects.length} 个项目</span>{onOpenProjectFile && <Button onClick={onOpenProjectFile}><FolderOpen size={14} /> 打开工程</Button>}{onImportProject && <Button onClick={onImportProject}>导入项目</Button>}{onManageProjects && <Button onClick={onManageProjects}>项目管理</Button>}</header>
+      {error && projects.length > 0 && <p className="project-file-error" role="alert">{error}</p>}
       <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}><defs>
         <clipPath id="project-folder-outline" clipPathUnits="objectBoundingBox"><path d="M0 .15 Q0 0 .06 0 H.32 C.36 0 .36 .13 .42 .13 H.94 Q1 .13 1 .27 V.87 Q1 1 .94 1 H.06 Q0 1 0 .87 Z" /></clipPath>
       </defs></svg>
@@ -52,26 +53,51 @@ export function CreateProjectDialog({
   open,
   onClose,
   onCreate,
+  onBrowsePath,
+  error = "",
 }: {
   open: boolean;
   onClose: () => void;
-  onCreate: (title: string) => void;
+  onCreate: (title: string, path: string) => void;
+  onBrowsePath?: () => Promise<string | null>;
+  error?: string;
 }) {
   const [title, setTitle] = useState("");
+  const [path, setPath] = useState("");
 
   useEffect(() => {
-    if (open) setTitle("");
+    if (open) { setTitle(""); setPath(""); }
   }, [open]);
 
   return (
     <Dialog open={open} icon="create" title="新建项目" description="创建后进入项目工作台。" onClose={onClose}>
       <div className="project-simple-dialog">
         <label><span>项目名称</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：异星边境 初到基地" /></label>
+        <label htmlFor="create-project-path"><span>工程文件位置</span></label><div className="project-file-row"><input id="create-project-path" value={path} onChange={(event) => setPath(event.target.value)} placeholder="选择或输入 .shotmill 文件路径" />{onBrowsePath && <Button onClick={() => void onBrowsePath().then(value => { if (value) setPath(value); })}>浏览…</Button>}</div>
+        {error && <p className="project-file-error" role="alert">{error}</p>}
         <footer>
           <Button onClick={onClose}>取消</Button>
-          <Button variant="accent" disabled={!title.trim()} onClick={() => onCreate(title.trim())}><Check size={14} /> 创建项目</Button>
+          <Button variant="accent" disabled={!title.trim() || !path.trim()} onClick={() => onCreate(title.trim(), path.trim())}><Check size={14} /> 创建项目</Button>
         </footer>
       </div>
     </Dialog>
   );
+}
+
+export function OpenProjectDialog({ open, onClose, onOpen, onBrowsePath, error = "" }: {
+  open: boolean;
+  onClose: () => void;
+  onOpen: (path: string) => void;
+  onBrowsePath?: () => Promise<string | null>;
+  error?: string;
+}) {
+  const [path, setPath] = useState("");
+  useEffect(() => { if (open) setPath(""); }, [open]);
+  return <Dialog open={open} icon="create" title="打开工程" onClose={onClose}>
+    <div className="project-simple-dialog">
+      <label htmlFor="open-project-path"><span>工程文件位置</span></label><div className="project-file-row"><input id="open-project-path" autoFocus value={path} onChange={event => setPath(event.target.value)} placeholder="选择 .shotmill 工程文件" />{onBrowsePath && <Button onClick={() => void onBrowsePath().then(value => { if (value) setPath(value); })}>浏览…</Button>}</div>
+      {error && <p className="project-file-error" role="alert">{error}</p>}
+      <footer><Button onClick={onClose}>取消</Button><Button variant="accent" disabled={!path.trim()} onClick={() => onOpen(path.trim())}>打开</Button></footer>
+    </div>
+  </Dialog>;
 }

@@ -49,10 +49,9 @@ class SqlAlchemyProjectRepository:
                 id=project.id,
                 title=project.title,
                 description=project.description,
+                director=deepcopy(project.director),
                 use_description_for_ai_prompt=project.use_description_for_ai_prompt,
                 cover_asset_id=project.cover_asset_id,
-                archived_at=project.archived_at,
-                deleted_at=project.deleted_at,
                 created_at=project.created_at,
                 updated_at=project.updated_at,
             )
@@ -66,10 +65,9 @@ class SqlAlchemyProjectRepository:
             raise KeyError(project.id)
         row.title = project.title
         row.description = project.description
+        row.director = deepcopy(project.director)
         row.use_description_for_ai_prompt = project.use_description_for_ai_prompt
         row.cover_asset_id = project.cover_asset_id
-        row.archived_at = project.archived_at
-        row.deleted_at = project.deleted_at
         row.updated_at = project.updated_at
         self.session.flush()
         return project

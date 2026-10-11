@@ -4,7 +4,9 @@
 > 最后更新：2026-09-12  
 > 决策来源：Storyboard 在 ShotMill 中是一种分镜式交互方式，不是独立分镜制作工具。
 
-本文用于约束 V0.2 的 Task、Job、Result、Context 与 Storyboard-style UI。涉及这些对象时以本文为准。
+本文用于约束 V0.2 的 Task、Job、Result、Context 与 Storyboard-style UI；与用户最新决定及[当前开发计划](./CURRENT_DEVELOPMENT_PLAN.md)冲突时，以后者为准。
+
+**2026-10-11 补充：** 用户要求增加 TerryDirector 风格的导演时间线，一个片段就是一个 Task，与列表／卡片共用任务和编辑器。允许任务时间编排，不新增独立 Clip 内容、队列或工程存储，不将 Task 内部 Beat 拆成任务。时间位置、故事顺序与生成承接关系保持独立；调整计划时长不裁剪历史 Result。下文 V0.2 的“不提供 NLE 时间线能力”是历史范围，不禁止这次导演时间线需求，也不意味着要开发完整剪辑器。
 
 ---
 

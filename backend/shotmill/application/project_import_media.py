@@ -1,7 +1,6 @@
 """Rebind verified staged media to independent destination owners in one UoW."""
 
 import mimetypes
-from copy import deepcopy
 from pathlib import Path, PurePosixPath
 
 from shotmill.application.file_library import FileLibrary
@@ -20,7 +19,7 @@ def bind_project_import_media(
 Only pass files from preflight_project_import. Their filenames are verified SHA256
 identities. Database failure may leave immutable orphan bytes, never delete them.
 """
-    source = deepcopy(identity.source)
+    source = identity.source
     project_id = source.project.id
     blobs: dict[Path, StoredFile] = {}
 
@@ -44,7 +43,10 @@ identities. Database failure may leave immutable orphan bytes, never delete them
         return f"shared/{kind}/{owner}/{slot}", file.sha256
 
     # Preserve old relative paths for legacy prompt jobs that only stored IDs.
-    old_assets = {asset.id: deepcopy(asset) for asset in source.assets}
+    old_assets = {
+        asset.id: (asset.project_relative_path, asset.original_filename, asset.media_type)
+        for asset in source.assets
+    }
     for asset in source.assets:
         asset.project_relative_path, asset.hash = bind(
             asset.project_relative_path, "asset", asset.id, "content", asset.original_filename,
@@ -74,9 +76,9 @@ identities. Database failure may leave immutable orphan bytes, never delete them
     def media(items, kind, owner, prefix):
         for index, item in enumerate(items):
             if not item.get("projectRelativePath"):
-                asset = old_assets[item["assetId"]]
-                item.update(projectRelativePath=asset.project_relative_path,
-                            originalFilename=asset.original_filename, mediaType=asset.media_type)
+                relative, filename, media_type = old_assets[item["assetId"]]
+                item.update(projectRelativePath=relative,
+                            originalFilename=filename, mediaType=media_type)
             item["projectRelativePath"], _ = bind(
                 item["projectRelativePath"], kind, owner, f"{prefix}-{index}",
                 item.get("originalFilename"),

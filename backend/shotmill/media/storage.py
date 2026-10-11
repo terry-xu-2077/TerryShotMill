@@ -39,19 +39,24 @@ class MediaStorage:
     def __init__(
         self, projects_root: Path, *, shared_resolver: Callable[[str, str], Path] | None = None,
         read_resolver: Callable[[str, str], Path] | None = None,
+        project_root_resolver: Callable[[str], Path] | None = None,
     ) -> None:
         self.shared_resolver = shared_resolver
         self.read_resolver = read_resolver
+        self.project_root_resolver = project_root_resolver
         self.projects_root = projects_root
         self.projects_root.mkdir(parents=True, exist_ok=True)
 
     def project_root(self, project_id: str) -> Path:
-        root = _resolved_path(self.projects_root / project_id)
-        root.mkdir(parents=True, exist_ok=True)
+        root = _resolved_path(
+            self.project_root_resolver(project_id) if self.project_root_resolver
+            else self.projects_root / project_id
+        )
         return root
 
     def ensure_project_layout(self, project_id: str) -> None:
         root = self.project_root(project_id)
+        root.mkdir(parents=True, exist_ok=True)
         for folder in ("assets", "thumbnails", "outputs", "context", "cache"):
             (root / folder).mkdir(parents=True, exist_ok=True)
 

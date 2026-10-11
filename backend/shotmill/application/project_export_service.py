@@ -8,23 +8,24 @@ from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from shotmill.application.file_library import FileLibrary
-from shotmill.application.project_transfer_files import collect_project_transfer_files
-from shotmill.application.project_transfer_records import serialize_project_transfer_records
-from shotmill.application.project_transfer_source import read_project_transfer_source
-from shotmill.application.project_transfer_validation import validate_project_transfer_graph
+from shotmill.application.project_package_media import collect_package_files
 from shotmill.domain.repositories import UnitOfWork
-from shotmill.media.cleanup_storage import CleanupStorage
+from shotmill.errors import NotFoundError
 from shotmill.media.export_lease import export_lease
 from shotmill.media.project_package import DEFAULT_LIMITS, PackageLimits, write_project_package
+from shotmill.media.storage import MediaStorage
+from shotmill.persistence.project_documents import ProjectDocumentStore, _decode_document
 
 
 class ProjectExportService:
     def __init__(
-        self, factory: Callable[[], UnitOfWork], library: FileLibrary, projects_root: Path,
+        self, factory: Callable[[], UnitOfWork], library: FileLibrary,
+        documents: ProjectDocumentStore, media: MediaStorage,
     ):
         self.factory = factory
         self.library = library
-        self.legacy = CleanupStorage(projects_root)
+        self.documents = documents
+        self.media = media
 
     def recover_abandoned(self) -> int:
         """Only marked, inactive exports; serialize creation/recovery using the DB lock."""
@@ -72,19 +73,18 @@ class ProjectExportService:
             # Keep deletion, edits and submissions outside the snapshot boundary
             # until all referenced bytes have been copied into the private ZIP.
             with self.factory() as uow:
-                source = read_project_transfer_source(uow, project_id)
+                if uow.projects.get(project_id) is None or project_id not in self.documents.paths:
+                    raise NotFoundError("PROJECT_NOT_FOUND", "项目不存在")
                 acquired = ownership.enter_context(export_lease(Path(directory) / "owner.lock",
                                                                 create=True))
                 if not acquired:
                     raise OSError("Could not acquire private export lease")
-                validate_project_transfer_graph(source)
-                records = serialize_project_transfer_records(source)
-                for requirement in uow.projects.get_transfer_requirements(project_id):
-                    if requirement not in records["providerRequirements"]:
-                        records["providerRequirements"].append(requirement)
-                files = collect_project_transfer_files(uow, source, self.library, self.legacy)
+                document, files = collect_package_files(
+                    _decode_document(self.documents.paths[project_id]),
+                    self.documents, self.media, self.library,
+                )
                 with path.open("xb") as output:
-                    write_project_package(output, records, files, limits=limits)
+                    write_project_package(output, document, files, limits=limits)
                     output.flush()
                     os.fsync(output.fileno())
             # Caller must finish streaming before leaving this context. No source

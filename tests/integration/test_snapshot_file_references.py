@@ -168,8 +168,7 @@ def test_task_purge_releases_prompt_history_but_keeps_project_asset(client):
     assert client.portal.call(service._execute_prompt_job, job_id).state == "completed"
     with service.uow_factory() as uow:
         assert uow.files.get_reference("project", project, "prompt_job", job_id, "input-0")
-    container.lifecycle_service.transition_tasks(project, [task_id], "trash")
-    container.permanent_delete_service.purge_tasks(project, [task_id], archive_results=False)
+    container.removal_service.delete_tasks(project, [task_id])
     with service.uow_factory() as uow:
         assert uow.prompt_jobs.get(job_id) is None
         assert uow.files.get_reference(

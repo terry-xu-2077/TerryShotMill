@@ -39,11 +39,6 @@ class Settings:
     def files_root(self) -> Path:
         return self.data_root / "files"
 
-    @property
-    def results_archive_root(self) -> Path:
-        return self.data_root / "result-archive"
-
-
 def load_settings() -> Settings:
     data_root = Path(getenv("SHOTMILL_DATA_ROOT", ".shotmill")).expanduser().resolve()
     database_url = getenv("SHOTMILL_DATABASE_URL")

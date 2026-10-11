@@ -57,3 +57,17 @@ class SqlAlchemyStoryStructureRepository:
             row.scene_id = placement.scene_id
             row.order_key = placement.order_key
         self.session.flush()
+
+    def rename_scene(self, project_id: str, scene_id: str, title: str) -> None:
+        scene = self.session.get(SceneModel, scene_id)
+        if scene is None or scene.project_id != project_id:
+            raise ValueError("Timeline not found")
+        scene.title = title
+        self.session.flush()
+
+    def delete_scene(self, project_id: str, scene_id: str) -> None:
+        scene = self.session.get(SceneModel, scene_id)
+        if scene is None or scene.project_id != project_id:
+            raise ValueError("Timeline not found")
+        self.session.delete(scene)
+        self.session.flush()

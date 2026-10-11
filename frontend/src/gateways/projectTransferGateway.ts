@@ -19,7 +19,7 @@ export interface ProjectTransferGateway {
   downloadUrl(token: string): string;
   discardExport(token: string): Promise<void>;
   exportUrl(projectId: string): string;
-  importPackage(file: File, signal?: AbortSignal): Promise<ProjectImportOutcome>;
+  importPackage(file: File, path: string, signal?: AbortSignal): Promise<ProjectImportOutcome>;
 }
 
 export const projectTransferGateway: ProjectTransferGateway = {
@@ -29,9 +29,10 @@ export const projectTransferGateway: ProjectTransferGateway = {
   // Let the browser stream the attachment; do not buffer a video project ZIP
   // into a JS Blob, which can consume multiple gigabytes of renderer memory.
   exportUrl: id => projectApiUrl(`/projects/${encodeURIComponent(id)}/export`),
-  importPackage(file, signal) {
+  importPackage(file, path, signal) {
     const body = new FormData();
     body.append("file", file);
+    body.append("path", path);
     // The browser owns the multipart boundary. Imports are not auto-retried:
     // a lost response does not prove the server rolled back publication.
     return projectRequest<ProjectImportOutcome>("/projects/import", {

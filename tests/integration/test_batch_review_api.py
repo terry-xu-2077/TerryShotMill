@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from uuid import uuid4
 
 import pytest
 
@@ -10,6 +11,8 @@ def _project(client):
         "/api/v1/projects",
         json={
             "title": "批量生产",
+            "path": str(client.app.state.container.settings.data_root
+                        / f"project-{uuid4().hex}.shotmill"),
             "description": "夜雨港口的短剧项目",
             "useDescriptionForAiPrompt": True,
         },

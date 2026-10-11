@@ -19,7 +19,7 @@ function RuntimeItems({ items, pending, onAction }: { items: RuntimeTaskItem[]; 
           {item.state === "queued" && <>
             <Button size="icon" disabled={pending || queued[0]?.id === item.id} aria-label={`上移 ${item.title}`} title="上移" onClick={() => onAction(item.id, "up")}><ArrowUp size={14} /></Button>
             <Button size="icon" disabled={pending || queued.at(-1)?.id === item.id} aria-label={`下移 ${item.title}`} title="下移" onClick={() => onAction(item.id, "down")}><ArrowDown size={14} /></Button>
-            <Button size={item.continuationFallback ? undefined : "icon"} disabled={pending} aria-label={`${item.continuationFallback ? "继续生成（不承接）" : item.paused ? "恢复" : "挂起"} ${item.title}`} title={item.continuationFallback ? "继续生成（不承接）" : item.paused ? "恢复" : "挂起"} onClick={() => onAction(item.id, item.paused ? "resume" : "pause")}>{item.paused ? <Play size={14} /> : <Pause size={14} />}{item.continuationFallback && "继续生成（不承接）"}</Button>
+            <Button size={item.continuationFallback || item.retrySubmission ? undefined : "icon"} disabled={pending} aria-label={`${item.continuationFallback ? "继续生成（不承接）" : item.retrySubmission ? "重试提交" : item.paused ? "恢复" : "挂起"} ${item.title}`} title={item.continuationFallback ? "继续生成（不承接）" : item.retrySubmission ? "重试提交" : item.paused ? "恢复" : "挂起"} onClick={() => onAction(item.id, item.paused ? "resume" : "pause")}>{item.paused ? <Play size={14} /> : <Pause size={14} />}{item.continuationFallback ? "继续生成（不承接）" : item.retrySubmission ? "重试提交" : null}</Button>
           </>}
           <Button size="icon" disabled={pending} aria-label={`移除 ${item.title}`} title={item.state === "queued" ? "移出队列" : "移除记录，保留结果"} onClick={() => onAction(item.id, "remove")}><X size={14} /></Button>
         </div>}

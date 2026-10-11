@@ -1,6 +1,28 @@
 #[cfg(any(not(debug_assertions), test))]
 mod backend_process;
 
+#[tauri::command]
+fn choose_project_file(save: bool) -> Option<String> {
+    let dialog = rfd::FileDialog::new().add_filter("ShotMill 工程", &["shotmill"]);
+    let path = if save {
+        dialog.set_file_name("未命名工程.shotmill").save_file()
+    } else {
+        dialog.pick_file()
+    };
+    path.map(|value| value.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn choose_asset_files() -> Vec<String> {
+    rfd::FileDialog::new()
+        .add_filter("媒体文件", &["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "mp4", "mov", "mkv", "webm", "avi", "m4v", "wav", "mp3", "flac", "m4a", "aac", "ogg"])
+        .pick_files()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect()
+}
+
 #[cfg(not(debug_assertions))]
 fn start_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use std::{fs, process::Command, sync::Mutex};
@@ -18,7 +40,7 @@ fn start_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
         .arg("--data-root")
         .arg(&data)
         .arg("--frontend-root")
-        .arg(resources.join("frontend"))
+        .arg(resources.join("resources"))
         .current_dir(&data)
         .stderr(log);
     let (backend, url) =
@@ -33,7 +55,8 @@ fn start_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![choose_project_file, choose_asset_files]);
     #[cfg(not(debug_assertions))]
     let builder = builder.setup(start_backend);
     let app = builder

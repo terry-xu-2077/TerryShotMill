@@ -5,8 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from shotmill.application.context_duration import previous_video_duration
-from shotmill.application.lifecycle_service import in_lifecycle_scope, require_writable
-from shotmill.domain.entities import ContextLink, Task, TaskAssetBinding, new_id, utcnow
+from shotmill.domain.entities import ContextLink, Task, TaskAssetBinding, TaskPlacement, new_id, utcnow
 from shotmill.domain.enums import PromptSource, TaskState
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import ConflictError, NotFoundError, ShotMillError
@@ -30,6 +29,7 @@ class SaveTaskData:
     ai_prompt: str = ""
     prompt_source: str = "user"
     duration_seconds: float = 6.0
+    timeline_id: str | None = None
     generation: dict | None = None
     asset_bindings: tuple[SaveTaskAsset, ...] = ()
     user_view_mode: str = "visual"
@@ -177,10 +177,15 @@ class TaskService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project)
             tasks = uow.tasks.list_by_project(project_id)
+            scenes = uow.story_structure.list_scenes(project_id)
+            timeline_id = data.timeline_id or (scenes[0].id if scenes else None)
+            if data.timeline_id and not any(scene.id == data.timeline_id for scene in scenes):
+                raise NotFoundError("TIMELINE_NOT_FOUND", "Timeline not found")
             order = uow.tasks.next_display_order(project_id)
-            previous = self._previous_task(tasks, order)
+            placed_ids = {item.task_id for item in uow.story_structure.list_placements(project_id)
+                          if item.scene_id == timeline_id}
+            previous = next((task for task in reversed(tasks) if task.id in placed_ids), None)
             generation = self._normalize_generation(
                 data.generation,
                 previous_video_duration(uow, previous, self.storage),
@@ -222,6 +227,8 @@ class TaskService:
             task.select_final_prompt()
             task.state = TaskState.READY if task.final_prompt.strip() else TaskState.DRAFT
             uow.tasks.add(task)
+            if timeline_id:
+                uow.story_structure.place_task(project_id, TaskPlacement(task.id, timeline_id, order))
             self._replace_context(uow, task, previous)
             project.updated_at = now
             uow.projects.update(project)
@@ -254,7 +261,6 @@ class TaskService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project, task)
             uow.tasks.update_editor_preference(task_id, values)
             return {
                 "user_view_mode": values.get("user_view_mode", task.user_view_mode),
@@ -270,7 +276,6 @@ class TaskService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project, task)
             if task.state in {TaskState.QUEUED, TaskState.RUNNING}:
                 raise ConflictError("TASK_BUSY", "Running or queued task cannot be edited")
             if data.revision is not None and data.revision != task.revision:
@@ -279,8 +284,13 @@ class TaskService:
                     "Task was modified after the editor was loaded",
                     {"revision": task.revision},
                 )
-            tasks = uow.tasks.list_by_project(project_id)
-            previous = self._previous_task(tasks, task.display_order)
+            tasks = {item.id: item for item in uow.tasks.list_by_project(project_id)}
+            placements = uow.story_structure.list_placements(project_id)
+            current_placement = next((item for item in placements if item.task_id == task_id), None)
+            timeline_ids = [item.task_id for item in placements
+                            if current_placement and item.scene_id == current_placement.scene_id]
+            position = timeline_ids.index(task_id) if task_id in timeline_ids else 0
+            previous = tasks.get(timeline_ids[position - 1]) if position > 0 else None
             old_final = task.final_prompt
             old_prompt_source = task.prompt_source
             task.title = data.title.strip() or task.title
@@ -331,27 +341,43 @@ class TaskService:
                 uow.projects.update(project)
             return task
 
+    def update_timeline(
+        self, project_id: str, task_id: str,
+        start_seconds: float | None, duration_seconds: float,
+    ) -> Task:
+        with self.uow_factory() as uow:
+            uow.reserve_write()
+            task = uow.tasks.get(task_id)
+            if task is None or task.project_id != project_id:
+                raise NotFoundError("TASK_NOT_FOUND", "Task not found")
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            if task.state in {TaskState.QUEUED, TaskState.RUNNING}:
+                raise ConflictError("TASK_BUSY", "Running or queued task cannot be edited")
+            task.timeline_start_seconds = start_seconds
+            task.planned_duration_seconds = duration_seconds
+            task.revision += 1
+            task.updated_at = utcnow()
+            uow.tasks.update(task)
+            project.updated_at = task.updated_at
+            uow.projects.update(project)
+            return task
+
     def reorder(self, project_id: str, task_ids: list[str]) -> None:
         with self.uow_factory() as uow:
             uow.reserve_write()
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project)
             current = uow.tasks.list_by_project(project_id)
-            active = [task for task in current if in_lifecycle_scope(task, "active")]
-            if {item.id for item in active} != set(task_ids) or len(active) != len(task_ids):
+            if {item.id for item in current} != set(task_ids) or len(current) != len(task_ids):
                 raise ShotMillError(
                     "INVALID_TASK_ORDER",
-                    "Task order must contain every active project task exactly once",
+                    "Task order must contain every project task exactly once",
                     422,
                 )
-            reordered = iter(task_ids)
-            full_order = [
-                next(reordered) if in_lifecycle_scope(task, "active") else task.id
-                for task in current
-            ]
-            uow.tasks.reorder(project_id, full_order)
+            uow.tasks.reorder(project_id, task_ids)
             project = uow.projects.get(project_id)
             if project is not None:
                 project.updated_at = utcnow()

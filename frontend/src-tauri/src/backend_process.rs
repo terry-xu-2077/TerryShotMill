@@ -117,7 +117,7 @@ mod tests {
         let (backend, url) = BackendProcess::start(command).unwrap();
         let address = url.strip_prefix("http://").unwrap();
         assert!(TcpStream::connect(address).is_ok());
-        assert!(fixture.join("data/shotmill.db").is_file());
+        assert!(!fixture.join("data/shotmill.db").exists());
         drop(backend);
         assert!(TcpStream::connect(address).is_err());
         fs::remove_dir_all(&fixture).unwrap();

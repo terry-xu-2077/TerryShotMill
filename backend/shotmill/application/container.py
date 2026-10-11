@@ -10,13 +10,11 @@ from shotmill.application.application_settings import ApplicationSettingsStore
 from shotmill.application.asset_import_service import AssetImportService
 from shotmill.application.asset_service import AssetService
 from shotmill.application.batch_service import BatchProductionService, PromptEnhancementQueue
-from shotmill.application.cleanup_worker import CleanupWorker
 from shotmill.application.event_bus import ProjectEventBus
 from shotmill.application.file_library import FileLibrary
 from shotmill.application.generation_service import GenerationQueue, GenerationService
 from shotmill.application.imported_generation_configuration import ImportedGenerationConfiguration
-from shotmill.application.lifecycle_service import LifecycleService
-from shotmill.application.permanent_delete_service import PermanentDeleteService
+from shotmill.application.removal_service import RemovalService
 from shotmill.application.project_export_downloads import ProjectExportDownloads
 from shotmill.application.project_export_service import ProjectExportService
 from shotmill.application.project_file_reader import ProjectFileReader
@@ -24,8 +22,6 @@ from shotmill.application.project_import_service import ProjectImportService
 from shotmill.application.project_service import ProjectService
 from shotmill.application.prompt_enhancement_service import PromptEnhancementService
 from shotmill.application.prompt_review import PromptReviewService
-from shotmill.application.result_archive_service import ResultArchiveService
-from shotmill.application.result_file_collector import ResultFileCollector
 from shotmill.application.result_service import ResultService
 from shotmill.application.task_service import TaskService
 from shotmill.application.workspace_query import WorkspaceQuery
@@ -33,14 +29,14 @@ from shotmill.config import Settings
 from shotmill.domain.application_settings import ComfyUISettings
 from shotmill.domain.providers import PromptAIProvider, VideoGenerationProvider
 from shotmill.errors import ShotMillError
-from shotmill.media.archive_storage import ArchiveStorage
-from shotmill.media.cleanup_storage import CleanupStorage
 from shotmill.media.file_storage import FileStorage
-from shotmill.media.import_storage import ImportStorage
 from shotmill.media.resolver import MediaResolver
 from shotmill.media.storage import MediaStorage
-from shotmill.persistence.database import create_database_engine, create_session_factory
-from shotmill.persistence.repositories import SqlAlchemyUnitOfWork
+from shotmill.persistence.database import create_database_engine
+from shotmill.persistence.models import Base
+from shotmill.persistence.project_documents import (
+    DocumentSession, DocumentUnitOfWork, ProjectDocumentStore,
+)
 from shotmill.prompt_skills.registry import PromptSkillRegistry
 from shotmill.providers.comfyui_runtime import ComfyUIExecutionCoordinator
 from shotmill.providers.prompt_ai.comfyui import ComfyUIPromptAIProvider
@@ -56,6 +52,7 @@ from shotmill.providers.video_generation.comfyui import ComfyUIVideoGenerationPr
 class ApplicationContainer:
     settings: Settings
     application_settings: ApplicationSettingsStore
+    project_documents: ProjectDocumentStore
     engine: Engine
     session_factory: sessionmaker[Session]
     storage: MediaStorage
@@ -67,7 +64,7 @@ class ApplicationContainer:
     imported_generation_configuration: ImportedGenerationConfiguration
     events: ProjectEventBus
     project_service: ProjectService
-    lifecycle_service: LifecycleService
+    removal_service: RemovalService
     asset_service: AssetService
     asset_import_service: AssetImportService
     task_service: TaskService
@@ -79,9 +76,6 @@ class ApplicationContainer:
     generation_service: GenerationService
     generation_queue: GenerationQueue
     result_service: ResultService
-    result_archive_service: ResultArchiveService
-    permanent_delete_service: PermanentDeleteService
-    cleanup_worker: CleanupWorker
 
 
 def build_container(
@@ -90,8 +84,15 @@ def build_container(
     prompt_provider: PromptAIProvider | None = None,
     video_provider: VideoGenerationProvider | None = None,
 ) -> ApplicationContainer:
-    engine = create_database_engine(settings.database_url)
-    session_factory = create_session_factory(engine)
+    engine = create_database_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(
+        bind=engine, class_=DocumentSession, expire_on_commit=False, autoflush=False,
+        future=True,
+    )
+    project_documents = ProjectDocumentStore(
+        session_factory, settings.data_root / "recent-projects.json",
+    )
     application_settings = ApplicationSettingsStore(
         settings.data_root / "application-settings.json",
         comfyui_defaults=ComfyUISettings(
@@ -101,17 +102,18 @@ def build_container(
     )
     comfyui_coordinator = ComfyUIExecutionCoordinator()
 
-    def uow_factory() -> SqlAlchemyUnitOfWork:
-        return SqlAlchemyUnitOfWork(session_factory)
+    def uow_factory() -> DocumentUnitOfWork:
+        return DocumentUnitOfWork(session_factory, project_documents)
 
     file_library = FileLibrary(FileStorage(settings.files_root))
-    project_file_reader = ProjectFileReader(
-        uow_factory, file_library, CleanupStorage(settings.projects_root),
-    )
     storage = MediaStorage(
-        settings.projects_root, shared_resolver=project_file_reader.resolve,
-        read_resolver=project_file_reader.resolve,
+        settings.projects_root, project_root_resolver=project_documents.media_root,
     )
+    project_file_reader = ProjectFileReader(
+        uow_factory, file_library, storage, project_documents,
+    )
+    storage.shared_resolver = project_file_reader.resolve
+    storage.read_resolver = project_file_reader.resolve
     resolver = MediaResolver(storage)
     events = ProjectEventBus()
     if prompt_provider is None:
@@ -231,8 +233,8 @@ def build_container(
             use_bridge_assets=True,
         )
 
-    project_service = ProjectService(uow_factory, storage)
-    asset_service = AssetService(uow_factory, storage, file_library)
+    project_service = ProjectService(uow_factory, storage, project_documents)
+    asset_service = AssetService(uow_factory, storage, file_library, project_documents)
     task_service = TaskService(uow_factory, storage)
     workspace_query = WorkspaceQuery(uow_factory, storage)
     prompt_enhancement_service = PromptEnhancementService(
@@ -242,9 +244,7 @@ def build_container(
         resolver,
     )
     prompt_review_service = PromptReviewService(uow_factory)
-    generation_service = GenerationService(
-        uow_factory, video_provider, storage, events, ResultFileCollector(file_library),
-    )
+    generation_service = GenerationService(uow_factory, video_provider, storage, events)
     generation_queue = GenerationQueue(generation_service, settings.generation_workers)
     generation_service.attach_queue(generation_queue)
     batch_production_service = BatchProductionService(
@@ -259,16 +259,13 @@ def build_container(
     )
     batch_production_service.attach_queue(prompt_enhancement_queue)
     result_service = ResultService(uow_factory)
-    archive_service = ResultArchiveService(
-        uow_factory, storage, ArchiveStorage(settings.results_archive_root), file_library
+    project_export_service = ProjectExportService(
+        uow_factory, file_library, project_documents, storage,
     )
-    permanent_delete_service = PermanentDeleteService(
-        uow_factory, archive_service, CleanupStorage(settings.projects_root)
-    )
-    project_export_service = ProjectExportService(uow_factory, file_library, settings.projects_root)
     return ApplicationContainer(
         settings=settings,
         application_settings=application_settings,
+        project_documents=project_documents,
         engine=engine,
         session_factory=session_factory,
         storage=storage,
@@ -276,7 +273,7 @@ def build_container(
         project_file_reader=project_file_reader,
         project_export_service=project_export_service,
         project_export_downloads=ProjectExportDownloads(project_export_service),
-        project_import_service=ProjectImportService(uow_factory, file_library),
+        project_import_service=ProjectImportService(file_library, project_documents),
         imported_generation_configuration=ImportedGenerationConfiguration(
             uow_factory, lambda: {
                 profile.id for profile in application_settings.get_comfyui().workflow_profiles
@@ -285,10 +282,10 @@ def build_container(
         ),
         events=events,
         project_service=project_service,
-        lifecycle_service=LifecycleService(uow_factory),
+        removal_service=RemovalService(uow_factory),
         asset_service=asset_service,
         asset_import_service=AssetImportService(
-            uow_factory, archive_service, ImportStorage(settings.projects_root), file_library
+            uow_factory, storage, file_library, project_documents,
         ),
         task_service=task_service,
         workspace_query=workspace_query,
@@ -299,7 +296,4 @@ def build_container(
         generation_service=generation_service,
         generation_queue=generation_queue,
         result_service=result_service,
-        result_archive_service=archive_service,
-        permanent_delete_service=permanent_delete_service,
-        cleanup_worker=CleanupWorker(permanent_delete_service),
     )

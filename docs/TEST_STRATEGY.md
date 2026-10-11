@@ -2,9 +2,11 @@
 
 > 状态：持续实施
 >
-> 最后更新：2026-09-14
+> 最后更新：2026-10-11
 
 本文件定义 ShotMill 的自动测试、回归测试、故障注入和 Codex 验收原则。
+
+当前默认采用快速局部验证：先选能证明本次行为的单用例或单文件，必要时再扩大到直接受影响的模块；通过即停，不重复跑同一套检查。只验证真实需求与相关失败路径，不因假设风险增加防御框架或产品复杂度。纯文档不运行应用测试。未经用户明确授权，不得运行全量或等价全量验证；发布和高风险标签也不构成授权。
 
 目标不是追求形式上的测试覆盖率，而是让以下行为能够被机器持续验证：
 
@@ -175,7 +177,7 @@ Fake Provider 应输出可预测结果，便于断言 Scheduler / Job / Result �
 
 ## 6. Failure Injection
 
-必须主动测试异常状态，而不是只覆盖 Happy Path。
+按本次改动涉及的行为选择正常与异常路径。以下是可复用的领域场景目录，不是每次开发必跑的清单；保留有效业务回归和数据安全测试，不为无关假设新增机制。
 
 第一批场景：
 
@@ -197,7 +199,7 @@ FS-014 Provider 返回非法 payload
 FS-015 API timeout / rate limit
 ```
 
-每个正式发现的生产 Bug 都应增加新的永久场景编号。
+生产业务 Bug 应有可复现的回归覆盖；已有场景能准确覆盖时直接复用，无需为同一行为重复编号或造测试。
 
 ---
 
@@ -246,7 +248,7 @@ Remote Monitor 尚未进入当前产品 UI，在其正式开发前不保留虚�
 
 真实模型测试不进入每次开发循环。
 
-发布前或 Provider Adapter 有重大修改时执行：
+只有改动必须依赖真实模型才能确认，或用户明确要求时，才执行受影响 Provider 的最小 Hardware Smoke。发布或 Adapter 重大修改不自动要求遍历所有模型；以下项目按本次变化选用：
 
 ### ComfyUI / 当前视频模型
 
@@ -270,16 +272,18 @@ Remote Monitor 尚未进入当前产品 UI，在其正式开发前不保留虚�
 
 ## 9. Regression Test First
 
-Bug 修复默认流程：
+业务 Bug 修复默认流程：
 
 ```text
-1. 写可复现 Bug 的自动测试
+1. 选择可复现 Bug 的最小自动测试；已有失败测试可复用
 2. 确认测试失败
 3. 修代码
 4. 确认该测试通过
-5. 运行相关 Integration / Contract / E2E
+5. 仅在当前测试不能覆盖影响时，补跑直接相关的检查
 6. 保留测试永久参与回归
 ```
+
+纯视觉、样式或文案问题可用最小复现和目测验证，不必为了形式新增自动化测试；若改变交互或业务行为，再选用相应自动化回归。
 
 禁止：
 
@@ -292,45 +296,37 @@ Bug 修复默认流程：
 
 ## 10. 验收命令
 
-计划统一入口：
+优先使用已有的单文件／单用例入口，路径替换为本次对应的测试：
 
 ```text
-python scripts/verify.py
+python -m pytest -q tests/unit/test_verify_script.py
+python -m pytest -q tests/contract/test_bridge_negotiation_provider.py -k 关键词
+npm --prefix frontend run test -- run src/gateways/projectTransferGateway.test.ts
+python scripts/run_e2e.py e2e/task-navigation.spec.ts -g "用例关键词"
+npm --prefix frontend run typecheck
 ```
 
-建议支持：
+Pytest 可用 `文件路径::用例名` 精确选择用例；类型检查仅在涉及 TypeScript 类型时按需运行。以上命令是可选入口，不是一套必须依次执行的验收套餐。
 
-```text
-python scripts/verify.py --area backend
-python scripts/verify.py --area scheduler
-python scripts/verify.py --area providers
-python scripts/verify.py --area frontend
-python scripts/verify.py --area e2e
-python scripts/verify.py --area mobile
-python scripts/verify.py --full
-```
+`python scripts/verify.py` 无参数会运行后端与前端广泛验证；`--area backend` 包含全部 unit / integration 和广泛 lint，`--area frontend`／`ui` 包含全部 Vitest、typecheck 与 build，`--area e2e` 运行整个桌面与移动端 E2E。它们不是日常小改动的默认入口。`--area providers`／`scheduler` 也只在需要对应区域检查时使用。
 
-开发中运行 targeted verification。
-
-目标完成前运行与改动风险相匹配的最终验收。
-
-发布前运行 `--full` + Hardware Smoke。
+未经用户明确授权，不得运行 `--full` 或分批拼成等价全量验证。发现本次范围外的 Bug，先做一轮针对性排查、修复和局部确认；若仍未解决且确需全量定位，才说明发现、已尝试的修复、拟运行范围和预计耗时并申请授权。未获授权时报告已通过项与未验证边界，不假称全量通过。
 
 ---
 
 ## 11. Codex 开发规则
 
-未来根目录 `AGENTS.md` 至少应包含以下原则：
+日常开发遵循以下原则；与旧文档冲突时，以用户最新决定和根目录 `AGENTS.md` 为准：
 
 1. 使用完成任务所需的最小仓库上下文。
 2. 已知所属模块时不要扫描无关目录。
-3. 修改前先读取对应 Contract / Tests / 架构文档。
-4. 修改业务逻辑必须补测试。
-5. 修 Bug 必须补回归测试。
-6. Provider 变化必须跑 Contract Tests。
-7. UI 行为变化运行对应 E2E。
-8. 开发过程中优先 targeted tests。
-9. 完成前运行规定的 verify 命令。
+3. 按实际涉及的边界读取对应文档章节和测试，不整套重读历史规范。
+4. 业务逻辑变化须有对应自动测试；已有覆盖足够时复用，不写镜像实现的重复测试。
+5. 业务 Bug 先确认最小回归失败再修复；纯视觉／文案按第 9 节处理。
+6. Provider 契约变化运行受影响的 Contract Tests。
+7. UI 交互变化选择相关 Vitest；需要浏览器才能验证时补对应 Playwright 用例。
+8. 单用例／单文件优先，仅有具体证据时扩大验证范围。
+9. 相关验收通过即停，不为“收尾”再跑区域套餐或重复验证。
 10. 不得通过删除或弱化测试规避失败。
 11. 无法执行的测试必须在最终报告中明确说明。
 
@@ -369,13 +365,9 @@ python scripts/verify.py --full
 
 - 行为符合需求
 - 架构边界未被破坏
-- 新业务逻辑有自动测试
-- Bug 有回归测试
-- 相关 Contract Test 通过
-- 相关 E2E 通过
-- typecheck / lint / migration 检查通过
-- targeted verification 通过
-- 高风险改动按要求运行 full verification
+- 变化的业务逻辑有相关自动测试，业务 Bug 有最小回归覆盖
+- 本次直接相关的局部验证通过；纯视觉／文案完成最小复现和目测
+- Contract、E2E、typecheck、lint、migration 等仅按实际涉及的层和风险选用，不要求全套餐
 - 未执行项和残余风险被明确报告
 
 最终目标是：

@@ -125,16 +125,37 @@
 .workspace-project-title { display: flex; align-items: center; justify-content: center; min-width: 0; gap: 10px; }
 .workspace-project-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; font-weight: 600; }
 .workspace-top-actions { display: flex; align-items: center; justify-content: flex-end; min-width: 0; gap: 16px; }
+.director-top-actions { display: flex; align-items: center; gap: 8px; }
+.director-top-actions > button { white-space: nowrap; }
 .workspace-project-config-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 32px; padding: 0 10px; border: 1px solid var(--sm-border); border-radius: var(--sm-radius-sm); background: var(--sm-surface-1); color: var(--sm-text-muted); cursor: pointer; font-size: 12px; white-space: nowrap; }
 .workspace-project-config-button:hover { border-color: var(--sm-accent); color: var(--sm-accent); }
 .task-view-control { display: flex; align-items: center; width: 32px; flex: 0 0 32px; }
+.workspace-mode-switch { display: flex; align-items: center; margin-left: auto; }
 .task-view-glyph { position: relative; display: block; width: 16px; height: 16px; }
 .task-view-list-icon, .task-view-grid-icon { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity 220ms var(--sm-ease), transform 320ms var(--sm-ease); }
 .task-view-glyph.is-list > .task-view-grid-icon, .task-view-glyph.is-card > .task-view-list-icon { opacity: 0; transform: rotate(-70deg) scale(.45); }
 .task-view-glyph.is-card > .task-view-grid-icon, .task-view-glyph.is-list > .task-view-list-icon { opacity: 1; transform: rotate(0) scale(1); }
 .task-collection-heading { flex-wrap: wrap; gap: 12px; }
+.task-collection-heading.is-director { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr); }
+.director-heading-leading { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.director-heading-leading > h2 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; }
+.director-heading-leading > button { flex: none; white-space: nowrap; }
+.director-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.director-heading-actions > button { white-space: nowrap; }
+.task-collection-heading.is-director > .workspace-mode-switch { justify-self: end; margin-left: 0; }
+.task-collection-heading.is-director > .workspace-view-save-error { grid-column: 1 / -1; }
+.director-duration { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; color: var(--sm-text-muted); font-size: 13px; }
+.director-duration strong { color: var(--sm-accent); font: 600 15px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.workspace-view-save-error { color: var(--sm-danger); font-size: 12px; }
 .task-generation-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .project-workspace-body { display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: 0; }
+.project-workspace-body.is-director { grid-template-columns: minmax(0, 1fr); }
+.project-workspace-body.is-overview { grid-template-columns: minmax(0, 1fr); }
+.timeline-overview-item { padding-right: 76px; }
+.timeline-row-actions { position: absolute; z-index: 2; right: 10px; top: 50%; display: flex; gap: 4px; transform: translateY(-50%); }
+.timeline-name-editor { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 8px; border: 1px solid var(--sm-border); border-radius: var(--sm-radius); background: var(--sm-surface-1); }
+.timeline-overview-item .timeline-name-editor { grid-column: 1 / -1; }
+.timeline-name-editor > .tc-control-wrap { flex: 1; min-width: 0; }
 .project-task-column { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; min-width: 0; }
 .project-task-column > .project-task-area { padding-bottom: 18px; }
 .task-action-dock { position: fixed; bottom: calc(var(--sm-statusbar-height) + 16px); left: 50%; translate: -50% 0; width: max-content; max-width: calc(100vw - 24px); pointer-events: none; }
@@ -155,6 +176,13 @@
 .task-action-group.is-selection { margin-left: auto; padding-left: 12px; border-left: 1px solid var(--sm-border-strong); }
 .task-context-actions.is-single { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); justify-items: stretch; padding: 0; border: 0; border-radius: 0; background: none; backdrop-filter: none; box-shadow: none; }
 .project-task-area { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; padding: 26px 28px 72px; }
+.project-task-area.is-director { padding: 12px 16px 0; }
+.project-task-area.is-director > .task-collection-heading { margin-bottom: 8px; }
+.director-workspace-shell { min-width: 0; min-height: 0; overflow: hidden; position: relative; }
+.director-workspace-shell iframe { display: block; width: 100%; height: 100%; border: 0; background: #252736; }
+.director-workspace-error { position: absolute; z-index: 2; inset: 16px auto auto 16px; padding: 10px 14px; border-radius: 8px; background: var(--sm-surface-2); color: var(--sm-danger); }
+.director-save-error { position: absolute; z-index: 3; top: 8px; right: 8px; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 16px); padding: 7px 10px; border: 1px solid var(--sm-danger); border-radius: 8px; background: var(--sm-surface-2); color: var(--sm-danger); font-size: 12px; }
+.director-save-error > button { flex: none; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 .project-task-area > :is(.task-list-view, .task-card-view) { min-height: 0; overflow-y: auto; padding-top: 10px; padding-right: 6px; }
 .project-task-area > .task-collection-heading { margin-bottom: 14px; }
 .project-task-area > .task-card-view { align-content: start; }
@@ -219,6 +247,7 @@
   .workspace-project-title { grid-column: 1; grid-row: 2; justify-content: flex-start; gap: 6px; }
   .workspace-project-title strong { font-size: 16px; }
   .workspace-top-actions { display: contents; }
+  .workspace-top-actions > .director-top-actions { grid-column: 1 / -1; grid-row: 3; justify-self: end; }
   .workspace-top-actions > .theme-switch { grid-column: 2; grid-row: 1; justify-self: end; }
   .workspace-top-actions > .bridge-connection { grid-column: 2; grid-row: 2; justify-self: end; }
   .workspace-project-config-button { width: 32px; padding: 0; }

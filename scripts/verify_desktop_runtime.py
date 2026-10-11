@@ -39,8 +39,10 @@ def verify(executable: Path) -> None:
             timeout=30, creationflags=flags)
         stream = json.loads(probe.stdout)["streams"][0]
         assert (stream["width"], stream["height"]) == (32, 32)
-        package = None
+        project_file = root / "user-projects" / "frozen-project.shotmill"
         original_id = None
+        task_id = None
+        asset_id = None
         for reopening in (False, True):
             with (root / "backend.log").open("w", encoding="utf-8") as log:
                 process = subprocess.Popen(
@@ -69,36 +71,49 @@ def verify(executable: Path) -> None:
                         assert client.get("/").text == "Frozen ShotMill"
                         assert client.get("/shotmill.db").status_code == 404
                         if reopening:
-                            assert "Frozen project" in client.get("/api/v1/projects").text
-                            imported = client.post("/api/v1/projects/import", files={
-                                "file": ("project.zip", package, "application/zip"),
+                            opened = client.post("/api/v1/projects/open", json={
+                                "path": str(project_file),
                             })
-                            assert imported.status_code == 201, imported.text
-                            destination = imported.json()["projectId"]
-                            assert destination != original_id
+                            assert opened.status_code == 200, opened.text
+                            destination = opened.json()["id"]
+                            assert destination == original_id
                             assets = client.get(
                                 f"/api/v1/projects/{destination}/assets",
                             ).json()["items"]
                             assert len(assets) == 1
-                            relative = assets[0]["projectRelativePath"]
-                            assert client.get(f"/media/{destination}/{relative}").content == (
+                            assert assets[0]["id"] == asset_id
+                            assert client.get(
+                                f"/media/{destination}/external/asset/{asset_id}/content"
+                            ).content == (
                                 video.read_bytes()
                             )
+                            workspace = client.get(
+                                f"/api/v1/projects/{destination}/workspace"
+                            )
+                            assert workspace.status_code == 200, workspace.text
+                            assert task_id in workspace.text
                         else:
                             response = client.post("/api/v1/projects", json={
-                                "title": "Frozen project",
+                                "title": "Frozen project", "path": str(project_file),
                             })
                             assert response.status_code == 201, response.text
                             original_id = response.json()["id"]
-                            with video.open("rb") as media:
-                                uploaded = client.post(
-                                    f"/api/v1/projects/{original_id}/assets",
-                                    files={"file": ("sample.mp4", media, "video/mp4")},
-                                )
-                            assert uploaded.status_code == 201, uploaded.text
-                            exported = client.get(f"/api/v1/projects/{original_id}/export")
-                            assert exported.status_code == 200, exported.text
-                            package = exported.content
+                            imported = client.post(
+                                f"/api/v1/projects/{original_id}/assets/local",
+                                json={"path": str(video), "name": "Original video"},
+                            )
+                            assert imported.status_code == 201, imported.text
+                            asset_id = imported.json()["id"]
+                            created = client.post(
+                                f"/api/v1/projects/{original_id}/tasks",
+                                json={"title": "Frozen task", "userPrompt": "A short shot",
+                                      "promptSource": "user", "assetBindings": [{
+                                          "assetId": asset_id, "reference": "<Video 1>",
+                                      }]},
+                            )
+                            assert created.status_code == 201, created.text
+                            task_id = created.json()["id"]
+                            assert project_file.is_file()
                     process.stdin.close()
                     assert process.wait(timeout=30) == 0
                 finally:
@@ -109,7 +124,9 @@ def verify(executable: Path) -> None:
                         process.stdin.close()
                     reader.join(timeout=2)
                     process.stdout.close()
-        print("PASS frozen runtime: media, API, frontend, shutdown, persistence, project ZIP")
+        assert video.is_file()
+        assert not (root / "data" / "shotmill.db").exists()
+        print("PASS frozen runtime: media tools, API, frontend, shutdown, project file")
 
 
 if __name__ == "__main__":

@@ -5,7 +5,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from shotmill.application.lifecycle_service import require_writable
 from shotmill.domain.entities import Task, utcnow
 from shotmill.domain.enums import PromptSource
 from shotmill.domain.repositories import UnitOfWork
@@ -69,7 +68,6 @@ class PromptReviewService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project, task)
             prompt = current_prompt_text(task).strip()
             if not prompt:
                 raise ShotMillError(

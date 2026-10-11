@@ -2,8 +2,7 @@ import pytest
 from shotmill.application.asset_import_service import ImportSelection
 from shotmill.domain.entities import Job, Project, Result, Task
 from shotmill.domain.enums import JobStatus
-from shotmill.errors import ConflictError, ShotMillError
-from shotmill.persistence.repositories.uow import SqlAlchemyUnitOfWork
+from shotmill.errors import ShotMillError
 
 
 @pytest.fixture
@@ -11,8 +10,12 @@ def imports(client):
     container = client.app.state.container
 
     def factory():
-        return SqlAlchemyUnitOfWork(container.session_factory)
+        return container.generation_service.uow_factory()
 
+    for name in ("source", "target"):
+        container.project_documents.register_new(
+            name, container.settings.data_root / f"{name}.shotmill",
+        )
     with factory() as uow:
         for name in ("source", "target"):
             uow.projects.add(Project(id=name, title=name))
@@ -73,9 +76,7 @@ def test_import_asset_and_result_survive_source_project_purge(imports):
     assert video.provenance["params"] == {"seed": 42}
     assert "secret" not in repr(video.provenance)
     assert video.duration == 4
-    container.lifecycle_service.transition_project("source", "trash")
-    container.permanent_delete_service.purge_project("source", archive_results=False)
-    container.permanent_delete_service.cleanup_pending()
+    container.removal_service.remove_project("source")
     with factory() as uow:
         assert uow.projects.get("source") is None
         reloaded = uow.assets.get(video.id)
@@ -116,6 +117,9 @@ def test_reimport_preserves_preview_name_and_mime_without_physical_extension(imp
         "target", [ImportSelection("result", "result")],
     )[0]
     with factory() as uow:
+        container.project_documents.register_new(
+            "third", container.settings.data_root / "third.shotmill",
+        )
         uow.projects.add(Project(id="third", title="Third"))
     second = container.asset_import_service.import_sources(
         "third", [ImportSelection("asset", first.id)],
@@ -126,58 +130,14 @@ def test_reimport_preserves_preview_name_and_mime_without_physical_extension(imp
     assert preview.path == container.storage.resolve("target", first.thumbnail_path)
     url = container.storage.media_url("third", second.thumbnail_path)
     assert client.get(url).headers["content-type"] == "image/png"
-    container.lifecycle_service.transition_project("target", "trash")
-    container.permanent_delete_service.purge_project("target", archive_results=False)
-    container.permanent_delete_service.cleanup_pending()
+    container.removal_service.remove_project("target")
     assert client.get(url).content == b"preview bytes"
 
 
-def test_import_archive_after_source_deletion(imports):
-    container, _, _, _ = imports
-    container.lifecycle_service.transition_project("source", "trash")
-    container.permanent_delete_service.purge_project("source")
-    container.permanent_delete_service.cleanup_pending()
-    archived = container.result_archive_service.list()[0]
-    imported = container.asset_import_service.import_sources(
-        "target",
-        [
-            ImportSelection("archive", archived.id),
-        ],
-    )[0]
-    assert imported.media_type == "video"
-    assert imported.provenance["sourceType"] == "archive"
-    assert imported.provenance["params"] == {"seed": 42}
-    assert container.project_file_reader.read(
-        "target", imported.thumbnail_path,
-    ).filename == "preview.png"
-    assert (
-        container.storage.resolve("target", imported.project_relative_path).read_bytes()
-        == b"video bytes"
-    )
-
-
-def test_import_from_archived_project_but_not_into_read_only_project(imports):
-    container, _, source_asset, _ = imports
-    container.lifecycle_service.transition_project("source", "archive")
-    selection = [ImportSelection("asset", source_asset.id)]
-    assert len(container.asset_import_service.import_sources("target", selection)) == 1
-    container.lifecycle_service.transition_project("target", "archive")
-    with pytest.raises(ConflictError) as error:
-        container.asset_import_service.import_sources("target", selection)
-    assert error.value.code == "OBJECT_READ_ONLY"
-
-
-@pytest.mark.parametrize("shared_mode", [False, True])
-def test_batch_copy_failure_rolls_back_records_and_tracks_cleanup(
-    imports, monkeypatch, shared_mode,
-):
+def test_batch_copy_failure_rolls_back_records(imports, monkeypatch):
     container, factory, source_asset, _ = imports
     service = container.asset_import_service
-    if not shared_mode:
-        service.file_library = None
-    writer = service.file_library if shared_mode else service.storage
-    method = "import_path" if shared_mode else "copy"
-    original = getattr(writer, method)
+    original = service.file_library.import_path
     calls = 0
 
     def fail_second(*args, **kwargs):
@@ -187,7 +147,7 @@ def test_batch_copy_failure_rolls_back_records_and_tracks_cleanup(
             raise OSError("disk full")
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(writer, method, fail_second)
+    monkeypatch.setattr(service.file_library, "import_path", fail_second)
     with pytest.raises(ShotMillError) as error:
         service.import_sources(
             "target",
@@ -199,11 +159,8 @@ def test_batch_copy_failure_rolls_back_records_and_tracks_cleanup(
     assert error.value.code == "ASSET_IMPORT_FAILED"
     with factory() as uow:
         assert uow.assets.list_by_project("target") == []
-        assert len(uow.cleanup.list()) == (0 if shared_mode else 1)
         assert uow.results.get("result") is not None
         assert all(ref.scope_id != "target" for ref in uow.files.references(source_asset.hash))
-    container.permanent_delete_service.cleanup_pending()
-    assert service.storage.managed.files("target") == set()
     assert (
         container.storage.resolve("source", source_asset.project_relative_path).read_bytes()
         == b"sound bytes"
@@ -226,7 +183,7 @@ def test_empty_preview_rolls_back_shared_import_without_touching_source_result(i
     container, factory, _, _ = imports
     with factory() as uow:
         result = uow.results.get("result")
-    container.result_archive_service._source("source", result.preview_url).write_bytes(b"")
+    container.asset_import_service._result_path("source", result.preview_url).write_bytes(b"")
     with pytest.raises(ShotMillError) as error:
         container.asset_import_service.import_sources(
             "target", [ImportSelection("result", "result")],
@@ -248,6 +205,7 @@ def test_import_api_exposes_read_only_provenance_and_checks_selection(imports):
     assert asset["originalFileName"] == "sound.wav"
     assert client.post(path, json={"sources": []}).status_code == 422
     assert client.post(path, json={"sources": payload["sources"] * 2}).status_code == 422
+    assert client.post(path, json={"sources": [{"kind": "archive", "id": "old"}]}).status_code == 422
     assert (
         client.post(path, json={"sources": [{"kind": "result", "id": "missing"}]}).status_code
         == 404
@@ -263,10 +221,9 @@ def test_import_api_exposes_read_only_provenance_and_checks_selection(imports):
         assert uow.assets.get(asset["id"]).provenance["sourceId"] == source_asset.id
 
 
-def test_import_candidates_include_archived_projects_and_survive_source_purge(imports):
+def test_import_candidates_only_include_open_projects(imports):
     container, _, source_asset, client = imports
     path = "/api/v1/projects/target/assets/import-sources"
-    container.lifecycle_service.transition_project("source", "archive")
     response = client.get(path)
     assert response.status_code == 200
     assert {(item["kind"], item["id"]) for item in response.json()} == {
@@ -274,12 +231,5 @@ def test_import_candidates_include_archived_projects_and_survive_source_purge(im
         ("result", "result"),
     }
     assert client.get(path + "?sourceProjectId=missing").json() == []
-    container.lifecycle_service.transition_project("source", "trash")
+    container.removal_service.remove_project("source")
     assert client.get(path).json() == []
-    container.permanent_delete_service.purge_project("source")
-    container.permanent_delete_service.cleanup_pending()
-    items = client.get(path).json()
-    assert len(items) == 1
-    assert items[0]["kind"] == "archive"
-    assert items[0]["sourceProjectTitle"] == "source"
-    assert client.get(items[0]["previewUrl"]).content == b"preview bytes"

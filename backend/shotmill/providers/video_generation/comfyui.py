@@ -825,6 +825,13 @@ class ComfyUIVideoGenerationProvider:
             if state.get("status") == "cancelled":
                 raise ShotMillError("GENERATION_CANCELLED", "服务器已确认取消任务。", 409)
             if state.get("status") == "failed":
+                if (isinstance(state.get("error"), dict)
+                        and state["error"].get("code") == "server_exited"):
+                    raise ShotMillError(
+                        "GENERATION_SERVER_EXITED",
+                        "服务器已退出，原生成任务中断；退出原因未知，请手动重跑。",
+                        502,
+                    )
                 raise ShotMillError(
                     "SHOTMILL_BRIDGE_JOB_FAILED",
                     str(state.get("error") or "Bridge job failed"),

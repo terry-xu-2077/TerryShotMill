@@ -4,7 +4,7 @@
 > 最后更新：2026-09-14  
 > 适用范围：`frontend/`、Tauri Desktop UI、Mobile Remote Monitor、`/dev/ui`、所有 ShotMill Overlay / Dialog / Popover  
 > 上位体验规范：`UI_UX_SPEC.md`  
-> 当前增量规范：`UI_V0.9_BATCH_REVIEW_WORKFLOW.md`  
+> 当前任务与产品决策：`CURRENT_DEVELOPMENT_PLAN.md`
 > 默认共享 UI：`Terry_React_UI_Library`
 
 本文负责回答 **“ShotMill 的 UI 代码应该怎么写、哪些写法禁止、出现视觉问题时按什么顺序排查”**。
@@ -672,7 +672,7 @@ ShotMill 使用 Git SHA 锁定 UI Library。
 
 - 先读 `UI_UX_SPEC.md`；
 - 再读本文；
-- 当前批量流程读 `UI_V0.9_BATCH_REVIEW_WORKFLOW.md`；
+- 当前批量流程读 `CURRENT_DEVELOPMENT_PLAN.md` 和相关实现／测试；
 - 确认 UI Library 是否已有需要的组件；
 - 如果缺的是通用控件，先做 UI Library；
 - 新公共组件同步进入 Showcase；

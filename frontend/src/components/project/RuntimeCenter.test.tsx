@@ -85,3 +85,16 @@ it("distinguishes a waiting continuation from explicit fallback consent", async 
   await userEvent.click(screen.getByRole("button", { name: "继续生成（不承接） 第三段" }));
   expect(action).toHaveBeenCalledWith("p", "video", "fallback", "resume");
 });
+
+it("offers retry submission for a video paused before reaching the server", async () => {
+  const action = vi.fn().mockResolvedValue(undefined);
+  render(<RuntimeCenter projects={[{ project: { id: "p", title: "电影" }, runtime: {
+    state: "queued", videoJobs: [{ id: "job", taskId: "task", title: "镜头", state: "queued",
+      paused: true, retrySubmission: true, statusNote: "服务器未响应", error: "服务器未响应" }],
+  } }]} onTaskAction={action} />);
+  await userEvent.click(screen.getByRole("button", { name: "运行中心" }));
+  expect(screen.getByText("已挂起")).toBeInTheDocument();
+  expect(screen.getByText("服务器未响应")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "重试提交 镜头" }));
+  expect(action).toHaveBeenCalledExactlyOnceWith("p", "video", "job", "resume");
+});

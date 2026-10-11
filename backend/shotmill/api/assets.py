@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, Form, Query, Response, UploadFile, status
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/projects/{project_id}/assets", tags=["assets"])
 
 
 class ImportSourceRequest(ApiModel):
-    kind: Literal["asset", "result", "archive"]
+    kind: Literal["asset", "result"]
     id: str = Field(min_length=1)
 
 
@@ -25,8 +26,15 @@ class ImportSourcesRequest(ApiModel):
     sources: list[ImportSourceRequest] = Field(min_length=1)
 
 
+class LocalAssetRequest(ApiModel):
+    path: str = Field(min_length=1)
+    name: str | None = None
+    category: str = "reference"
+    tags: list[str] = Field(default_factory=list)
+
+
 class ImportCandidateView(ApiModel):
-    kind: Literal["asset", "result", "archive"]
+    kind: Literal["asset", "result"]
     id: str
     name: str
     source_project_id: str
@@ -94,6 +102,17 @@ async def import_asset(
         name=name,
         category=category,
         tags=_parse_tags(tags),
+    )
+    return map_asset(asset, container.storage)
+
+
+@router.post("/local", response_model=ProjectAssetView, status_code=201)
+def import_local_asset(
+    project_id: str, payload: LocalAssetRequest, container: ContainerDep,
+) -> ProjectAssetView:
+    asset = container.asset_service.import_path(
+        project_id, Path(payload.path), name=payload.name,
+        category=payload.category, tags=payload.tags,
     )
     return map_asset(asset, container.storage)
 

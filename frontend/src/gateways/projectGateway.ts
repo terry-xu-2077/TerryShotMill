@@ -8,8 +8,6 @@ export type ProjectStatus = "idle" | "running" | "completed" | "failed";
 export type TaskStatus = ProjectStatus;
 
 export type ProjectSummary = {
-  archivedAt?: string | null;
-  deletedAt?: string | null;
   createdAt?: string;
   newResults?: { video?: string; prompt?: string }[];
   generationWarnings?: string[];
@@ -29,6 +27,7 @@ export type ProjectSettings = {
   id: string;
   title: string;
   description: string;
+  director?: Record<string, unknown>;
   useDescriptionForAiPrompt: boolean;
   coverAssetId?: string | null;
   coverUrl?: string;
@@ -38,8 +37,6 @@ export type ProjectSettings = {
 export type ProjectCoverSelection = { kind: "auto" | "asset" | "video"; assetId?: string; resultId?: string; seconds?: number };
 
 export type TaskSummary = {
-  archivedAt?: string | null;
-  deletedAt?: string | null;
   missingReferences?: { sourceTaskId: string; sourceTaskTitle: string; sourceResultId?: string | null; kind: string }[];
   generationStatusNote?: string | null;
   generationWarnings?: string[];
@@ -56,6 +53,7 @@ export type TaskSummary = {
   assetCount: number;
   resultCount: number;
   durationSeconds: number;
+  timelineStartSeconds?: number | null;
   promptSource?: "user" | "ai";
   generationSummary: {
     resolution: string;
@@ -72,11 +70,13 @@ export type TaskSummary = {
     videoUrl: string;
     durationSeconds?: number | null;
   };
+  resultHistory?: Array<{ id: string; previewUrl?: string; videoUrl: string; durationSeconds?: number | null }>;
 };
 
 export type ProjectWorkspaceView = {
-  project: { id: string; title: string; archivedAt?: string | null; deletedAt?: string | null };
+  project: { id: string; title: string };
   tasks: TaskSummary[];
+  timelines: Array<{ id: string; title: string; taskIds: string[] }>;
   runtime: {
     activeTaskId?: string;
     activeTaskTitle?: string;
@@ -92,6 +92,7 @@ export type ProjectRuntimeView = Pick<ProjectWorkspaceView, "project" | "runtime
 export type RuntimeTaskItem = {
   statusNote?: string | null;
   continuationFallback?: boolean;
+  retrySubmission?: boolean;
   paused?: boolean;
   position?: number | null;
   id: string;
@@ -139,6 +140,7 @@ export type TaskEditorView = {
   durationSeconds: number;
   previousTaskDurationSeconds?: number;
   generation: {
+    director?: Record<string, unknown>;
     workflowProfileId?: string;
     workflowInputs?: WorkflowInputSelection | null;
     resolution: string;
@@ -282,6 +284,7 @@ export type ApplicationSettings = {
 
 export type SaveTaskInput = {
   saveUserPromptVersion?: boolean;
+  timelineId?: string;
   title: string;
   summary: string;
   scriptSource: string;
@@ -314,19 +317,25 @@ export interface ProjectGateway {
   listComfyUIWorkflows(): Promise<ComfyUIWorkflow[]>;
   listProjects(): Promise<ProjectSummary[]>;
   getGlobalRuntime(): Promise<ProjectRuntimeView[]>;
-  createProject(input: { title: string }): Promise<ProjectSummary>;
+  createProject(input: { title: string; path: string }): Promise<ProjectSummary>;
+  openProjectFile(path: string): Promise<ProjectSummary>;
   updateProject(
     projectId: string,
-    input: Partial<Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt" | "cover">>,
+    input: Partial<Pick<ProjectSettings, "title" | "description" | "useDescriptionForAiPrompt" | "cover" | "director">>,
   ): Promise<ProjectSummary>;
   getProjectSettings(projectId: string): Promise<ProjectSettings>;
   getWorkspace(projectId: string): Promise<ProjectWorkspaceView>;
+  createTimeline(projectId: string, title: string): Promise<{ id: string; title: string; taskIds: string[] }>;
+  renameTimeline(projectId: string, timelineId: string, title: string): Promise<void>;
+  deleteTimeline(projectId: string, timelineId: string): Promise<void>;
   getTaskEditor(projectId: string, taskId: string): Promise<TaskEditorView>;
   updateEditorPreference(projectId: string, taskId: string, input: Partial<TaskEditorView["editorPreference"]>): Promise<TaskEditorView["editorPreference"]>;
   createTask(projectId: string, input: SaveTaskInput): Promise<TaskSummary>;
   updateTask(projectId: string, taskId: string, input: SaveTaskInput): Promise<TaskSummary>;
+  updateTaskTimeline(projectId: string, taskId: string, input: { startSeconds: number | null; durationSeconds: number }): Promise<TaskSummary>;
   listAssets(projectId: string): Promise<ProjectAsset[]>;
   importAsset(projectId: string, file: File, input: AssetPatch): Promise<ProjectAsset>;
+  importLocalAsset(projectId: string, path: string, input: AssetPatch): Promise<ProjectAsset>;
   updateAsset(projectId: string, assetId: string, input: AssetPatch): Promise<ProjectAsset>;
   deleteAsset(projectId: string, assetId: string): Promise<void>;
   listPromptRevisions(projectId: string, taskId: string): Promise<PromptRevisionView[]>;
@@ -500,11 +509,19 @@ export class HttpProjectGateway implements ProjectGateway {
     return (await request<ProjectListResponse>("/projects")).items;
   }
 
-  createProject(input: { title: string }) {
+  createProject(input: { title: string; path: string }) {
     return request<ProjectSummary>("/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+    });
+  }
+
+  openProjectFile(path: string) {
+    return request<ProjectSummary>("/projects/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
     });
   }
 
@@ -531,6 +548,22 @@ export class HttpProjectGateway implements ProjectGateway {
       catch { /* Keep unknown rather than mislabel an AI prompt as user-authored. */ }
     }));
     return workspace;
+  }
+
+  createTimeline(projectId: string, title: string) {
+    return request<{ id: string; title: string; taskIds: string[] }>(`/projects/${encodeURIComponent(projectId)}/timelines`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }),
+    });
+  }
+
+  renameTimeline(projectId: string, timelineId: string, title: string) {
+    return request<void>(`/projects/${encodeURIComponent(projectId)}/timelines/${encodeURIComponent(timelineId)}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }),
+    });
+  }
+
+  deleteTimeline(projectId: string, timelineId: string) {
+    return request<void>(`/projects/${encodeURIComponent(projectId)}/timelines/${encodeURIComponent(timelineId)}`, { method: "DELETE" });
   }
 
   async getTaskEditor(projectId: string, taskId: string) {
@@ -576,6 +609,21 @@ export class HttpProjectGateway implements ProjectGateway {
     return mapAsset(projectId, await request<BackendAsset>(
       `/projects/${encodeURIComponent(projectId)}/assets`,
       { method: "POST", body },
+    ));
+  }
+
+  updateTaskTimeline(projectId: string, taskId: string, input: { startSeconds: number | null; durationSeconds: number }) {
+    return request<TaskSummary>(
+      `/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/timeline`,
+      { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) },
+    );
+  }
+
+  async importLocalAsset(projectId: string, path: string, input: AssetPatch) {
+    return mapAsset(projectId, await request<BackendAsset>(
+      `/projects/${encodeURIComponent(projectId)}/assets/local`,
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, ...input }) },
     ));
   }
 

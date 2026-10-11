@@ -4,8 +4,6 @@ from collections.abc import Callable
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from shotmill.persistence.repositories.archive import SqlAlchemyArchivedResultRepository
-from shotmill.persistence.repositories.cleanup import SqlAlchemyCleanupRepository
 from shotmill.persistence.repositories.files import SqlAlchemyFileRepository
 from shotmill.persistence.repositories.history import (
     SqlAlchemyContextRepository,
@@ -19,6 +17,7 @@ from shotmill.persistence.repositories.project_asset import (
     SqlAlchemyAssetRepository,
     SqlAlchemyProjectRepository,
 )
+from shotmill.persistence.repositories.project_paths import ProjectPathRepository
 from shotmill.persistence.repositories.runtime_control import SqlAlchemyRuntimeControlRepository
 from shotmill.persistence.repositories.story_structure import SqlAlchemyStoryStructureRepository
 from shotmill.persistence.repositories.task import SqlAlchemyTaskRepository
@@ -32,7 +31,7 @@ class SqlAlchemyUnitOfWork:
     def __enter__(self) -> SqlAlchemyUnitOfWork:
         self.session = self.session_factory()
         self.files = SqlAlchemyFileRepository(self.session)
-        self.cleanup = SqlAlchemyCleanupRepository(self.session)
+        self.project_paths = ProjectPathRepository(self.session)
         self.runtime_controls = SqlAlchemyRuntimeControlRepository(self.session)
         self.projects = SqlAlchemyProjectRepository(self.session)
         self.story_structure = SqlAlchemyStoryStructureRepository(self.session)
@@ -40,7 +39,6 @@ class SqlAlchemyUnitOfWork:
         self.tasks = SqlAlchemyTaskRepository(self.session)
         self.jobs = SqlAlchemyJobRepository(self.session)
         self.results = SqlAlchemyResultRepository(self.session)
-        self.archived_results = SqlAlchemyArchivedResultRepository(self.session)
         self.prompt_revisions = SqlAlchemyPromptRevisionRepository(self.session)
         self.prompt_batches = SqlAlchemyPromptEnhancementBatchRepository(self.session)
         self.prompt_jobs = SqlAlchemyPromptEnhancementJobRepository(self.session)

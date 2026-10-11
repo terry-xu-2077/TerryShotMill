@@ -1,7 +1,7 @@
 import { httpProjectGateway, projectRequest } from "./projectGateway";
 
 export type PendingImportConfiguration = {
-  taskId: string; title: string; revision: number; sourceConfigurationId: string | null; readOnly: boolean;
+  taskId: string; title: string; revision: number; sourceConfigurationId: string | null;
 };
 export interface ImportConfigurationGateway {
   pending(projectId: string): Promise<PendingImportConfiguration[]>;

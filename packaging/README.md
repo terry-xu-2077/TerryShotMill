@@ -1,40 +1,27 @@
-# Windows 独立运行时
+# Windows 绿色版
 
-此目录用于完整 Windows 客户端，不是远程网页壳。当前已验证独立后端目录式 EXE；完整 Tauri 安装包、升级与实际窗口验收仍以 `docs/PROJECT_PORTABILITY_PLAN.md` 为准。
-
-## 构建
-
-从仓库根目录使用 PowerShell 7。构建环境需要项目 Python 依赖；目标机器不需要安装 Python。
+绿色版是解压后直接运行的完整 Windows 客户端，不需要安装器。双击仓库根目录的 `打包绿色版.bat` 即可打包；该入口调用 `scripts/build-portable.ps1`，与 TerryComfyLauncher 的方式相同。也可使用 PowerShell 7 在仓库根目录直接执行：
 
 ```powershell
-.venv/Scripts/python.exe -m pip install --no-cache-dir '.[desktop-build]'
-$env:SHOTMILL_FFMPEG_ROOT = 'D:/Program Files/ffmpeg'
-$env:PYINSTALLER_CONFIG_DIR = 'G:/AIGC/TerryShotMill/.artifacts/pyinstaller-cache'
-.venv/Scripts/python.exe -m PyInstaller packaging/shotmill-backend.spec --distpath .artifacts/windows-runtime --workpath .artifacts/pyinstaller --noconfirm
-.venv/Scripts/python.exe scripts/verify_desktop_runtime.py .artifacts/windows-runtime/shotmill-backend/shotmill-backend.exe
+& .\scripts\build-portable.ps1
 ```
 
-两处构建路径应按本机环境指定，不进入业务数据或最终配置。FFmpeg 发行目录必须有 `bin/ffmpeg.exe`、`bin/ffprobe.exe`、`LICENSE`、`README.txt`。不得仅复制 EXE：必须携带完整 `shotmill-backend` 输出目录（包含 `_internal`）。
+脚本依次冻结后端、检查冻结运行时、构建前端、编译正式 Tauri 程序，并组装与压缩绿色版。构建机需要项目 `.venv`、前端 `node_modules`、Node.js、Rust/Cargo 和完整 FFmpeg 发行目录；目标机器不需要这些开发环境。默认读取 `D:\Program Files\ffmpeg`，也可传入 `-FfmpegRoot` 或设置 `SHOTMILL_FFMPEG_ROOT`。发行目录须包含 `bin/ffmpeg.exe`、`bin/ffprobe.exe`、`LICENSE`、`README.txt`。
 
-验证在临时目录中运行，清除 Python/ShotMill 环境变量，并从 PATH 中移除开发工具；使用内置媒体工具生成/探测短视频，再启动实际冻结后端，核对 API、静态资源、项目持久化和正常退出。它不代替完整前端窗口、真实 Bridge 或干净 Windows 系统验收。
+产物参照 Rulesmd Editor 测试版放在仓库的 `release/` 下，目录和同名 ZIP 并列：
 
-## 桌面壳资源整合
-
-先构建前端，再用 `frontend/src-tauri/tauri.bundle.conf.json` 合并发布配置。此配置关闭隐式前端构建命令，因此必须显式完成 TypeScript/Vite 构建；资源映射把完整后端目录放到 `runtime/`，前端放到 `frontend/`。从 `frontend` 运行：
-
-```powershell
-& 'C:/Program Files/nodejs/node.exe' node_modules/typescript/bin/tsc -b --pretty false
-# 上一步成功后继续。
-& 'C:/Program Files/nodejs/node.exe' node_modules/vite/bin/vite.js build
-# 上一步成功后继续。
-& 'C:/Program Files/nodejs/node.exe' node_modules/@tauri-apps/cli/tauri.js build --config src-tauri/tauri.bundle.conf.json --bundles nsis --ci -- --offline
+```text
+release/
+  ShotMill 测试版/
+    ShotMill.exe
+    使用说明.txt
+    resources/        前端生产资源
+    runtime/          完整冻结后端、_internal 和内置媒体工具
+  ShotMill 测试版.zip
 ```
 
-仅编译可将 `--bundles nsis` 换成 `--no-bundle`。窗口验收额外合并 `--config src-tauri/tauri.smoke.conf.json`，使用独立 `com.terry.shotmill.acceptance` 数据目录及 `ShotMill Acceptance` 产品名称，不迁移正式应用数据，也不共用正式产品的安装记录。验收构建与正式构建共享输出文件名：必须确认构建进程成功退出后才能启动，不能在编译期间打开该路径下的旧 EXE；交付前必须重新使用正式配置构建，不能误发测试标识版本。
+复制或解压时须保留整个目录。脚本只收集构建产物和使用说明，不把项目、素材、数据库、应用设置或日志打入包内。项目由用户选定位置保存为 `.shotmill` 文件，生成结果写在工程旁的 `.files/outputs/`；本机导入素材仍引用原文件。应用设置独立保存在当前用户的 Windows 应用数据目录。项目 ZIP 是另一个功能，它会收集项目依赖文件供跨机器使用，不承担日常工程保存。
 
-## 构建注意
+构建中的冻结后端专项检查覆盖内置媒体工具、API、前端静态资源、普通工程文件和正常退出。正式桌面程序还需从组装后的目录做启动检查；`--no-bundle` 编译成功本身不代表绿色包可用。此前 2026-10-11 的完整包位于 `.artifacts/portable/`，保留为历史证据；此后以 `release/` 为交付位置。
 
-- 2026-09-27 pip 安装曾卡在缓存临时文件创建；已用进程栈确认。关闭缓存后安装成功。遇到等待先检查原进程，不并行向同一环境重复安装。
-- 当前构建使用本机已有 FFmpeg 静态发行版，文件较大。已随包保留原许可证和来源说明；对外分发前还必须核对完整第三方许可/对应源码交付材料，不能把本机测试包视作已完成发布合规。
-- 用户数据库、项目媒体、设置和凭据不得放进构建资源。
-- 启动方必须保持 stdin 管道打开；关闭管道请求正常退出。相同数据目录只允许一个桌面后端。
+当前 FFmpeg 发行版随包保留原许可证和来源说明；对外分发前仍须单独核对完整第三方许可及对应源码交付材料。本机测试包不等于对外发布。

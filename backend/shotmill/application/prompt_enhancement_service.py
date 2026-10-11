@@ -7,7 +7,6 @@ from datetime import datetime
 from time import perf_counter
 from typing import Any
 
-from shotmill.application.lifecycle_service import require_writable
 from shotmill.domain.entities import AiPromptRevision, Asset, new_id, utcnow
 from shotmill.domain.enums import PromptSource, TaskState
 from shotmill.domain.providers import (
@@ -207,7 +206,6 @@ class PromptEnhancementService:
             if task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "Task not found")
 
-            require_writable(project, task)
             resolved: list[ResolvedMedia] = []
             for index, requested in enumerate(media):
                 frozen = media_snapshot[index] if media_snapshot is not None else {}
@@ -300,7 +298,6 @@ class PromptEnhancementService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project, current)
             if expected_task_revision is not None and current.revision != expected_task_revision:
                 raise ShotMillError(
                     "PROMPT_JOB_STALE",
@@ -354,7 +351,6 @@ class PromptEnhancementService:
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
 
-            require_writable(project)
             resolved: list[ResolvedMedia] = []
             for requested in media:
                 asset = uow.assets.get(requested.asset_id)
@@ -438,7 +434,6 @@ class PromptEnhancementService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project, task)
             revision = uow.prompt_revisions.get(revision_id)
             if revision is None or revision.task_id != task_id:
                 raise NotFoundError("PROMPT_REVISION_NOT_FOUND", "Prompt revision not found")

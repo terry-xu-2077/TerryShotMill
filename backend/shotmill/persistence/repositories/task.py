@@ -54,6 +54,7 @@ class SqlAlchemyTaskRepository:
                 prompt_source=task.prompt_source.value,
                 generation_params=task.generation_params,
                 planned_duration_seconds=task.planned_duration_seconds,
+                timeline_start_seconds=task.timeline_start_seconds,
                 state=task.state.value,
                 progress=task.progress,
                 primary_result_id=task.primary_result_id,
@@ -66,8 +67,6 @@ class SqlAlchemyTaskRepository:
                 approved_revision_id=task.approved_revision_id,
                 user_view_mode=task.user_view_mode,
                 ai_view_mode=task.ai_view_mode,
-                archived_at=task.archived_at,
-                deleted_at=task.deleted_at,
                 created_at=task.created_at,
                 updated_at=task.updated_at,
             )
@@ -116,6 +115,7 @@ class SqlAlchemyTaskRepository:
         row.prompt_source = task.prompt_source.value
         row.generation_params = task.generation_params
         row.planned_duration_seconds = task.planned_duration_seconds
+        row.timeline_start_seconds = task.timeline_start_seconds
         row.state = task.state.value
         row.progress = task.progress
         row.primary_result_id = task.primary_result_id
@@ -128,8 +128,6 @@ class SqlAlchemyTaskRepository:
         row.approved_revision_id = task.approved_revision_id
         row.user_view_mode = task.user_view_mode
         row.ai_view_mode = task.ai_view_mode
-        row.archived_at = task.archived_at
-        row.deleted_at = task.deleted_at
         row.updated_at = task.updated_at
         self.replace_bindings(task.id, task.asset_bindings)
         self.session.flush()

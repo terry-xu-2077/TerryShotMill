@@ -7,8 +7,8 @@ from pathlib import Path
 from shotmill.application.file_library import FileLibrary
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import NotFoundError
-from shotmill.media.cleanup_storage import CleanupStorage
-from shotmill.media.legacy_paths import legacy_owner_id
+from shotmill.media.storage import MediaStorage
+from shotmill.persistence.project_documents import ProjectDocumentStore
 
 
 @dataclass(frozen=True)
@@ -21,37 +21,49 @@ class ReadableProjectFile:
 class ProjectFileReader:
     def __init__(
         self, factory: Callable[[], UnitOfWork], library: FileLibrary,
-        legacy: CleanupStorage | None = None,
+        media: MediaStorage, documents: ProjectDocumentStore,
     ):
         self.factory = factory
         self.library = library
-        self.legacy = legacy
+        self.media = media
+        self.documents = documents
 
     def read(
         self, project_id: str, relative: str, *, require_exists: bool = True,
     ) -> ReadableProjectFile:
-        match = re.fullmatch(r"shared/([a-z_]+)/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)", relative)
-        legacy_path = None
-        if match is None:
-            if relative.startswith("shared/") or self.legacy is None:
-                raise NotFoundError("MEDIA_NOT_FOUND", "媒体引用不存在")
-            try:
-                owner = ("legacy_path", legacy_owner_id(relative), "content")
-                legacy_path = self.legacy.resolve(project_id, relative)
-            except ValueError as exc:
-                raise NotFoundError("MEDIA_NOT_FOUND", "媒体引用不存在") from exc
-        else:
-            owner = match.groups()
         with self.factory() as uow:
             if uow.projects.get(project_id) is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "项目不存在")
-            reference = uow.files.get_reference("project", project_id, *owner)
+            external = re.fullmatch(r"external/asset/([A-Za-z0-9_-]+)/content", relative)
+            if external:
+                source = uow.project_paths.get(project_id, relative)
+                if source is None:
+                    raise NotFoundError("MEDIA_NOT_FOUND", "媒体引用不存在")
+                path = self.documents.resolve_reference(project_id, source)
+                if require_exists and not path.is_file():
+                    raise NotFoundError("MEDIA_NOT_FOUND", "原始素材文件不存在")
+                return ReadableProjectFile(
+                    path, path.name,
+                    mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                )
+            match = re.fullmatch(
+                r"shared/([a-z_]+)/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)", relative,
+            )
+            if match is None:
+                if relative.startswith("shared/"):
+                    raise NotFoundError("MEDIA_NOT_FOUND", "媒体引用不存在")
+                try:
+                    path = self.media.resolve(project_id, relative)
+                except ValueError as exc:
+                    raise NotFoundError("MEDIA_NOT_FOUND", "媒体引用不存在") from exc
+                if require_exists and not path.is_file():
+                    raise NotFoundError("MEDIA_NOT_FOUND", "媒体文件不存在")
+                return ReadableProjectFile(
+                    path, path.name,
+                    mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                )
+            reference = uow.files.get_reference("project", project_id, *match.groups())
             if reference is None:
-                if legacy_path is not None:
-                    if require_exists and not legacy_path.is_file():
-                        raise NotFoundError("MEDIA_NOT_FOUND", "媒体文件不存在")
-                    mime = mimetypes.guess_type(relative)[0] or "application/octet-stream"
-                    return ReadableProjectFile(legacy_path, legacy_path.name, mime)
                 raise NotFoundError("MEDIA_NOT_FOUND", "媒体引用不存在")
             file = uow.files.get(reference.sha256)
             if file is None:

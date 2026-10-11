@@ -1,15 +1,21 @@
-"""Import a verified project as an independent project in one publication transaction."""
+"""Unpack a project ZIP beside a user-selected ordinary project file."""
 
-from collections.abc import Callable
-from dataclasses import dataclass, replace
+from __future__ import annotations
+
+import os
+import shutil
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from typing import BinaryIO
 
 from shotmill.application.file_library import FileLibrary
-from shotmill.application.project_import_media import bind_project_import_media
-from shotmill.application.project_import_preflight import preflight_project_import
-from shotmill.application.project_transfer_identity import remap_project_identity
-from shotmill.application.project_transfer_validation import validate_project_transfer_graph
-from shotmill.domain.repositories import UnitOfWork
+from shotmill.application.project_package_media import bind_imported_paths, media_paths
+from shotmill.errors import ConflictError, ShotMillError
+from shotmill.media.project_package import open_project_package
+from shotmill.persistence.project_documents import (
+    ProjectDocumentStore, _atomic_json, validate_document,
+)
 
 
 @dataclass(frozen=True)
@@ -19,47 +25,55 @@ class ProjectImportOutcome:
 
 
 class ProjectImportService:
-    def __init__(self, factory: Callable[[], UnitOfWork], library: FileLibrary):
-        self.factory = factory
+    def __init__(self, library: FileLibrary, documents: ProjectDocumentStore):
         self.library = library
+        self.documents = documents
 
-    def import_package(self, stream: BinaryIO) -> ProjectImportOutcome:
+    def import_package(self, stream: BinaryIO, destination: Path) -> ProjectImportOutcome:
+        destination = destination.expanduser().resolve()
+        if destination.suffix.lower() != ".shotmill" or not destination.parent.is_dir():
+            raise ShotMillError(
+                "PROJECT_IMPORT_DESTINATION_INVALID",
+                "请选择已存在目录中的 .shotmill 工程文件位置", 422,
+            )
+        media_root = destination.with_name(f"{destination.stem}.files")
+        if destination.exists() or media_root.exists():
+            raise FileExistsError("目标工程文件或素材目录已存在")
         staging = self.library.storage.managed.resolve("staging")
         staging.mkdir(parents=True, exist_ok=True)
-        with preflight_project_import(stream, staging_parent=staging) as package:
-            identity = remap_project_identity(package.source)
-            with self.factory() as uow:
-                uow.reserve_write()
-                source = bind_project_import_media(uow, self.library, identity, package.files)
-                validate_project_transfer_graph(source)
-                uow.projects.add(replace(source.project, cover_asset_id=None))
-                uow.projects.set_transfer_requirements(
-                    source.project.id, package.provider_requirements,
+        with open_project_package(stream, staging_parent=staging) as package:
+            document = validate_document(package.document)
+            project_id = document["projectId"]
+            if project_id in self.documents.paths:
+                raise ConflictError(
+                    "PROJECT_ALREADY_OPEN", "该项目已经打开；请在独立环境中导入这份工程包",
                 )
-                for asset in source.assets:
-                    uow.assets.add(asset)
-                for scene in source.scenes:
-                    uow.story_structure.add_scene(scene)
-                for task in source.tasks:
-                    uow.tasks.add(replace(task, primary_result_id=None, approved_revision_id=None))
-                    uow.tasks.set_generation_configuration_required(task.id, True)
-                for placement in source.placements:
-                    uow.story_structure.place_task(source.project.id, placement)
-                for job in source.jobs:
-                    uow.jobs.add(job)
-                for result in source.results:
-                    uow.results.add(result)
-                for revision in source.prompt_revisions:
-                    uow.prompt_revisions.add(revision)
-                for batch in source.prompt_batches:
-                    uow.prompt_batches.add(batch)
-                for job in source.prompt_jobs:
-                    uow.prompt_jobs.add(job)
-                for task in source.tasks:
-                    uow.tasks.update(task)
-                    uow.contexts.replace_for_target(
-                        task.id,
-                        [link for link in source.contexts if link.target_task_id == task.id],
-                    )
-                uow.projects.update(source.project)
-            return ProjectImportOutcome(source.project.id, package.provider_requirements)
+            expected = {f"project.files/{path}" for path in media_paths(document)}
+            expected.update(f"library/{row['sha256']}"
+                            for row in document["tables"]["stored_files"])
+            if set(package.files) != expected:
+                raise ValueError("项目记录与包内文件清单不一致")
+            imported = bind_imported_paths(document, destination.stem)
+            for task in imported["tables"]["generation_tasks"]:
+                task["generation_configuration_required"] = True
+            with tempfile.TemporaryDirectory(
+                prefix="shotmill-unpack-", dir=destination.parent,
+            ) as temporary:
+                unpacked = Path(temporary) / "project.files"
+                unpacked.mkdir()
+                for name, source in package.files.items():
+                    if name.startswith("project.files/"):
+                        target = unpacked / name[len("project.files/"):]
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(source, target)
+                    else:
+                        with source.open("rb") as incoming:
+                            self.library.storage.put(
+                                incoming, expected_hash=name.removeprefix("library/"),
+                            )
+                os.replace(unpacked, media_root)
+                _atomic_json(destination, imported)
+            self.documents.open(destination)
+            return ProjectImportOutcome(
+                project_id, document["tables"]["projects"][0]["transfer_requirements"],
+            )

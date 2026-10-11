@@ -107,8 +107,6 @@ def map_task_summary(
             duration_seconds=primary.metadata.get("durationSeconds"),
         )
     return TaskSummary(
-        archived_at=task.archived_at,
-        deleted_at=task.deleted_at,
         prompt_source=task.prompt_source.value,
         latest_video_result_id=latest.id if latest else None,
         id=task.id,
@@ -122,6 +120,7 @@ def map_task_summary(
         asset_count=len(task.asset_bindings),
         result_count=len(results),
         duration_seconds=task.planned_duration_seconds,
+        timeline_start_seconds=task.timeline_start_seconds,
         generation_summary=GenerationSummary(
             resolution=str(_param(params, "resolution", "resolution", "1080p")),
             quality=str(_param(params, "quality", "quality", "标准")),
@@ -142,6 +141,10 @@ def map_task_summary(
         has_active_prompt_job=has_active_prompt_job,
         has_active_video_job=has_active_video_job,
         primary_result=primary_view,
+        result_history=[PrimaryResultView(
+            id=result.id, preview_url=result.preview_url, video_url=result.video_url,
+            duration_seconds=result.metadata.get("durationSeconds"),
+        ) for result in results],
     )
 
 
@@ -179,6 +182,7 @@ def map_task_editor(task: Task, previous_duration: float | None) -> TaskEditorVi
             context_duration_seconds=_param(
                 params, "contextDurationSeconds", "context_duration_seconds"
             ),
+            director=dict(params.get("director") or {}),
         ),
         asset_bindings=[
             TaskAssetRef(asset_id=binding.asset_id, reference=binding.reference, role=binding.role)
@@ -216,8 +220,6 @@ def map_project_summary(
     asset_previews = asset_previews or {}
     cover_url = asset_previews.get(project.cover_asset_id) or cover_url
     return ProjectSummary(
-        archived_at=project.archived_at,
-        deleted_at=project.deleted_at,
         created_at=project.created_at,
         new_results=[{"video": results[0].id} for results in results_by_task.values() if results],
         id=project.id,

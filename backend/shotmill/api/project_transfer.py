@@ -1,10 +1,11 @@
 from contextlib import ExitStack
 from dataclasses import asdict
+from pathlib import Path
 from typing import Annotated
 from zipfile import BadZipFile
 
 from anyio import CancelScope
-from fastapi import APIRouter, File, Response, UploadFile
+from fastapi import APIRouter, File, Form, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import Field
 from starlette.concurrency import run_in_threadpool
@@ -32,7 +33,6 @@ class PendingConfigurationView(ApiModel):
     title: str
     revision: int
     source_configuration_id: str | None
-    read_only: bool
 
 
 class ConfirmConfigurationRequest(ApiModel):
@@ -118,15 +118,24 @@ def discard_prepared_export(token: str, container: ContainerDep):
 
 
 @router.post("/import", response_model=ProjectImportResponse, status_code=201)
-def import_project(container: ContainerDep, file: Annotated[UploadFile, File()]):
+def import_project(
+    container: ContainerDep, file: Annotated[UploadFile, File()],
+    path: Annotated[str, Form()],
+):
     if file.size is not None and file.size > (
         DEFAULT_LIMITS.max_total_bytes + DEFAULT_LIMITS.max_manifest_bytes + 16 * 1024**2
     ):
         raise ShotMillError("PROJECT_PACKAGE_TOO_LARGE", "项目包超过大小限制。", 413)
     try:
-        outcome = container.project_import_service.import_package(file.file)
+        outcome = container.project_import_service.import_package(file.file, Path(path))
+    except FileExistsError as exc:
+        raise ShotMillError("PROJECT_FILE_EXISTS", str(exc), 409) from exc
     except (BadZipFile, ValueError) as exc:
         raise ShotMillError("PROJECT_PACKAGE_INVALID", "项目包损坏或格式不受支持。", 422) from exc
+    except OSError as exc:
+        raise ShotMillError(
+            "PROJECT_IMPORT_STORAGE_ERROR", "工程文件或媒体写入失败，请检查目标位置和磁盘空间。", 500,
+        ) from exc
     return ProjectImportResponse(
         project_id=outcome.project_id, provider_requirements=outcome.provider_requirements,
     )

@@ -208,6 +208,7 @@ def bridge_graph(tmp_path):
         "hashlib": hashlib,
         "json": json,
         "Path": Path,
+        "SERVER_SESSION_ID": "test-session",
     }
     exec(compile(tree, str(path), "exec"), scope)
     return scope
@@ -854,6 +855,26 @@ def test_bridge_job_status_uses_live_queue_and_history(bridge_graph, expected):
         assert "test failure" in str(state["error"])
 
 
+def test_bridge_reports_confirmed_exit_only_for_missing_previous_session_job(
+    bridge_graph, tmp_path,
+):
+    index_path = tmp_path / "jobs.json"
+    index_path.write_text(json.dumps({"jobs": {
+        "original": {"promptId": "remote", "submissionState": "queued",
+                     "serverSessionId": "previous-session"},
+    }}), encoding="utf-8")
+    bridge_graph.update({
+        "JOB_INDEX": index_path,
+        "PromptServer": SimpleNamespace(instance=SimpleNamespace(prompt_queue=SimpleNamespace(
+            get_current_queue=lambda: ([], []), get_history=lambda **_: {},
+        ))),
+        "read_receipt": lambda *_: None,
+    })
+    state = bridge_graph["_job_state"]("original")
+    assert state["status"] == "failed"
+    assert state["error"] == {"code": "server_exited", "reason": "unknown"}
+
+
 @pytest.mark.parametrize(("state", "http_status"), [("failed", 200), ("not_found", 404)])
 def test_bridge_failed_job_is_not_a_missing_http_resource(bridge_graph, state, http_status):
     bridge_graph.update(
@@ -867,6 +888,26 @@ def test_bridge_failed_job_is_not_a_missing_http_resource(bridge_graph, state, h
         bridge_graph["_job"](SimpleNamespace(match_info={"job_id": "job-1"}))
     )
     assert response_status == http_status
+
+
+def test_server_exit_receipt_fails_original_job_without_resubmission():
+    calls = []
+
+    def handler(request):
+        calls.append((request.method, request.url.path))
+        return httpx.Response(200, json={
+            "status": "failed", "promptId": "original-remote",
+            "error": {"code": "server_exited", "reason": "unknown"},
+        })
+
+    provider = ComfyUIVideoGenerationProvider(
+        "http://bridge", None, transport=httpx.MockTransport(handler),
+    )
+    with pytest.raises(ShotMillError) as failure:
+        asyncio.run(provider.resume("logical-job"))
+    assert failure.value.code == "GENERATION_SERVER_EXITED"
+    assert "退出原因未知" in failure.value.message
+    assert calls == [("GET", "/shotmill/v1/jobs/logical-job")]
 
 
 @pytest.mark.parametrize("terminal", ["completed", "failed"])

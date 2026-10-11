@@ -69,7 +69,7 @@ def test_generation_keeps_both_same_named_outputs(client, providers, monkeypatch
     }
 
 
-def test_shared_generated_result_remains_importable_and_archivable_after_purge(client):
+def test_shared_generated_result_remains_importable_after_source_removal(client):
     from shotmill.application.asset_import_service import ImportSelection
 
     container = client.app.state.container
@@ -85,28 +85,18 @@ def test_shared_generated_result_remains_importable_and_archivable_after_purge(c
         results = uow.results.list_by_task(task)
         assert len(results) == 2
         assert len({result.job_id for result in results}) == 2
-        refs = [uow.files.get_reference("project", source, "result", result.id, "output")
-                for result in results]
-        assert len({ref.sha256 for ref in refs}) == 1
-    assert len(list(container.settings.files_root.glob("objects/*/*"))) == 1
+        assert results[0].video_url != results[1].video_url
     imported = container.asset_import_service.import_sources(
         target, [ImportSelection("result", results[0].id)],
     )[0]
     assert imported.original_filename == "result.mp4"
-    container.lifecycle_service.transition_project(source, "trash")
-    outcome = container.permanent_delete_service.purge_project(source, archive_results=True)
-    assert outcome.archived_result_count == 2
-    container.permanent_delete_service.cleanup_pending()
-    with service.uow_factory() as uow:
-        remaining = uow.files.references(refs[0].sha256)
-        assert not any(ref.scope_kind == "project" and ref.scope_id == source for ref in remaining)
-        assert sum(ref.scope_kind == "archive" for ref in remaining) == 2
+    source_output = container.storage.resolve_read(
+        source, results[0].video_url.removeprefix(f"/media/{source}/"),
+    )
+    container.removal_service.remove_project(source)
     url = container.storage.media_url(target, imported.project_relative_path)
     assert client.get(url).content == b"fake-video-bytes"
-    for archived in container.result_archive_service.list(source):
-        path, filename = container.result_archive_service.file(archived.id, 0)
-        assert filename == "result.mp4"
-        assert path.read_bytes() == b"fake-video-bytes"
+    assert source_output.read_bytes() == b"fake-video-bytes"
 
 
 def test_result_database_failure_rolls_back_references_but_keeps_shared_asset(client, monkeypatch):

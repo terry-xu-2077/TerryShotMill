@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
@@ -48,31 +50,48 @@ class ApplicationSettingsStore:
         prompt_system: PromptSystemSettings,
         comfyui: ComfyUISettings | None = None,
     ) -> None:
+        previous = (self._local_inference, self._prompt_system, self._comfyui)
         self._local_inference = local_inference
         self._prompt_system = prompt_system
         if comfyui is not None:
             self._comfyui = comfyui
-        self._write()
+        try:
+            self._write()
+        except Exception:
+            self._local_inference, self._prompt_system, self._comfyui = previous
+            raise
 
     def update_local_inference(self, settings: LocalInferenceSettings) -> LocalInferenceSettings:
+        previous = self._local_inference
         self._local_inference = settings
-        self._write()
+        try:
+            self._write()
+        except Exception:
+            self._local_inference = previous
+            raise
         return settings
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "prompt_system": asdict(self._prompt_system),
-                    "local_inference": asdict(self._local_inference),
-                    "comfyui": asdict(self._comfyui),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+        payload = json.dumps({
+            "prompt_system": asdict(self._prompt_system),
+            "local_inference": asdict(self._local_inference),
+            "comfyui": asdict(self._comfyui),
+        }, ensure_ascii=False, indent=2)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w", dir=self.path.parent, prefix=f".{self.path.name}.",
+                encoding="utf-8", newline="\n", delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
     def _read_local_inference(self) -> LocalInferenceSettings:
         if not self.path.exists():

@@ -34,7 +34,7 @@ class StoredFileModel(Base):
 class FileReferenceModel(Base):
     __tablename__ = "file_references"
 
-    # No project FK: global objects and archive/history owners outlive projects.
+    # No project FK: shared file references can outlive a removed project.
     # Reference release is explicit in the owning business transaction.
     scope_kind: Mapped[str] = mapped_column(String(32), primary_key=True)
     scope_id: Mapped[str] = mapped_column(String(80), primary_key=True)
@@ -48,34 +48,6 @@ class FileReferenceModel(Base):
     )
 
 
-class PendingFileCleanupModel(Base):
-    __tablename__ = "pending_file_cleanup"
-
-    id: Mapped[str] = mapped_column(String(80), primary_key=True)
-    project_id: Mapped[str] = mapped_column(String(80), nullable=False)
-    paths: Mapped[list[str]] = mapped_column(JSON, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
-class ArchivedResultModel(Base):
-    __tablename__ = "archived_results"
-
-    id: Mapped[str] = mapped_column(String(80), primary_key=True)
-    source_result_id: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
-    source_project_id: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
-    source_project_title: Mapped[str] = mapped_column(String(240), nullable=False)
-    source_task_id: Mapped[str] = mapped_column(String(80), nullable=False)
-    source_task_title: Mapped[str] = mapped_column(String(240), nullable=False)
-    source_job_id: Mapped[str] = mapped_column(String(80), nullable=False)
-    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    final_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    params: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    files: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
-    result_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    archived_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-
 class ProjectModel(Base):
     __tablename__ = "projects"
 
@@ -85,14 +57,23 @@ class ProjectModel(Base):
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     title: Mapped[str] = mapped_column(String(240), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    director: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     use_description_for_ai_prompt: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
     cover_asset_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProjectFilePathModel(Base):
+    __tablename__ = "project_file_paths"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True,
+    )
+    logical_path: Mapped[str] = mapped_column(String(1000), primary_key=True)
+    source_path: Mapped[str] = mapped_column(String(2000), nullable=False)
 
 
 class AssetModel(Base):
@@ -160,6 +141,7 @@ class TaskModel(Base):
     prompt_source: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
     generation_params: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     planned_duration_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=6.0)
+    timeline_start_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     state: Mapped[str] = mapped_column(String(40), nullable=False, default="draft")
     progress: Mapped[float | None] = mapped_column(Float, nullable=True)
     primary_result_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
@@ -170,8 +152,6 @@ class TaskModel(Base):
     approved_revision_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     user_view_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="visual")
     ai_view_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="visual")
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

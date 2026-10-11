@@ -4,11 +4,9 @@ from typing import Protocol
 
 from shotmill.domain.entities import (
     AiPromptRevision,
-    ArchivedResult,
     Asset,
     ContextLink,
     Job,
-    PendingFileCleanup,
     Project,
     PromptEnhancementBatch,
     PromptEnhancementJob,
@@ -18,6 +16,11 @@ from shotmill.domain.entities import (
     TaskPlacement,
 )
 from shotmill.domain.files import FileRepository
+
+
+class ProjectPathRepository(Protocol):
+    def get(self, project_id: str, logical_path: str) -> str | None: ...
+    def add(self, project_id: str, logical_path: str, source_path: str) -> None: ...
 
 
 class ProjectRepository(Protocol):
@@ -35,6 +38,8 @@ class StoryStructureRepository(Protocol):
     def list_placements(self, project_id: str) -> list[TaskPlacement]: ...
     def add_scene(self, scene: Scene) -> Scene: ...
     def place_task(self, project_id: str, placement: TaskPlacement) -> None: ...
+    def rename_scene(self, project_id: str, scene_id: str, title: str) -> None: ...
+    def delete_scene(self, project_id: str, scene_id: str) -> None: ...
 
 
 class AssetRepository(Protocol):
@@ -80,14 +85,6 @@ class ResultRepository(Protocol):
     def count_by_task(self, task_id: str) -> int: ...
 
 
-class ArchivedResultRepository(Protocol):
-    def get(self, archive_id: str) -> ArchivedResult | None: ...
-    def get_by_source(self, result_id: str) -> ArchivedResult | None: ...
-    def list(self, source_project_id: str | None = None) -> list[ArchivedResult]: ...
-    def add(self, archive: ArchivedResult) -> ArchivedResult: ...
-    def delete(self, archive_id: str) -> None: ...
-
-
 class PromptRevisionRepository(Protocol):
     def get(self, revision_id: str) -> AiPromptRevision | None: ...
     def add(self, revision: AiPromptRevision) -> AiPromptRevision: ...
@@ -123,17 +120,9 @@ class RuntimeControlRepository(Protocol):
     def save(self, value) -> None: ...
 
 
-class CleanupRepository(Protocol):
-    def list(self) -> list[PendingFileCleanup]: ...
-    def add(self, item: PendingFileCleanup) -> None: ...
-    def fail(self, cleanup_id: str, message: str) -> None: ...
-    def delete(self, cleanup_id: str) -> None: ...
-
-
 class UnitOfWork(Protocol):
     files: FileRepository
-    cleanup: CleanupRepository
-    archived_results: ArchivedResultRepository
+    project_paths: ProjectPathRepository
     runtime_controls: RuntimeControlRepository
     projects: ProjectRepository
     story_structure: StoryStructureRepository

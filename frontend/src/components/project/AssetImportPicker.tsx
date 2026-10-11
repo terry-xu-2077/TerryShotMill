@@ -4,7 +4,7 @@ import { Button, Checkbox } from "../../ui/primitives";
 import { Dialog } from "../../ui/overlay";
 import "./AssetImportPicker.css";
 
-const kindLabels = { asset: "项目资产", result: "生成结果", archive: "结果归档" };
+const kindLabels = { asset: "项目资产", result: "生成结果" };
 const keyOf = (item: ImportCandidate) => `${item.kind}:${item.id}`;
 
 export function AssetImportPicker({ projectId, gateway = assetTransferGateway, onClose, onSelect }: {
@@ -23,7 +23,7 @@ export function AssetImportPicker({ projectId, gateway = assetTransferGateway, o
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [projectId, gateway, attempt]);
-  return <Dialog open icon="assets" title="从项目或归档导入" onClose={onClose}>
+  return <Dialog open icon="assets" title="从其他项目导入" onClose={onClose}>
     <div className="asset-import-picker">
       <p>选中后加入当前草稿，保存项目配置时复制为独立资产。取消配置不会导入。</p>
       {loading && <p role="status">正在加载…</p>}

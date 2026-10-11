@@ -42,8 +42,7 @@ def read_project_transfer_source(uow: UnitOfWork, project_id: str) -> ProjectTra
     """Use a fresh UoW; caller retains transaction through portable staging.
 
 The write reservation prevents submissions/deletions racing the active-job check.
-Do not use UI lifecycle filters: archived and trashed tasks belong to the package.
-Independent result archives deliberately do not belong to this graph.
+All current tasks and their results belong to the package.
 """
     uow.reserve_write()
     project = uow.projects.get(project_id)

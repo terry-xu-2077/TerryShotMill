@@ -1,7 +1,7 @@
 from fastapi import APIRouter, status
 
 from shotmill.api.dependencies import ContainerDep
-from shotmill.api.schemas import EditorPreferencePatch, TaskReorderRequest, TaskSaveRequest
+from shotmill.api.schemas import EditorPreferencePatch, TaskReorderRequest, TaskSaveRequest, TaskTimelinePatch
 from shotmill.application.task_service import SaveTaskAsset, SaveTaskData
 from shotmill.frontend_adapter.models import EditorPreference, TaskEditorView, TaskSummary
 
@@ -18,6 +18,7 @@ def _command(payload: TaskSaveRequest) -> SaveTaskData:
         ai_prompt=payload.ai_enhanced_prompt,
         prompt_source=payload.prompt_source,
         duration_seconds=payload.duration_seconds,
+        timeline_id=payload.timeline_id,
         generation=payload.generation.model_dump(by_alias=True, exclude_none=False),
         asset_bindings=tuple(
             SaveTaskAsset(asset_id=item.asset_id, reference=item.reference, role=item.role)
@@ -71,6 +72,19 @@ def update_editor_preference(
         project_id, task_id, **payload.model_dump(exclude_unset=True)
     )
     return EditorPreference(**preference)
+
+
+@router.patch("/{task_id}/timeline", response_model=TaskSummary)
+def update_task_timeline(
+    project_id: str,
+    task_id: str,
+    payload: TaskTimelinePatch,
+    container: ContainerDep,
+) -> TaskSummary:
+    container.task_service.update_timeline(
+        project_id, task_id, payload.start_seconds, payload.duration_seconds,
+    )
+    return container.workspace_query.task_summary(project_id, task_id)
 
 
 @router.post("/reorder", status_code=status.HTTP_204_NO_CONTENT)

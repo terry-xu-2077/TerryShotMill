@@ -62,7 +62,8 @@ export type ProjectAsset = {
   checksum: string;
   originalFilename?: string;
   sourceFile?: File;
-  importSource?: { kind: "asset" | "result" | "archive"; id: string };
+  sourcePath?: string;
+  importSource?: { kind: "asset" | "result"; id: string };
 };
 
 export type ResolvedTaskAssetSnapshot = Readonly<TaskAssetBinding & {
@@ -112,6 +113,7 @@ export type GenerationTask = {
   visualBeats: TaskVisualBeat[];
   assetBindings: TaskAssetBinding[];
   plannedDurationSeconds: number;
+  timelineStartSeconds?: number | null;
   generationProfileId: EntityId;
   generationProfileLabel: string;
   aiPrompt: string;

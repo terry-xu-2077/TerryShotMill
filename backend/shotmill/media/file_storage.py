@@ -36,6 +36,13 @@ class FileStorage:
                     or hashlib.file_digest(stream, "sha256").hexdigest() != file.sha256):
                 raise OSError("Existing shared file is damaged")
 
+    def resolve_present(self, file: StoredFile) -> Path:
+        """Check a read target without hashing its content."""
+        path = self.resolve(file)
+        if path.stat().st_size != file.size or not path.is_file():
+            raise OSError("Existing shared file is missing or incomplete")
+        return path
+
     def put(
         self, source: BinaryIO, *, expected_hash: str | None = None,
     ) -> StoredFile:

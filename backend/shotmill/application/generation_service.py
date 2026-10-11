@@ -9,7 +9,6 @@ from dataclasses import asdict
 
 from shotmill.application.continuation_risks import MISSING_PREVIOUS_VIDEO
 from shotmill.application.event_bus import ProjectEventBus
-from shotmill.application.lifecycle_service import require_writable
 from shotmill.application.managed_queue import ManagedQueue
 from shotmill.application.result_file_collector import ResultFileCollector
 from shotmill.application.snapshot_files import freeze_media_references
@@ -27,7 +26,7 @@ from shotmill.domain.providers import (
     VideoGenerationRequest,
 )
 from shotmill.domain.repositories import UnitOfWork
-from shotmill.errors import ConflictError, NotFoundError, ShotMillError
+from shotmill.errors import ConflictError, NotFoundError, ProviderUnavailableError, ShotMillError
 from shotmill.media.context import file_digest, prepare_context_media
 from shotmill.media.previews import result_with_preview
 from shotmill.media.storage import MediaStorage
@@ -156,7 +155,6 @@ class GenerationService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project, task)
             if uow.tasks.generation_configuration_required(task_id):
                 raise ConflictError(
                     "GENERATION_CONFIGURATION_REQUIRED",
@@ -462,7 +460,6 @@ class GenerationService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project, task)
             if task_id in uow.jobs.active_task_ids_by_project(project_id):
                 raise ConflictError("TASK_BUSY", "任务已在视频队列中。")
             if task.revision != job.task_content_snapshot["taskRevision"]:
@@ -712,7 +709,8 @@ class GenerationService:
                             job_id=job.id,
                             video_url=url,
                             preview_url=preview_url,
-                            metadata={"contentType": output.content_type, **output.metadata},
+                            metadata={"contentType": output.content_type,
+                                      "originalFilename": output.filename, **output.metadata},
                         ),
                         self.storage,
                     )
@@ -776,51 +774,75 @@ class GenerationService:
                 with self.uow_factory() as uow:
                     failed_job = uow.jobs.get(job_id)
                     failed_task = uow.tasks.get(task_id)
-                    stopped = bool(
-                        getattr(exc, "code", "") == "GENERATION_CANCELLED"
-                        or failed_job
-                        and (failed_job.runtime_progress or {}).get("stopRequested")
-                        and (
-                            "execution_interrupted" in str(exc)
-                            or getattr(exc, "code", "") == "SHOTMILL_BRIDGE_JOB_NOT_FOUND"
-                        )
+                    before_submission = (
+                        isinstance(exc, ProviderUnavailableError)
+                        and failed_job is not None
+                        and failed_job.status == JobStatus.RUNNING
+                        and not (failed_job.runtime_progress or {}).get("submissionState")
                     )
-                    if failed_job is not None:
-                        failed_job.status = JobStatus.CANCELLED if stopped else JobStatus.FAILED
-                        failed_job.completed_at = utcnow()
-                        failed_job.error_code = (
-                            "USER_STOPPED"
-                            if stopped
-                            else getattr(exc, "code", type(exc).__name__.upper())
-                        )
-                        failed_job.error_message = "用户停止" if stopped else str(exc)
+                    if before_submission:
+                        failed_job.status = JobStatus.QUEUED
+                        failed_job.started_at = None
+                        failed_job.runtime_progress = {}
+                        failed_job.error_code = "GENERATION_SERVICE_OFFLINE"
+                        failed_job.error_message = "服务器未响应"
                         uow.jobs.update_runtime(failed_job)
-                    if failed_task is not None:
-                        failed_task.state = (
-                            (
-                                TaskState.COMPLETED
-                                if failed_task.primary_result_id
-                                else TaskState.READY
+                        control = uow.runtime_controls.get(job_id)
+                        control.paused = True
+                        uow.runtime_controls.save(control)
+                        if failed_task is not None:
+                            failed_task.state = TaskState.QUEUED
+                            failed_task.progress = None
+                            failed_task.updated_at = utcnow()
+                            uow.tasks.update(failed_task)
+                    else:
+                        stopped = bool(
+                            getattr(exc, "code", "") == "GENERATION_CANCELLED"
+                            or failed_job
+                            and (failed_job.runtime_progress or {}).get("stopRequested")
+                            and (
+                                "execution_interrupted" in str(exc)
+                                or getattr(exc, "code", "") == "SHOTMILL_BRIDGE_JOB_NOT_FOUND"
                             )
-                            if stopped
-                            else TaskState.FAILED
                         )
-                        failed_task.progress = None
-                        failed_task.updated_at = utcnow()
-                        uow.tasks.update(failed_task)
+                        if failed_job is not None:
+                            failed_job.status = JobStatus.CANCELLED if stopped else JobStatus.FAILED
+                            failed_job.completed_at = utcnow()
+                            failed_job.error_code = (
+                                "USER_STOPPED"
+                                if stopped
+                                else getattr(exc, "code", type(exc).__name__.upper())
+                            )
+                            failed_job.error_message = "用户停止" if stopped else str(exc)
+                            uow.jobs.update_runtime(failed_job)
+                        if failed_task is not None:
+                            failed_task.state = (
+                                (
+                                    TaskState.COMPLETED
+                                    if failed_task.primary_result_id
+                                    else TaskState.READY
+                                )
+                                if stopped
+                                else TaskState.FAILED
+                            )
+                            failed_task.progress = None
+                            failed_task.updated_at = utcnow()
+                            uow.tasks.update(failed_task)
                 await self.events.publish(
                     project_id,
                     "task.status_changed",
                     taskId=task_id,
-                    status="cancelled" if stopped else "failed",
+                    status="queued" if before_submission else "cancelled" if stopped else "failed",
                     progress=None,
                 )
                 await self.events.publish(
                     project_id,
                     "project.runtime_changed",
                     taskId=None,
-                    state="idle" if stopped else "failed",
+                    state="queued" if before_submission else "idle" if stopped else "failed",
                 )
+                if before_submission:
+                    await self.events.publish(project_id, "project.summary_changed")
             # The failure is persisted; worker stays alive for later jobs.
         finally:
             if response is not None:

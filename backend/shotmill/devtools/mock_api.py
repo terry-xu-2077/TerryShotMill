@@ -20,7 +20,6 @@ from shotmill.domain.providers import (
     VideoGenerationRequest,
     VideoGenerationResponse,
 )
-from shotmill.persistence.migrations import upgrade_database
 
 
 class MockVideoGenerationProvider:
@@ -99,6 +98,7 @@ async def seed_mock_scenario(application: FastAPI) -> None:
 
     project = container.project_service.create(
         "雨夜仓库 · Mock 项目",
+        container.settings.data_root / "project-documents" / "mock-project.shotmill",
         "一支悬疑氛围短片。冷色雨夜与仓库内暖光形成对比，人物和场景需要保持连续。",
         True,
     )
@@ -195,11 +195,11 @@ async def seed_mock_scenario(application: FastAPI) -> None:
 async def create_mock_app(data_root: Path) -> FastAPI:
     selected_settings = _settings(data_root)
     selected_settings.data_root.mkdir(parents=True, exist_ok=True)
-    upgrade_database(selected_settings.database_url)
     application = create_app(
         selected_settings,
         prompt_provider=MockPromptAIProvider(),
         video_provider=MockVideoGenerationProvider(),
     )
+    application.state.container.project_documents.load_recent()
     await seed_mock_scenario(application)
     return application

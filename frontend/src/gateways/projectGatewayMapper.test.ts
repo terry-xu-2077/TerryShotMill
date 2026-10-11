@@ -19,7 +19,7 @@ const view = (prompt: string): TaskEditorView => ({
 it("preserves queued video status rather than presenting it as running", () => {
   const project = mapWorkspaceProject(
     { id: "p", title: "Project", description: "", useDescriptionForAiPrompt: false },
-    { project: { id: "p", title: "Project" }, runtime: { state: "running" }, tasks: [
+    { project: { id: "p", title: "Project" }, runtime: { state: "running" }, timelines: [{ id: "timeline-1", title: "时间线 1", taskIds: ["waiting"] }], tasks: [
       { id: "waiting", title: "Waiting", displayNumber: 1, status: "running",
         videoGenerationStatus: "queued", promptExcerpt: "", assetCount: 0,
         resultCount: 0, durationSeconds: 8, generationSummary: { resolution: "720p", quality: "standard" } },

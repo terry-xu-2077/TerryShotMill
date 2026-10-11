@@ -5,8 +5,8 @@ import { OverlayProvider } from "../../ui/overlay";
 import { AssetImportPicker } from "./AssetImportPicker";
 import type { ImportCandidate } from "../../gateways/assetTransferGateway";
 
-it("selects assets, generated versions and archived results without copying before save", async () => {
-  const items: ImportCandidate[] = (["asset", "result", "archive"] as const).map(kind => ({
+it("selects assets and generated versions without copying before save", async () => {
+  const items: ImportCandidate[] = (["asset", "result"] as const).map(kind => ({
     kind, id: kind, name: kind, sourceProjectId: "source", sourceProjectTitle: "来源", mediaType: "video",
     previewUrl: null, createdAt: "2026-09-27T00:00:00Z",
   }));

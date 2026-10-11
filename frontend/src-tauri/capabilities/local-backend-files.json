@@ -1,0 +1,10 @@
+{
+  "identifier": "local-backend-files",
+  "description": "Allow the ShotMill page served by the bundled local backend to open file dialogs.",
+  "windows": ["main"],
+  "local": true,
+  "remote": {
+    "urls": ["http://127.0.0.1:*"]
+  },
+  "permissions": ["allow-local-file-dialogs"]
+}

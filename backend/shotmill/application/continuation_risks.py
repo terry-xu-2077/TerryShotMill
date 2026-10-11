@@ -36,6 +36,8 @@ def continuation_risks(uow, task):
 def continuation_status(uow, task):
     jobs = uow.jobs.list_by_task(task.id)
     latest = max(jobs, key=lambda job: job.submitted_at, default=None)
+    if latest and latest.status.value == "failed" and latest.error_code == "GENERATION_SERVER_EXITED":
+        return "服务器退出 · 原因未知"
     if latest and latest.status.value == "cancelled" and latest.error_code == "USER_STOPPED":
         return "用户停止"
     if (
@@ -47,6 +49,8 @@ def continuation_status(uow, task):
     active = next(
         (job for job in uow.jobs.list_by_task(task.id) if job.status.value == "queued"), None
     )
+    if active and active.error_code == "GENERATION_SERVICE_OFFLINE":
+        return "已挂起 · 服务器未响应"
     if active and active.context_snapshot.get("dependency") and active.execution_context is None:
         if active.error_code == "CONTEXT_DEPENDENCY_UNAVAILABLE":
             return "承接异常 · 待确认"

@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 
 from shotmill.application.file_library import FileLibrary
 from shotmill.application.legacy_file_references import release_unused_legacy_paths
-from shotmill.application.lifecycle_service import require_writable
 from shotmill.application.snapshot_files import shared_history_owners
 from shotmill.domain.entities import Asset, new_id, utcnow
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import ConflictError, NotFoundError, ShotMillError
 from shotmill.media.storage import MediaStorage
+from shotmill.persistence.project_documents import ProjectDocumentStore
 
 
 def _infer_media_type(content_type: str | None, filename: str) -> str:
@@ -32,11 +33,51 @@ def _infer_media_type(content_type: str | None, filename: str) -> str:
 class AssetService:
     def __init__(
         self, uow_factory: Callable[[], UnitOfWork], storage: MediaStorage,
-        file_library: FileLibrary | None = None,
+        file_library: FileLibrary, documents: ProjectDocumentStore | None = None,
     ) -> None:
         self.uow_factory = uow_factory
         self.storage = storage
         self.file_library = file_library
+        self.documents = documents
+
+    def import_path(
+        self, project_id: str, path: Path, *, name: str | None = None,
+        category: str = "reference", tags: list[str] | None = None,
+    ) -> Asset:
+        if self.documents is None:
+            raise RuntimeError("Project document storage is required for local files")
+        try:
+            source = path.expanduser().resolve(strict=True)
+            if not source.is_file() or not source.stat().st_size:
+                raise ValueError("原始素材文件为空或不是文件")
+            with source.open("rb") as stream:
+                checksum = hashlib.file_digest(stream, "sha256").hexdigest()
+        except (OSError, ValueError) as exc:
+            raise ShotMillError("MEDIA_NOT_FOUND", "原始素材文件无法读取", 422) from exc
+        now = utcnow()
+        asset_id = new_id("asset")
+        logical = f"external/asset/{asset_id}/content"
+        asset = Asset(
+            id=asset_id, project_id=project_id,
+            name=(name or source.stem).strip() or source.name,
+            original_filename=source.name, project_relative_path=logical,
+            media_type=_infer_media_type(None, source.name),
+            category=category.strip() or "reference",
+            tags=[item.strip() for item in (tags or []) if item.strip()],
+            hash=checksum, created_at=now, updated_at=now,
+        )
+        with self.uow_factory() as uow:
+            uow.reserve_write()
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            uow.project_paths.add(
+                project_id, logical, self.documents.reference_path(project_id, source),
+            )
+            uow.assets.add(asset)
+            project.updated_at = now
+            uow.projects.update(project)
+        return asset
 
     def import_bytes(
         self,
@@ -55,52 +96,36 @@ class AssetService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project)
 
         asset_id = new_id("asset")
-        if self.file_library is None:
-            relative_path, checksum = self.storage.write_asset(
-                project_id, asset_id, filename, content,
-            )
-        else:
-            relative_path, checksum = f"shared/asset/{asset_id}/content", None
         now = utcnow()
         asset = Asset(
             id=asset_id,
             project_id=project_id,
             name=(name or Path(filename).stem or filename).strip(),
             original_filename=Path(filename).name,
-            project_relative_path=relative_path,
+            project_relative_path=f"shared/asset/{asset_id}/content",
             media_type=_infer_media_type(content_type, filename),
             category=category.strip() or "reference",
             tags=[item.strip() for item in (tags or []) if item.strip()],
-            hash=checksum,
+            hash=None,
             created_at=now,
             updated_at=now,
         )
-        try:
-            with self.uow_factory() as uow:
-                uow.reserve_write()
-                project = uow.projects.get(project_id)
-                if project is None:
-                    raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-                require_writable(project)
-                if self.file_library is not None:
-                    file = self.file_library.import_file(
-                        uow, BytesIO(content), scope_kind="project", scope_id=project_id,
-                        owner_kind="asset", owner_id=asset_id, slot="content",
-                        original_filename=asset.original_filename, mime_type=content_type,
-                    )
-                    asset.hash = file.sha256
-                uow.assets.add(asset)
-                if project is not None:
-                    project.updated_at = now
-                    uow.projects.update(project)
-        except Exception:
-            if self.file_library is None:
-                path = self.storage.resolve(project_id, relative_path)
-                path.unlink(missing_ok=True)
-            raise
+        with self.uow_factory() as uow:
+            uow.reserve_write()
+            project = uow.projects.get(project_id)
+            if project is None:
+                raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
+            file = self.file_library.import_file(
+                uow, BytesIO(content), scope_kind="project", scope_id=project_id,
+                owner_kind="asset", owner_id=asset_id, slot="content",
+                original_filename=asset.original_filename, mime_type=content_type,
+            )
+            asset.hash = file.sha256
+            uow.assets.add(asset)
+            project.updated_at = now
+            uow.projects.update(project)
         return asset
 
     def update(
@@ -117,7 +142,6 @@ class AssetService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project)
             asset = uow.assets.get(asset_id)
             if asset is None or asset.project_id != project_id:
                 raise NotFoundError("ASSET_NOT_FOUND", "Asset not found")
@@ -143,7 +167,6 @@ class AssetService:
             project = uow.projects.get(project_id)
             if project is None:
                 raise NotFoundError("PROJECT_NOT_FOUND", "Project not found")
-            require_writable(project)
             if project is not None and project.cover_asset_id == asset_id:
                 raise ConflictError(
                     "ASSET_IS_PROJECT_COVER", "该图片用作项目封面，请先更换封面或恢复自动封面。"

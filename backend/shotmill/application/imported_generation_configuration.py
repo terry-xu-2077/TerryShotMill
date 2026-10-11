@@ -3,7 +3,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from shotmill.application.lifecycle_service import require_writable
 from shotmill.domain.entities import utcnow
 from shotmill.domain.repositories import UnitOfWork
 from shotmill.errors import ConflictError, NotFoundError
@@ -15,7 +14,6 @@ class PendingGenerationConfiguration:
     title: str
     revision: int
     source_configuration_id: str | None
-    read_only: bool
 
 
 class ImportedGenerationConfiguration:
@@ -32,8 +30,6 @@ class ImportedGenerationConfiguration:
                 task.id, task.title, task.revision,
                 task.generation_params.get("workflowProfileId")
                 or task.generation_params.get("profileId"),
-                bool(project.archived_at or project.deleted_at
-                     or task.archived_at or task.deleted_at),
             ) for task in uow.tasks.list_by_project(project_id)
                 if uow.tasks.generation_configuration_required(task.id)]
 
@@ -50,7 +46,6 @@ class ImportedGenerationConfiguration:
             task = uow.tasks.get(task_id)
             if project is None or task is None or task.project_id != project_id:
                 raise NotFoundError("TASK_NOT_FOUND", "任务不存在。")
-            require_writable(project, task)
             if not uow.tasks.generation_configuration_required(task_id):
                 raise ConflictError(
                     "GENERATION_CONFIGURATION_CONFIRMED", "任务配置已确认，请刷新列表。",

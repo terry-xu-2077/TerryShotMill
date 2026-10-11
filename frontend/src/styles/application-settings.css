@@ -2,6 +2,8 @@
 
 .project-simple-dialog { display: grid; gap: 18px; }
 .project-simple-dialog label { display: grid; gap: 8px; }
+.project-file-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.project-file-row input { flex: 1; min-width: 0; }
 .project-simple-dialog label span { color: var(--sm-text-muted); font-size: 10px; }
 .project-simple-dialog input {
   width: 100%;
@@ -92,3 +94,4 @@
   .application-settings-preset-row { flex-wrap: wrap; }
   .application-settings-preset-row > :first-child { min-width: 0; }
 }
+.project-file-error { color: var(--sm-danger); margin: 0; overflow-wrap: anywhere; }

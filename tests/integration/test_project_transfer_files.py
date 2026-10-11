@@ -11,7 +11,10 @@ from shotmill.media.project_package import open_project_package, write_project_p
 from test_batch_review_api import _project
 
 
-def test_transfer_collects_shared_aliases_legacy_and_history_into_deduplicated_zip(client):
+def test_transfer_collects_shared_aliases_legacy_and_history_into_deduplicated_zip(
+    client, monkeypatch,
+):
+    from shotmill.media import project_package
     container = client.app.state.container
     project = _project(client)["id"]
     first = container.asset_service.import_bytes(project, "first.png", b"same")
@@ -25,15 +28,26 @@ def test_transfer_collects_shared_aliases_legacy_and_history_into_deduplicated_z
             "j", project, "t", JobStatus.COMPLETED, "", {}, [], {}, {}, {},
             {"media": [{"projectRelativePath": context_path}]},
         )]
+        verified_fingerprints = {}
         files = collect_project_transfer_files(
             uow, source, container.file_library, CleanupStorage(container.storage.projects_root),
+            verified_fingerprints=verified_fingerprints,
         )
         assert set(files) == {
             first.project_relative_path, second.project_relative_path, legacy_path, context_path,
         }
         assert files[first.project_relative_path] == files[second.project_relative_path]
+        original_fingerprint = project_package._fingerprint
+        fingerprinted = []
+
+        def count_fingerprint(path):
+            fingerprinted.append(path)
+            return original_fingerprint(path)
+
+        monkeypatch.setattr(project_package, "_fingerprint", count_fingerprint)
         package = BytesIO()
-        write_project_package(package, {}, files)
+        write_project_package(package, {}, files, verified_fingerprints=verified_fingerprints)
+        assert files[first.project_relative_path] not in fingerprinted
     package.seek(0)
     with open_project_package(package) as staged:
         assert staged.files[first.project_relative_path].read_bytes() == b"same"

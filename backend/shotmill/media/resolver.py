@@ -4,6 +4,7 @@ import mimetypes
 
 from shotmill.domain.entities import Asset
 from shotmill.domain.providers import ResolvedMedia
+from shotmill.errors import ShotMillError
 from shotmill.media.storage import MediaStorage
 
 
@@ -14,7 +15,7 @@ class MediaResolver:
     def resolve(self, asset: Asset, reference: str, role: str | None) -> ResolvedMedia:
         path = self.storage.resolve_read(asset.project_id, asset.project_relative_path)
         if not path.exists():
-            raise FileNotFoundError(path)
+            raise ShotMillError("MEDIA_NOT_FOUND", "素材文件不存在，请检查原文件位置。", 404)
         mime_type, _ = mimetypes.guess_type(asset.original_filename)
         return ResolvedMedia(
             asset_id=asset.id,

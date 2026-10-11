@@ -34,9 +34,7 @@ def test_actual_uploads_share_one_object_and_serve_logical_mime_and_ranges(clien
     assert len(list(container.settings.files_root.glob("objects/*/*"))) == 1
     assert client.get(f"/files/objects/{asset_a.hash[:2]}/{asset_a.hash}").status_code == 404
 
-    container.lifecycle_service.transition_project(first, "trash")
-    container.permanent_delete_service.purge_project(first, archive_results=False)
-    container.permanent_delete_service.cleanup_pending()
+    container.removal_service.remove_project(first)
     assert client.get(url_a).status_code == 404
     assert client.get(url_b).content == b"image-content"
 

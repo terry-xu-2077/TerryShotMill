@@ -1,0 +1,7 @@
+ShotMill Windows 绿色版
+
+1. 解压整个文件夹，双击 ShotMill.exe。请保留 resources 和 runtime 两个目录及其中的文件。
+2. 在项目首页选择位置创建或打开 .shotmill 工程文件。
+3. 工程文件保存在所选位置；生成结果保存在工程旁的 .files/outputs/。本机导入素材仍留在原位置。
+4. 应用设置保存在 Windows 当前用户的应用数据目录，不随工程或项目 ZIP 归档。
+5. 视频生成需要另行运行并配置兼容的 ComfyUI / Terry Flow Bridge；浏览、编辑和工程保存可独立使用。

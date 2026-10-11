@@ -16,7 +16,7 @@ class RemappedProjectIdentity:
 
 
 def remap_project_identity(source: ProjectTransferSource) -> RemappedProjectIdentity:
-    validate_project_transfer_graph(source)
+    """Remap a graph already validated by project import preflight."""
     result = deepcopy(source)
     mappings: dict[str, dict[str, str]] = {}
 

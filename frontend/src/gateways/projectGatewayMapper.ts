@@ -16,7 +16,6 @@ import type {
   TaskSummary,
 } from "./projectGateway";
 
-const sceneId = "scene-project-workspace";
 
 function taskState(status: TaskSummary["status"], videoStatus?: string, promptStatus?: string): GenerationTask["state"] {
   if (videoStatus === "queued") return "queued";
@@ -54,6 +53,7 @@ function summaryTask(summary: TaskSummary): GenerationTask {
       role: "reference" as const,
     })),
     plannedDurationSeconds: summary.durationSeconds,
+    timelineStartSeconds: summary.timelineStartSeconds,
     generationProfileId: "profile-h3-multi-shot",
     generationProfileLabel: "H3",
     aiPrompt: "",
@@ -79,7 +79,8 @@ function summaryHistory(workspace: ProjectWorkspaceView): { jobs: Job[]; results
   const jobs: Job[] = [];
   const results: Result[] = [];
   for (const task of workspace.tasks) {
-    for (let index = 0; index < task.resultCount; index += 1) {
+    const history = task.resultHistory ?? (task.primaryResult ? [task.primaryResult] : []);
+    for (let index = 0; index < history.length; index += 1) {
       const jobId = `summary-job:${task.id}:${index}`;
       jobs.push({
         id: jobId,
@@ -104,13 +105,13 @@ function summaryHistory(workspace: ProjectWorkspaceView): { jobs: Job[]; results
         contextSnapshot: [],
         createdAt: new Date(0).toISOString(),
       });
-      const primary = index === 0 ? task.primaryResult : undefined;
+      const primary = history[index];
       results.push({
-        id: primary?.id ?? `summary-result:${task.id}:${index}`,
+        id: primary.id,
         jobId,
-        videoUrl: primary?.videoUrl ?? "",
-        previewUrl: primary?.previewUrl,
-        metadata: { durationSeconds: primary?.durationSeconds },
+        videoUrl: primary.videoUrl,
+        previewUrl: primary.previewUrl,
+        metadata: { durationSeconds: primary.durationSeconds },
         reviewState: "pending",
       });
     }
@@ -124,12 +125,14 @@ export function mapWorkspaceProject(
   assets: DirectorProject["snapshot"]["assets"],
 ): DirectorProject {
   const history = summaryHistory(workspace);
+  const timelines = workspace.timelines;
   return {
-    readOnly: !!(workspace.project.archivedAt || workspace.project.deletedAt),
+    readOnly: false,
     taskMissingReferences: Object.fromEntries(workspace.tasks.map(task => [task.id, !!task.missingReferences?.length])),
     id: settings.id,
     title: settings.title,
     description: settings.description,
+    director: settings.director,
     useDescriptionForAiPrompt: settings.useDescriptionForAiPrompt,
     coverAssetId: settings.coverAssetId,
     coverUrl: settings.coverUrl,
@@ -140,23 +143,16 @@ export function mapWorkspaceProject(
     taskGenerationNotes: Object.fromEntries(workspace.tasks.map(task => [task.id, task.generationStatusNote ?? null])),
     taskWarnings: Object.fromEntries(workspace.tasks.map(task => [task.id, task.generationWarnings ?? []])),
     snapshot: {
-      scenes: [{
-        id: sceneId,
-        number: "S01",
-        title: settings.title,
-        summary: settings.description,
-        orderKey: "0001",
-        location: "",
-        timeOfDay: "",
-        notes: "",
-      }],
+      scenes: timelines.map((timeline, index) => ({
+        id: timeline.id, number: String(index + 1), title: timeline.title,
+        summary: "", orderKey: String(index + 1).padStart(6, "0"),
+        location: "", timeOfDay: "", notes: "",
+      })),
       assets,
       tasks: workspace.tasks.map(summaryTask),
-      taskPlacements: workspace.tasks.map((task, index) => ({
-        taskId: task.id,
-        sceneId,
-        orderKey: String(index + 1).padStart(6, "0"),
-      })),
+      taskPlacements: timelines.flatMap(timeline => timeline.taskIds.map((taskId, index) => ({
+        taskId, sceneId: timeline.id, orderKey: String(index + 1).padStart(6, "0"),
+      }))),
       generationContextLinks: [],
       jobs: history.jobs,
       results: history.results,
@@ -226,6 +222,7 @@ export function mapTaskEditor(
       notes: binding.role,
     })),
     plannedDurationSeconds: view.durationSeconds,
+    timelineStartSeconds: fallback?.timelineStartSeconds,
     generationProfileId: "profile-h3-multi-shot",
     generationProfileLabel: "H3",
     aiPrompt: view.aiEnhancedPrompt,
@@ -241,6 +238,7 @@ export function mapTaskEditor(
       contextStartSeconds: view.generation.contextStartSeconds,
       contextEndSeconds: view.generation.contextEndSeconds,
       contextDurationSeconds: view.generation.contextDurationSeconds,
+      director: view.generation.director ?? {},
       promptSource: view.promptSource,
       userPrompt: view.userPrompt,
       userPromptHistory: view.userPromptHistory ?? [],
@@ -282,6 +280,7 @@ export function taskSaveInput(task: GenerationTask): SaveTaskInput {
       contextStartSeconds: typeof params.contextStartSeconds === "number" ? params.contextStartSeconds : undefined,
       contextEndSeconds: typeof params.contextEndSeconds === "number" ? params.contextEndSeconds : undefined,
       contextDurationSeconds: typeof params.contextDurationSeconds === "number" ? params.contextDurationSeconds : undefined,
+      director: params.director && typeof params.director === "object" ? params.director as Record<string, unknown> : {},
     },
     assetBindings: task.assetBindings
       .filter((binding) => !binding.assetId.startsWith("summary:"))

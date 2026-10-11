@@ -6,7 +6,7 @@
     "targets": ["nsis"],
     "resources": {
       "../../.artifacts/windows-runtime/shotmill-backend/": "runtime/",
-      "../dist/": "frontend/"
+      "../dist/": "resources/"
     }
   }
 }
