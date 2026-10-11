@@ -1526,6 +1526,15 @@
       if(event.origin!==hostOrigin||event.source!==window.parent)return;
       const message=event.data||{};
       if(message.type==='terrydirector:load')loadDocument(message.document);
+      else if(message.type==='shotmill:theme'&&shotmill){
+        const mode=message.mode==='dark'?'dark':'light';
+        for(const [key,value] of Object.entries(message.palette||{})){
+          if(['base','accent','effect','text','textBright'].includes(key)&&/^#[0-9a-f]{6}$/i.test(value))
+            document.body.style.setProperty(`--shotmill-${key.replace(/[A-Z]/g,letter=>`-${letter.toLowerCase()}`)}`,value);
+        }
+        document.body.dataset.shotmillMode=mode;
+        timeline?.readTheme();timeline?.invalidate();
+      }
       else if(message.type==='shotmill:previews'){
         shotmillPreviews=message.previews||{};timeline?.invalidate();
       }

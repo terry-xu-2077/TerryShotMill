@@ -4,6 +4,7 @@ import type { ProjectGateway, SaveTaskInput, TaskEditorView } from "../../gatewa
 import type { LifecycleGateway } from "../../gateways/lifecycleGateway";
 import { Button } from "../../ui/primitives";
 import { Dialog } from "../../ui/overlay";
+import { readPalette, useColorTheme } from "../../ui/theme";
 import type { DirectorProject } from "./projectTypes";
 
 const FPS = 24;
@@ -182,6 +183,7 @@ export function DirectorWorkspace({ project, timelineId, gateway, lifecycleGatew
   onGenerate: (ids: string[]) => Promise<void>;
   onClose: () => void;
 }) {
+  const colorTheme = useColorTheme();
   const frame = useRef<HTMLIFrameElement>(null);
   const editors = useRef(new Map<string, TaskEditorView>());
   const baseline = useRef<DirectorDocument | null>(null);
@@ -200,6 +202,12 @@ export function DirectorWorkspace({ project, timelineId, gateway, lifecycleGatew
   const [saveError, setSaveError] = useState("");
   const [importApproval, setImportApproval] = useState<DirectorDocument | null>(null);
   const send = useCallback((message: Record<string, unknown>) => frame.current?.contentWindow?.postMessage(message, location.origin), []);
+  const sendTheme = useCallback(() => send({ type: "shotmill:theme", mode: colorTheme, palette: readPalette(colorTheme) }), [colorTheme, send]);
+  useEffect(() => {
+    window.addEventListener("shotmill-palette-change", sendTheme);
+    if (ready) sendTheme();
+    return () => window.removeEventListener("shotmill-palette-change", sendTheme);
+  }, [ready, sendTheme]);
   useEffect(() => {
     const requestSave = () => send({ type: "terrydirector:request-save" });
     const directorAction = (event: Event) => send({ type: "shotmill:action", action: (event as CustomEvent<string>).detail });

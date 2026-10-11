@@ -43,6 +43,67 @@ test("multiple timelines keep separate clips and share the project asset pool", 
   await expect(page.getByRole("button", { name: "任务视图" })).toHaveCount(0);
 });
 
+test("embedded director follows light, dark and custom palette without reloading the editor", async ({ page }, testInfo) => {
+  const title = `时间线主题 ${Date.now()}`;
+  const path = `${process.env.SHOTMILL_DATA_ROOT}\\director-theme-${Date.now()}.shotmill`;
+  const created = await page.request.post("/api/v1/projects", { data: { title, path } });
+  expect(created.ok()).toBeTruthy();
+  await page.goto("/dev/ui");
+  await page.getByRole("button", { name: `打开项目 ${title}` }).click();
+  await page.getByRole("button", { name: "新建时间线" }).click();
+  await page.getByPlaceholder("时间线名称").fill("主题预览");
+  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: "新建片段" }).click();
+  const frame = page.frameLocator('iframe[title="TerryDirector 导演时间线"]');
+  const switcher = page.getByRole("group", { name: "界面主题" });
+  await switcher.getByRole("button", { name: "亮色" }).click();
+  await expect(frame.locator("body")).toHaveAttribute("data-shotmill-mode", "light");
+  const light = await frame.locator(".timeline-panel").evaluate(element => getComputedStyle(element).backgroundColor);
+  await frame.locator("body").evaluate(element => { element.dataset.themeProbe = "kept"; });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: testInfo.outputPath("director-light.png") });
+  await switcher.getByRole("button", { name: "暗色" }).click();
+  await expect(frame.locator("body")).toHaveAttribute("data-shotmill-mode", "dark");
+  await expect(frame.locator("body")).toHaveAttribute("data-theme-probe", "kept");
+  const dark = await frame.locator(".timeline-panel").evaluate(element => getComputedStyle(element).backgroundColor);
+  expect(dark).not.toBe(light);
+  const accentBefore = await frame.locator("#zoomRange").evaluate(element => getComputedStyle(element).accentColor);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: testInfo.outputPath("director-dark.png") });
+  await page.evaluate(() => {
+    const palette = {
+      base: "#151618", accent: "#d06b75", effect: "#e9a36e", text: "#dce0e5", textBright: "#f7fafc",
+    };
+    localStorage.setItem("shotmill.palette.dark", JSON.stringify(palette));
+    for (const [key, value] of Object.entries(palette))
+      document.documentElement.style.setProperty(`--tc-${key === "textBright" ? "text-bright" : key === "text" ? "text-main" : key}`, value);
+    window.dispatchEvent(new Event("shotmill-palette-change"));
+  });
+  await expect(frame.locator("body")).toHaveCSS("--shotmill-accent", "#d06b75");
+  await expect(page.locator(".director-duration strong")).toHaveCSS("color", "rgb(208, 107, 117)");
+  const accentAfter = await frame.locator("#zoomRange").evaluate(element => getComputedStyle(element).accentColor);
+  expect(accentAfter).not.toBe(accentBefore);
+  await expect(frame.locator("body")).toHaveAttribute("data-theme-probe", "kept");
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: testInfo.outputPath("director-custom.png") });
+  await switcher.getByRole("button", { name: "亮色" }).click();
+  await expect(frame.locator("body")).toHaveAttribute("data-shotmill-mode", "light");
+  await page.evaluate(() => {
+    const palette = {
+      base: "#68717b", accent: "#237b70", effect: "#519b88", text: "#25282e", textBright: "#111318",
+    };
+    localStorage.setItem("shotmill.palette.light", JSON.stringify(palette));
+    for (const [key, value] of Object.entries(palette))
+      document.documentElement.style.setProperty(`--tc-${key === "textBright" ? "text-bright" : key === "text" ? "text-main" : key}`, value);
+    window.dispatchEvent(new Event("shotmill-palette-change"));
+  });
+  await expect(frame.locator("body")).toHaveCSS("--shotmill-accent", "#237b70");
+  await expect(page.locator(".director-duration strong")).toHaveCSS("color", "rgb(35, 123, 112)");
+  await expect(frame.locator("body")).toHaveAttribute("data-theme-probe", "kept");
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: testInfo.outputPath("director-custom-light.png") });
+});
+
 test("TerryDirector editor creates and edits a clip inline, then reopens it from the project file", async ({ page }, testInfo) => {
   const title = `时间线 ${Date.now()}`;
   const path = `${process.env.SHOTMILL_DATA_ROOT}\\director-timeline-${Date.now()}.shotmill`;

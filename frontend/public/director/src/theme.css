@@ -179,3 +179,63 @@
     0 2px 6px -1px var(--td-shell-contact-shadow),
     inset 0 1px 0 var(--td-shell-highlight);
 }
+
+/* ShotMill keeps TerryDirector's layered timeline palette. The host's five theme
+   colors tint the neutral materials and focus accents; warm clip/reference cues
+   retain their separate role and move gently with the selected accent. */
+body.td-theme.td-shotmill[data-shotmill-mode] {
+  --td-violet-primary: var(--shotmill-accent);
+  --td-violet-deep: color-mix(in oklab, var(--shotmill-accent) 70%, var(--shotmill-base));
+  --td-violet-mid: color-mix(in oklab, var(--shotmill-accent) 46%, var(--td-neutral-panel));
+  --td-violet-highlight: color-mix(in oklab, var(--shotmill-accent) 82%, var(--td-ink-bright));
+  --td-violet-pink: color-mix(in oklab, var(--shotmill-accent) 68%, var(--shotmill-effect));
+  --td-warm-gold: color-mix(in oklab, #e59b3d 72%, var(--shotmill-accent));
+  --td-warm-orange: color-mix(in oklab, #e07d2b 76%, var(--shotmill-accent));
+  --td-warm-amber: color-mix(in oklab, #9d5e21 70%, var(--shotmill-accent));
+  --td-warm-coral: color-mix(in oklab, #e3786b 84%, var(--shotmill-accent));
+  --td-effect: var(--shotmill-effect);
+  --td-timeline-clip-edge: var(--td-violet-mid);
+}
+
+body.td-theme.td-shotmill[data-shotmill-mode="dark"] {
+  color-scheme: dark;
+  --td-neutral-night: color-mix(in oklab, var(--shotmill-base) 78%, black);
+  --td-neutral-base: color-mix(in oklab, var(--shotmill-base) 92%, var(--shotmill-effect));
+  --td-neutral-panel: color-mix(in oklab, var(--shotmill-base) 81%, var(--shotmill-text));
+  --td-neutral-surface: color-mix(in oklab, var(--shotmill-base) 73%, var(--shotmill-text));
+  --td-neutral-elevated: color-mix(in oklab, var(--shotmill-base) 67%, var(--shotmill-text));
+  --td-neutral-silver: color-mix(in oklab, var(--shotmill-text) 62%, var(--shotmill-base));
+  --td-ink-primary: var(--shotmill-text);
+  --td-ink-bright: var(--shotmill-text-bright);
+  --td-ink-secondary: color-mix(in oklab, var(--shotmill-text) 82%, var(--shotmill-base));
+  --td-ink-muted: color-mix(in oklab, var(--shotmill-text) 66%, var(--shotmill-base));
+  --td-bg-selected: color-mix(in oklab, var(--shotmill-accent) 22%, var(--td-neutral-panel));
+  --td-shadow: color-mix(in srgb, var(--td-neutral-night) 62%, transparent);
+}
+
+body.td-theme.td-shotmill[data-shotmill-mode="light"] {
+  color-scheme: light;
+  --td-neutral-night: color-mix(in oklab, var(--shotmill-base) 64%, var(--shotmill-text-bright));
+  --td-neutral-base: color-mix(in oklab, white 89%, var(--shotmill-base));
+  --td-neutral-panel: color-mix(in oklab, white 84%, var(--shotmill-base));
+  --td-neutral-surface: color-mix(in oklab, white 77%, var(--shotmill-base));
+  --td-neutral-elevated: color-mix(in oklab, white 69%, var(--shotmill-base));
+  --td-neutral-silver: color-mix(in oklab, var(--shotmill-text) 38%, white);
+  --td-ink-primary: var(--shotmill-text);
+  --td-ink-bright: var(--shotmill-text-bright);
+  --td-ink-secondary: color-mix(in oklab, var(--shotmill-text) 77%, var(--td-neutral-panel));
+  --td-ink-muted: color-mix(in oklab, var(--shotmill-text) 64%, var(--td-neutral-panel));
+  --td-level-3-ink: color-mix(in oklab, var(--td-warm-gold) 70%, var(--shotmill-text-bright));
+  --td-bg-workspace: color-mix(in oklab, white 81%, var(--shotmill-base));
+  --td-bg-inset: color-mix(in oklab, white 95%, var(--shotmill-base));
+  --td-bg-selected: color-mix(in oklab, var(--shotmill-accent) 12%, var(--td-neutral-panel));
+  --td-border-soft: color-mix(in srgb, var(--shotmill-text) 12%, transparent);
+  --td-border: color-mix(in srgb, var(--shotmill-text) 21%, transparent);
+  --td-shadow: color-mix(in srgb, var(--shotmill-base) 18%, transparent);
+  --td-scrim: color-mix(in srgb, var(--shotmill-base) 42%, transparent);
+  --td-on-accent: white;
+  --td-on-generation: white;
+  --td-timeline-grid: color-mix(in srgb, var(--shotmill-text) 8%, transparent);
+  --td-timeline-clip-selected: color-mix(in oklab, var(--td-warm-gold) 17%, var(--td-neutral-surface));
+  --td-timeline-clip-highlight: color-mix(in oklab, var(--td-warm-orange) 22%, var(--td-neutral-surface));
+}
