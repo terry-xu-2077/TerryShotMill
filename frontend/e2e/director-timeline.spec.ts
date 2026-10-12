@@ -13,18 +13,22 @@ test("multiple timelines keep separate clips and share the project asset pool", 
   await page.getByRole("button", { name: `打开项目 ${title}` }).click();
   await expect(page.getByRole("heading", { name: "时间线" })).toBeVisible();
   await page.getByRole("button", { name: "新建时间线" }).click();
+  await page.getByRole("button", { name: "重命名 时间线 1" }).click();
   await page.getByPlaceholder("时间线名称").fill("开场");
-  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: "保存" }).click();
+  await page.getByRole("button", { name: /开场.*0 个片段/ }).click();
   const frame = page.frameLocator('iframe[title="TerryDirector 导演时间线"]');
   await page.getByRole("button", { name: "新建片段" }).click();
   await frame.getByRole("textbox", { name: "片段名称" }).fill("片段 A");
   await frame.locator("#fileInput").setInputFiles("src-tauri/icons/StoreLogo.png");
   await expect(frame.getByRole("region", { name: "资产池" })).toContainText("StoreLogo");
   await expect.poll(async () => (await (await page.request.get(`/api/v1/projects/${projectId}/workspace`)).json()).tasks.length).toBe(1);
-  await page.getByRole("button", { name: "返回时间线列表" }).click();
+  await page.getByRole("button", { name: "时间线列表" }).click();
   await page.getByRole("button", { name: "新建时间线" }).click();
+  await page.getByRole("button", { name: "重命名 时间线 2" }).click();
   await page.getByPlaceholder("时间线名称").fill("结尾");
-  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: "保存" }).click();
+  await page.getByRole("button", { name: /结尾.*0 个片段/ }).click();
   await expect(frame.getByRole("region", { name: "资产池" })).toContainText("StoreLogo");
   await expect(frame.getByRole("textbox", { name: "片段名称" })).toHaveCount(0);
   await page.getByRole("button", { name: "新建片段" }).click();
@@ -37,10 +41,44 @@ test("multiple timelines keep separate clips and share the project asset pool", 
   await page.getByRole("button", { name: `打开项目 ${title}` }).click();
   await expect(page.getByRole("heading", { name: "结尾" })).toBeVisible();
   await expect(page.frameLocator('iframe[title="TerryDirector 导演时间线"]').getByRole("textbox", { name: "片段名称" })).toHaveValue("片段 B");
-  await page.getByRole("button", { name: "返回时间线列表" }).click();
+  await page.getByRole("button", { name: "时间线列表" }).click();
   await expect(page.getByRole("button", { name: /开场.*1 个片段/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /结尾.*1 个片段/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "任务视图" })).toHaveCount(0);
+});
+
+test("timeline preview follows seeking, click playback and Space without video controls", async ({ page }, testInfo) => {
+  const title = `时间线预览 ${Date.now()}`;
+  const path = `${process.env.SHOTMILL_DATA_ROOT}\\director-preview-${Date.now()}.shotmill`;
+  const created = await page.request.post("/api/v1/projects", { data: { title, path } });
+  expect(created.ok()).toBeTruthy();
+  await page.goto("/dev/ui");
+  await page.getByRole("button", { name: `打开项目 ${title}` }).click();
+  await page.getByRole("button", { name: "新建时间线" }).click();
+  await page.getByRole("button", { name: /时间线 1.*打开时间线/ }).click();
+  await page.getByRole("button", { name: "新建片段" }).click();
+  const preview = page.getByLabel("时间线视频预览");
+  const frame = page.frameLocator('iframe[title="TerryDirector 导演时间线"]');
+  await expect(preview.getByRole("button", { name: "播放时间线" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("timeline-preview-layout.png") });
+  await expect(preview.locator("video[controls]")).toHaveCount(0);
+  await preview.getByRole("button", { name: "播放时间线" }).click();
+  await expect(preview.getByRole("button", { name: "暂停时间线播放" })).toBeVisible();
+  await frame.locator("#timelineBody").click({ position: { x: 130, y: 85 } });
+  await expect(preview.getByRole("button", { name: "播放时间线" })).toBeVisible();
+  await frame.locator("body").press("Space");
+  await expect(preview.getByRole("button", { name: "暂停时间线播放" })).toBeVisible();
+  await frame.locator("body").press("Space");
+  await expect(preview.getByRole("button", { name: "播放时间线" })).toBeVisible();
+  await frame.locator("body").evaluate(() => (window as unknown as { TerryDirectorDemo: { timeline: { setFrame: (frame: number) => void } } }).TerryDirectorDemo.timeline.setFrame(24));
+  await expect(preview).toHaveAttribute("data-frame", "24");
+  await frame.getByRole("button", { name: "切换提示词显示方式" }).click();
+  await frame.getByRole("textbox", { name: "当前片段提示词" }).fill("预览切换后仍保留这段提示词。");
+  await page.getByRole("button", { name: "生成结果" }).click();
+  await expect(page.getByRole("heading", { name: "生成结果" })).toBeVisible();
+  await page.getByRole("button", { name: "时间线 1", exact: true }).click();
+  await frame.getByRole("button", { name: "切换提示词显示方式" }).click();
+  await expect(frame.getByRole("textbox", { name: "当前片段提示词" })).toHaveValue("预览切换后仍保留这段提示词。");
 });
 
 test("embedded director follows light, dark and custom palette without reloading the editor", async ({ page }, testInfo) => {
@@ -51,8 +89,10 @@ test("embedded director follows light, dark and custom palette without reloading
   await page.goto("/dev/ui");
   await page.getByRole("button", { name: `打开项目 ${title}` }).click();
   await page.getByRole("button", { name: "新建时间线" }).click();
+  await page.getByRole("button", { name: "重命名 时间线 1" }).click();
   await page.getByPlaceholder("时间线名称").fill("主题预览");
-  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: "保存" }).click();
+  await page.getByRole("button", { name: /主题预览.*0 个片段/ }).click();
   await page.getByRole("button", { name: "新建片段" }).click();
   const frame = page.frameLocator('iframe[title="TerryDirector 导演时间线"]');
   const switcher = page.getByRole("group", { name: "界面主题" });
@@ -113,8 +153,10 @@ test("TerryDirector editor creates and edits a clip inline, then reopens it from
   await page.goto("/dev/ui");
   await page.getByRole("button", { name: `打开项目 ${title}` }).click();
   await page.getByRole("button", { name: "新建时间线" }).click();
+  await page.getByRole("button", { name: "重命名 时间线 1" }).click();
   await page.getByPlaceholder("时间线名称").fill("第一条时间线");
-  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: "保存" }).click();
+  await page.getByRole("button", { name: /第一条时间线.*0 个片段/ }).click();
   const frame = page.frameLocator('iframe[title="TerryDirector 导演时间线"]');
   await expect(frame.getByRole("region", { name: "资产池" })).toBeVisible();
   await expect(frame.getByRole("region", { name: "提示词编辑" })).toBeVisible();
@@ -159,7 +201,7 @@ test("TerryDirector editor creates and edits a clip inline, then reopens it from
   const downloadReady = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出" }).click();
   expect((await downloadReady).suggestedFilename()).toBe("TerryDirector-timeline.json");
-  await page.getByRole("button", { name: "返回时间线列表" }).click();
+  await page.getByRole("button", { name: "时间线列表" }).click();
   await expect(page.locator(".task-list-row").filter({ hasText: "第一条时间线" })).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: `打开项目 ${title}` }).click();
@@ -261,8 +303,10 @@ test("import keeps offline assets and relinking restores every prompt reference"
   await page.goto("/dev/ui");
   await page.getByRole("button", { name: `打开项目 ${title}` }).click();
   await page.getByRole("button", { name: "新建时间线" }).click();
+  await page.getByRole("button", { name: "重命名 时间线 1" }).click();
   await page.getByPlaceholder("时间线名称").fill("离线测试");
-  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: "保存" }).click();
+  await page.getByRole("button", { name: /离线测试.*0 个片段/ }).click();
   const frame = page.frameLocator('iframe[title="TerryDirector 导演时间线"]');
   await frame.locator("#timelineImportInput").setInputFiles({
     name: "timeline.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(imported)),
@@ -314,8 +358,10 @@ test("desktop relink uses the selected local file and keeps its original bytes i
   await page.goto("/dev/ui");
   await page.getByRole("button", { name: `打开项目 ${title}` }).click();
   await page.getByRole("button", { name: "新建时间线" }).click();
+  await page.getByRole("button", { name: "重命名 时间线 1" }).click();
   await page.getByPlaceholder("时间线名称").fill("重链测试");
-  await page.getByRole("button", { name: "创建" }).click();
+  await page.getByRole("button", { name: "保存" }).click();
+  await page.getByRole("button", { name: /重链测试.*0 个片段/ }).click();
   const frame = page.frameLocator('iframe[title="TerryDirector 导演时间线"]');
   await frame.locator("#timelineImportInput").setInputFiles({
     name: "timeline.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({

@@ -5,13 +5,13 @@ import { TaskNewResults, useViewedResults } from "./TaskNewResults";
 import { TaskPreview } from "./TaskPreview";
 import "./TaskCollection.css";
 import {
-  ArrowLeft,
+  Clapperboard,
   LoaderCircle,
   Square,
-  Grid2X2,
+  Images,
   Home,
   Download,
-  List,
+  Film,
   Play,
   Pencil,
   Plus,
@@ -49,8 +49,9 @@ import {
   type PromptBatchOptions,
 } from "./BatchReviewControls";
 import { ProjectConfigPanel } from "./ProjectConfigPanel";
-import { DirectorWorkspace, type DirectorToolbarState } from "./DirectorWorkspace";
+import { DirectorWorkspace, type DirectorPlaybackState, type DirectorToolbarState } from "./DirectorWorkspace";
 import { TimelineOverview } from "./TimelineOverview";
+import { TimelinePlayer } from "./TimelinePlayer";
 import { GenerationResultBrowser } from "./GenerationResultBrowser";
 import { ThemeSwitch } from "../../ui/ThemeSwitch";
 import { TaskResultPlayer } from "./TaskResultPlayer";
@@ -262,37 +263,63 @@ export function ProjectWorkspace({
 }) {
   const [overviewModes, setOverviewModes] = useState<Record<string, "list" | "card">>({});
   const viewMode = overviewModes[project.id] ?? (project.director?.overviewViewMode === "card" ? "card" : "list");
-  const setViewMode = (next: "list" | "card") => {
-    setOverviewModes(current => ({ ...current, [project.id]: next }));
-    void gateway.updateProject(project.id, { director: { ...project.director, overviewViewMode: next } }).then(onRefreshProject)
-      .catch(reason => setViewSaveError(reason instanceof Error ? reason.message : "视图设置保存失败"));
-  };
   const [workspaceModes, setWorkspaceModes] = useState<Record<string, "overview" | "timeline">>({});
   const [viewSaveError, setViewSaveError] = useState("");
   const savedTimelineId = typeof project.director?.selectedTimelineId === "string" ? project.director.selectedTimelineId : null;
   const [timelineIds, setTimelineIds] = useState<Record<string, string>>({});
   const timelineId = timelineIds[project.id] ?? (project.snapshot.scenes.some(scene => scene.id === savedTimelineId) ? savedTimelineId : project.snapshot.scenes[0]?.id) ?? null;
-  const workspaceMode = workspaceModes[project.id] ?? (project.director?.workspaceView === "overview" || !timelineId ? "overview" : "timeline");
+  const workspaceMode = workspaceModes[project.id] ?? (project.director?.workspaceView === "timeline" && timelineId ? "timeline" : "overview");
   const setWorkspaceMode = (next: "overview" | "timeline", selectedTimelineId = timelineId) => {
     if (next === workspaceMode && selectedTimelineId === timelineId) return;
     const previous = workspaceMode;
     setWorkspaceModes(current => ({ ...current, [project.id]: next }));
     if (selectedTimelineId) setTimelineIds(current => ({ ...current, [project.id]: selectedTimelineId }));
     setViewSaveError("");
-    void gateway.updateProject(project.id, { director: { ...project.director, workspaceView: next, selectedTimelineId } })
+    void gateway.getProjectSettings(project.id)
+      .then(settings => gateway.updateProject(project.id, { director: { ...settings.director, workspaceView: next, selectedTimelineId } }))
       .then(onRefreshProject)
       .catch(reason => {
         setWorkspaceModes(current => ({ ...current, [project.id]: previous }));
         setViewSaveError(reason instanceof Error ? reason.message : "视图设置保存失败");
       });
   };
+  const showOverview = (next: "list" | "card") => {
+    const previousMode = viewMode;
+    const previousWorkspace = workspaceMode;
+    setOverviewModes(current => ({ ...current, [project.id]: next }));
+    setWorkspaceModes(current => ({ ...current, [project.id]: "overview" }));
+    setViewSaveError("");
+    void gateway.getProjectSettings(project.id)
+      .then(settings => gateway.updateProject(project.id, { director: {
+        ...settings.director, workspaceView: "overview", overviewViewMode: next, selectedTimelineId: timelineId,
+      } }))
+      .then(onRefreshProject)
+      .catch(reason => {
+        setOverviewModes(current => ({ ...current, [project.id]: previousMode }));
+        setWorkspaceModes(current => ({ ...current, [project.id]: previousWorkspace }));
+        setViewSaveError(reason instanceof Error ? reason.message : "视图设置保存失败");
+      });
+  };
   const [directorDirty, setDirectorDirty] = useState(false);
   const [directorDuration, setDirectorDuration] = useState("00:00:00:00");
+  const [directorPlayback, setDirectorPlayback] = useState<DirectorPlaybackState>({ frame: 0, playing: false, clipId: null, clipStart: 0, clipEnd: 0 });
   const [directorToolbar, setDirectorToolbar] = useState<DirectorToolbarState>({
     readOnly: false, canEnhanceAll: false,
   });
   const directorAction = (action: string) => window.dispatchEvent(new CustomEvent("shotmill:director-action", { detail: action }));
-  const [pendingExit, setPendingExit] = useState<"overview" | "home" | null>(null);
+  useEffect(() => {
+    if (workspaceMode !== "timeline") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (event.code !== "Space" || event.repeat || event.ctrlKey || event.metaKey || event.altKey
+        || target.closest("input, textarea, select, button, [contenteditable=true], [role=dialog]")) return;
+      event.preventDefault();
+      directorAction("play-toggle");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [workspaceMode]);
+  const [pendingExit, setPendingExit] = useState<"overview" | "results" | "home" | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [batchSelectedTaskIds, setBatchSelectedTaskIds] = useState<Set<string>>(() => new Set());
   const [managingTasks, setManagingTasks] = useState(false);
@@ -329,12 +356,13 @@ export function ProjectWorkspace({
   const reviews = useMemo(() => new Map(promptReviewItems.map((item) => [item.taskId, item])), [promptReviewItems]);
   useEffect(() => {
     if (directorDirty || !pendingExit) return;
-    if (pendingExit === "overview") setWorkspaceMode("overview");
+    if (pendingExit === "overview") showOverview("list");
+    else if (pendingExit === "results") showOverview("card");
     else onBack();
     setPendingExit(null);
   }, [directorDirty, pendingExit]);
-  const leaveDirector = (target: "overview" | "home") => {
-    if (!directorDirty) { if (target === "overview") setWorkspaceMode("overview"); else onBack(); return; }
+  const leaveDirector = (target: "overview" | "results" | "home") => {
+    if (!directorDirty) { if (target === "overview") showOverview("list"); else if (target === "results") showOverview("card"); else onBack(); return; }
     setPendingExit(target);
     window.dispatchEvent(new Event("shotmill:director-save-request"));
   };
@@ -567,7 +595,6 @@ export function ProjectWorkspace({
       <header className="project-workspace-topbar">
         <div className="workspace-navigation">
           <Button onClick={() => workspaceMode === "timeline" ? leaveDirector("home") : onBack()} aria-label="返回项目首页"><Home size={16} /><span className="workspace-home-label">返回首页</span></Button>
-          {workspaceMode === "timeline" && <Button onClick={() => leaveDirector("overview")} aria-label="返回时间线列表"><ArrowLeft size={16} />时间线列表</Button>}
           <Button onClick={() => setProjectConfigOpen(true)}><SlidersHorizontal size={16} strokeWidth={1.6} />项目配置</Button>
         </div>
         <div className="workspace-project-title"><strong>{project.title}</strong></div>
@@ -582,7 +609,14 @@ export function ProjectWorkspace({
       </header>
 
       <div className={`project-workspace-body${workspaceMode === "timeline" ? " is-director" : " is-overview"}`}>
+        <aside className="workspace-sidebar" aria-label="工作区导航">
+          <span className="workspace-sidebar-label">项目工作区</span>
+          <button type="button" className={`workspace-sidebar-item${workspaceMode === "overview" && viewMode === "list" ? " is-active" : ""}`} aria-current={workspaceMode === "overview" && viewMode === "list" ? "page" : undefined} onClick={() => { if (workspaceMode === "timeline") leaveDirector("overview"); else if (viewMode !== "list") showOverview("list"); }}><Film size={18} />时间线列表</button>
+          {currentTimeline && <button type="button" className={`workspace-sidebar-item is-sub${workspaceMode === "timeline" ? " is-active" : ""}`} aria-current={workspaceMode === "timeline" ? "page" : undefined} onClick={() => { if (workspaceMode !== "timeline") setWorkspaceMode("timeline", timelineId); }}><Clapperboard size={18} /><span>{currentTimeline.title}</span></button>}
+          <button type="button" className={`workspace-sidebar-item${workspaceMode === "overview" && viewMode === "card" ? " is-active" : ""}`} aria-current={workspaceMode === "overview" && viewMode === "card" ? "page" : undefined} onClick={() => { if (workspaceMode === "timeline") leaveDirector("results"); else if (viewMode !== "card") showOverview("card"); }}><Images size={18} />生成结果</button>
+        </aside>
         <div className="project-task-column">
+        {workspaceMode === "timeline" && <TimelinePlayer tasks={timelineTasks} results={project.snapshot.results} playback={directorPlayback} onToggle={() => directorAction("play-toggle")} />}
         <section className={`project-task-area${workspaceMode === "timeline" ? " is-director" : ""}`} aria-label="任务区域">
           <header className={`task-collection-heading${workspaceMode === "timeline" ? " is-director" : ""}`}>
             {workspaceMode === "timeline" ? <div className="director-heading-leading">
@@ -595,14 +629,8 @@ export function ProjectWorkspace({
               <Button disabled={!directorToolbar.canEnhanceAll} onClick={() => directorAction("enhance-all")}><Sparkles size={15} />一键增强所有提示词</Button>
             </div>}
             {viewSaveError && <span className="workspace-view-save-error" role="alert">{viewSaveError}</span>}
-            {workspaceMode === "overview" && <div className="task-view-control">
-              <Button size="icon" aria-label={viewMode === "list" ? "浏览生成结果" : "浏览时间线"} title={viewMode === "list" ? "浏览生成结果" : "浏览时间线"} aria-pressed={viewMode === "card"} onClick={() => setViewMode(viewMode === "list" ? "card" : "list")}>
-                <span className={`task-view-glyph is-${viewMode}`} aria-hidden="true"><span className="task-view-list-icon"><List size={16} strokeWidth={1.6} /></span><span className="task-view-grid-icon"><Grid2X2 size={16} strokeWidth={1.6} /></span></span>
-              </Button>
-            </div>}
-
           </header>
-          {workspaceMode === "timeline" && timelineId && currentTimeline ? <DirectorWorkspace key={timelineId} project={timelineProject} timelineId={timelineId} gateway={gateway} lifecycleGateway={lifecycleGateway} onChooseLocalFiles={onChooseLocalFiles} onRefresh={onRefreshProject} selectedId={selectedTaskId} onSelection={setSelectedTaskId} onDirtyChange={setDirectorDirty} onDuration={setDirectorDuration} onToolbarChange={setDirectorToolbar} onClose={() => leaveDirector("overview")} onGenerate={async ids => { const eligible = await onCheckVideoBatchEligibility(ids); if (eligible.eligibleTaskIds.length !== ids.length) throw new Error("部分片段暂时不能生成，请检查任务状态"); await onCreateVideoBatch(ids); }} /> : viewMode === "list" ? (
+          {workspaceMode === "timeline" && timelineId && currentTimeline ? <DirectorWorkspace key={timelineId} project={timelineProject} timelineId={timelineId} gateway={gateway} lifecycleGateway={lifecycleGateway} onChooseLocalFiles={onChooseLocalFiles} onRefresh={onRefreshProject} selectedId={selectedTaskId} onSelection={setSelectedTaskId} onDirtyChange={setDirectorDirty} onDuration={setDirectorDuration} onPlayback={setDirectorPlayback} onToolbarChange={setDirectorToolbar} onClose={() => leaveDirector("overview")} onGenerate={async ids => { const eligible = await onCheckVideoBatchEligibility(ids); if (eligible.eligibleTaskIds.length !== ids.length) throw new Error("部分片段暂时不能生成，请检查任务状态"); await onCreateVideoBatch(ids); }} /> : viewMode === "list" ? (
             <TimelineOverview project={project} gateway={gateway} onRefresh={onRefreshProject} onOpen={id => setWorkspaceMode("timeline", id)} />
           ) : (
             <GenerationResultBrowser project={project} onPlay={(result, task) => setPlaying({ result, task })} />

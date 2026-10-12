@@ -23,6 +23,9 @@ type RelinkCandidate = { name: string; path?: string; file?: File };
 export type DirectorToolbarState = {
   readOnly: boolean; canEnhanceAll: boolean;
 };
+export type DirectorPlaybackState = {
+  frame: number; playing: boolean; clipId: string | null; clipStart: number; clipEnd: number; nextClipId?: string | null;
+};
 
 const assetKind = (asset: ProjectAsset): DirectorAsset["kind"] => asset.mediaType;
 const token = (asset: DirectorAsset) => `<${asset.kind === "image" ? "Picture" : asset.kind === "video" ? "Video" : "Audio"} ${asset.number}>`;
@@ -168,7 +171,7 @@ function normalizeImportedDocument(project: DirectorProject, document: DirectorD
   })) };
 }
 
-export function DirectorWorkspace({ project, timelineId, gateway, lifecycleGateway, onChooseLocalFiles, onRefresh, selectedId, onSelection, onDirtyChange, onDuration, onToolbarChange, onGenerate, onClose }: {
+export function DirectorWorkspace({ project, timelineId, gateway, lifecycleGateway, onChooseLocalFiles, onRefresh, selectedId, onSelection, onDirtyChange, onDuration, onPlayback, onToolbarChange, onGenerate, onClose }: {
   project: DirectorProject;
   timelineId: string;
   gateway: ProjectGateway;
@@ -180,6 +183,7 @@ export function DirectorWorkspace({ project, timelineId, gateway, lifecycleGatew
   onDirtyChange: (dirty: boolean) => void;
   onDuration: (timecode: string) => void;
   onToolbarChange: (state: DirectorToolbarState) => void;
+  onPlayback: (state: DirectorPlaybackState) => void;
   onGenerate: (ids: string[]) => Promise<void>;
   onClose: () => void;
 }) {
@@ -398,6 +402,12 @@ export function DirectorWorkspace({ project, timelineId, gateway, lifecycleGatew
         else if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
       }
       else if (message.type === "shotmill:duration") onDuration(String(message.timecode));
+      else if (message.type === "shotmill:playback") onPlayback({
+        frame: Number(message.frame) || 0, playing: Boolean(message.playing),
+        clipId: typeof message.clipId === "string" ? message.clipId : null,
+        clipStart: Number(message.clipStart) || 0, clipEnd: Number(message.clipEnd) || 0,
+        nextClipId: typeof message.nextClipId === "string" ? message.nextClipId : null,
+      });
       else if (message.type === "shotmill:toolbar-state") onToolbarChange({
         readOnly: Boolean(message.readOnly), canEnhanceAll: Boolean(message.canEnhanceAll),
       });
@@ -489,7 +499,7 @@ export function DirectorWorkspace({ project, timelineId, gateway, lifecycleGatew
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, [gateway, project, send, save, relink, onRefresh, onChooseLocalFiles, onSelection, onDirtyChange, onDuration, onToolbarChange, onGenerate, onClose, scheduleAutoSave]);
+  }, [gateway, project, send, save, relink, onRefresh, onChooseLocalFiles, onSelection, onDirtyChange, onDuration, onPlayback, onToolbarChange, onGenerate, onClose, scheduleAutoSave]);
 
   return <div className="director-workspace-shell">
     {error && <div className="director-workspace-error" role="alert">{error}</div>}

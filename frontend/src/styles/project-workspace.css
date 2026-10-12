@@ -129,12 +129,7 @@
 .director-top-actions > button { white-space: nowrap; }
 .workspace-project-config-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 32px; padding: 0 10px; border: 1px solid var(--sm-border); border-radius: var(--sm-radius-sm); background: var(--sm-surface-1); color: var(--sm-text-muted); cursor: pointer; font-size: 12px; white-space: nowrap; }
 .workspace-project-config-button:hover { border-color: var(--sm-accent); color: var(--sm-accent); }
-.task-view-control { display: flex; align-items: center; width: 32px; flex: 0 0 32px; }
 .workspace-mode-switch { display: flex; align-items: center; margin-left: auto; }
-.task-view-glyph { position: relative; display: block; width: 16px; height: 16px; }
-.task-view-list-icon, .task-view-grid-icon { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity 220ms var(--sm-ease), transform 320ms var(--sm-ease); }
-.task-view-glyph.is-list > .task-view-grid-icon, .task-view-glyph.is-card > .task-view-list-icon { opacity: 0; transform: rotate(-70deg) scale(.45); }
-.task-view-glyph.is-card > .task-view-grid-icon, .task-view-glyph.is-list > .task-view-list-icon { opacity: 1; transform: rotate(0) scale(1); }
 .task-collection-heading { flex-wrap: wrap; gap: 12px; }
 .task-collection-heading.is-director { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr); }
 .director-heading-leading { display: flex; align-items: center; gap: 14px; min-width: 0; }
@@ -148,15 +143,30 @@
 .director-duration strong { color: var(--sm-accent); font: 600 15px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .workspace-view-save-error { color: var(--sm-danger); font-size: 12px; }
 .task-generation-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
-.project-workspace-body { display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: 0; }
-.project-workspace-body.is-director { grid-template-columns: minmax(0, 1fr); }
-.project-workspace-body.is-overview { grid-template-columns: minmax(0, 1fr); }
+.project-workspace-body { display: grid; grid-template-columns: 176px minmax(0, 1fr); min-height: 0; }
+.workspace-sidebar { display: flex; flex-direction: column; gap: 5px; min-height: 0; padding: 20px 10px; border-right: 1px solid var(--sm-border); background: color-mix(in srgb, var(--sm-surface-1) 82%, var(--sm-glass)); }
+.workspace-sidebar-label { padding: 0 12px 11px; color: var(--sm-text-muted); font-size: 11px; font-weight: 600; }
+.workspace-sidebar-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 0 12px; border: 0; border-radius: 11px; background: transparent; color: var(--sm-text-muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.workspace-sidebar-item > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-sidebar-item:hover { background: var(--sm-surface-2); color: var(--sm-text); }
+.workspace-sidebar-item.is-active { background: color-mix(in srgb, var(--sm-accent) 17%, var(--sm-surface-2)); color: var(--sm-accent); font-weight: 650; }
+.workspace-sidebar-item.is-sub { padding-left: 24px; }
+.workspace-sidebar-item:focus-visible { outline: 2px solid var(--sm-accent); outline-offset: -2px; }
 .timeline-overview-item { padding-right: 76px; }
 .timeline-row-actions { position: absolute; z-index: 2; right: 10px; top: 50%; display: flex; gap: 4px; transform: translateY(-50%); }
 .timeline-name-editor { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 8px; border: 1px solid var(--sm-border); border-radius: var(--sm-radius); background: var(--sm-surface-1); }
 .timeline-overview-item .timeline-name-editor { grid-column: 1 / -1; }
 .timeline-name-editor > .tc-control-wrap { flex: 1; min-width: 0; }
 .project-task-column { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; min-width: 0; }
+.project-workspace-body.is-director .project-task-column { grid-template-rows: clamp(150px, 24dvh, 245px) minmax(0, 1fr); }
+.director-preview { display: grid; place-items: center; min-height: 0; padding: 8px 16px; border-bottom: 1px solid var(--sm-border); background: color-mix(in srgb, var(--sm-surface-1) 65%, var(--sm-surface-2)); }
+.director-preview-screen { position: relative; display: block; height: 100%; aspect-ratio: 16 / 9; max-width: 100%; padding: 0; overflow: hidden; border: 1px solid var(--sm-border-strong); border-radius: 8px; background: #111318; color: white; cursor: pointer; }
+.director-preview-screen > :is(video, img) { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.director-preview-screen > video { visibility: hidden; }
+.director-preview-screen > video.is-active { visibility: visible; }
+.director-preview-empty { position: absolute; inset: 0; display: grid; place-items: center; color: rgb(255 255 255 / 60%); font-size: 13px; }
+.director-preview-toggle { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 66px; height: 66px; border-radius: 50%; background: rgb(255 255 255 / 20%); color: white; opacity: 0; transform: translate(-50%, -50%); transition: opacity 150ms ease; pointer-events: none; }
+.director-preview-screen:hover .director-preview-toggle, .director-preview-screen:focus-visible .director-preview-toggle { opacity: 1; }
 .project-task-column > .project-task-area { padding-bottom: 18px; }
 .task-action-dock { position: fixed; bottom: calc(var(--sm-statusbar-height) + 16px); left: 50%; translate: -50% 0; width: max-content; max-width: calc(100vw - 24px); pointer-events: none; }
 .task-action-dock.is-mobile-single { display: none; }
@@ -252,7 +262,10 @@
   .workspace-top-actions > .bridge-connection { grid-column: 2; grid-row: 2; justify-self: end; }
   .workspace-project-config-button { width: 32px; padding: 0; }
   .workspace-project-config-button > span { display: none; }
-  .project-workspace-body { grid-template-columns: minmax(0, 1fr); }
+  .project-workspace-body { grid-template-columns: 54px minmax(0, 1fr); }
+  .workspace-sidebar { padding: 12px 5px; }
+  .workspace-sidebar-label, .workspace-sidebar-item > span { display: none; }
+  .workspace-sidebar-item, .workspace-sidebar-item.is-sub { justify-content: center; padding: 0; font-size: 0; }
   .project-task-info { display: none; }
   .project-task-area { padding: 14px 12px 60px; }
   .task-generation-actions { flex: 1 0 100%; justify-content: flex-end; }

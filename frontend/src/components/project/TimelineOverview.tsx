@@ -18,16 +18,22 @@ export function TimelineOverview({ project, gateway, onRefresh, onOpen }: {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const create = async () => {
+    setBusy(true); setError("");
+    try {
+      const numbers = new Set(project.snapshot.scenes.map(scene => scene.title));
+      let number = project.snapshot.scenes.length + 1;
+      while (numbers.has(`时间线 ${number}`)) number += 1;
+      await gateway.createTimeline(project.id, `时间线 ${number}`);
+      await onRefresh();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "新建时间线失败"); }
+    finally { setBusy(false); }
+  };
   const save = async () => {
     const title = name.trim() || `时间线 ${project.snapshot.scenes.length + 1}`;
     setBusy(true); setError("");
     try {
-      if (editing === "new") {
-        const timeline = await gateway.createTimeline(project.id, title);
-        await onRefresh();
-        setEditing(null);
-        onOpen(timeline.id);
-      } else if (editing) {
+      if (editing) {
         await gateway.renameTimeline(project.id, editing, title);
         await onRefresh();
         setEditing(null);
@@ -43,13 +49,12 @@ export function TimelineOverview({ project, gateway, onRefresh, onOpen }: {
     finally { setBusy(false); }
   };
   return <div className="task-list-view timeline-overview">
-    <button type="button" className="task-list-row is-create" onClick={() => { setEditing("new"); setName(""); }} aria-label="新建时间线">
+    <button type="button" className="task-list-row is-create" disabled={busy} onClick={() => void create()} aria-label="新建时间线">
       <div className="task-preview is-compact"><Plus size={24} /></div>
       <div className="task-list-copy"><strong>新建时间线</strong></div>
       <div className="task-list-stats"><span>{project.snapshot.scenes.length} 条时间线</span></div>
       <div className="task-list-status"><Plus size={14} />新建</div>
     </button>
-    {editing === "new" && <div className="timeline-name-editor"><TextField value={name} onChange={setName} placeholder="时间线名称" /><Button disabled={busy} onClick={() => void save()}>创建</Button><Button onClick={() => setEditing(null)}>取消</Button></div>}
     {project.snapshot.scenes.map((scene, index) => {
       const tasks = listTasksInStoryOrder(project.snapshot, scene.id);
       const duration = tasks.reduce((value, task) => Math.max(value, (task.timelineStartSeconds ?? value) + task.plannedDurationSeconds), 0);

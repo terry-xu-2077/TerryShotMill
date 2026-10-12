@@ -47,7 +47,7 @@
     point(e) { const r=this.host.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; }
     setClips(clips) { this.clips=clips; this.clampScroll(); this.invalidate(); }
     select(id) { this.selected=id; this.invalidate(); }
-    setFrame(frame,notify=true) { this.frame=C.clamp(Math.round(frame),0,this.total); if(notify)this.options.onFrame?.(this.frame); this.invalidate(false); }
+    setFrame(frame,notify=true) { this.frame=C.clamp(Math.round(frame),0,this.total); if(this.playing){this.playFrame=this.frame;this.playStart=performance.now();} if(notify)this.options.onFrame?.(this.frame); this.invalidate(false); }
     invalidate(content=true) { if(content)this.dirty=true; if(!this.raf)this.raf=requestAnimationFrame(t=>this.paint(t)); }
     clampScroll() { this.scroll=C.clamp(this.scroll,0,Math.max(0,(this.total+C.FPS*3)*this.ppf-(this.width-this.inset-20))); this.options.onView?.(this.viewInfo()); }
     viewInfo() { return {scroll:this.scroll,contentWidth:(this.total+C.FPS*3)*this.ppf,visible:this.width-this.inset-20,ppf:this.ppf}; }
